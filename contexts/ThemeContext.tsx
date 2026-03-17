@@ -1,5 +1,4 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ThemeProvider as NavigationThemeProvider } from '@react-navigation/native';
 import { PropsWithChildren, createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { useColorScheme } from 'react-native';
 
@@ -17,10 +16,7 @@ type ThemeContextValue = {
   resolvedMode: Exclude<ThemeMode, 'system'>;
   setMode: (mode: ThemeMode) => Promise<void>;
   theme: AppTheme;
-  navigationTheme: {
-    Provider: typeof NavigationThemeProvider;
-    theme: ReturnType<typeof buildNavigationTheme>;
-  };
+  navigationTheme: ReturnType<typeof buildNavigationTheme>;
 };
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
@@ -41,13 +37,7 @@ export function AppThemeProvider({ children }: PropsWithChildren) {
 
   const resolvedMode = resolveThemeMode(mode, systemMode);
   const theme = themes[resolvedMode];
-  const navigationTheme = useMemo(
-    () => ({
-      Provider: NavigationThemeProvider,
-      theme: buildNavigationTheme(theme),
-    }),
-    [theme]
-  );
+  const navigationTheme = useMemo(() => buildNavigationTheme(theme), [theme]);
 
   const value = useMemo<ThemeContextValue>(
     () => ({

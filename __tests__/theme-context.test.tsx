@@ -7,12 +7,13 @@ import { useAppTheme } from '@/contexts/ThemeContext';
 import { renderWithProviders } from '@/test-utils/render';
 
 function ThemeProbe() {
-  const { mode, resolvedMode } = useAppTheme();
+  const { mode, navigationTheme, resolvedMode } = useAppTheme();
 
   return (
     <>
       <Text>{mode}</Text>
       <Text>{resolvedMode}</Text>
+      <Text testID="text-navigation-theme-primary">{navigationTheme.colors.primary}</Text>
     </>
   );
 }
@@ -26,6 +27,7 @@ describe('ThemeContext', () => {
     renderWithProviders(<ThemeProbe />);
 
     expect(screen.getByText('system')).toBeTruthy();
+    expect(screen.getByTestId('text-navigation-theme-primary')).toHaveTextContent('#E63946');
   });
 
   it('persists manual mode changes from settings', async () => {

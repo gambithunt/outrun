@@ -1,3 +1,4 @@
+import { ThemeProvider as NavigationThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import { Text } from 'react-native';
 import 'react-native-reanimated';
@@ -46,7 +47,7 @@ function RootNavigator() {
   }
 
   return (
-    <navigationTheme.Provider value={navigationTheme.theme}>
+    <NavigationThemeProvider value={navigationTheme}>
       <Stack>
         <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="settings" options={{ title: 'Settings' }} />
@@ -59,6 +60,6 @@ function RootNavigator() {
         <Stack.Screen name="run/[id]/summary" options={{ title: 'Run Summary' }} />
         <Stack.Screen name="+not-found" options={{ title: 'Not Found' }} />
       </Stack>
-    </navigationTheme.Provider>
+    </NavigationThemeProvider>
   );
 }
