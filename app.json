@@ -1,0 +1,59 @@
+{
+  "expo": {
+    "name": "ClubRun",
+    "slug": "clubrun",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "clubrun",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": false,
+    "splash": {
+      "image": "./assets/images/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.clubrun.app",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "ClubRun needs your location to show your position to your group during an active drive.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "ClubRun needs background location so your club can keep tracking the convoy while your phone is locked.",
+        "UIBackgroundModes": ["location"]
+      }
+    },
+    "android": {
+      "package": "com.clubrun.app",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION"
+      ],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      }
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "ClubRun uses your location to keep your driving group synchronized during a run.",
+          "locationAlwaysPermission": "ClubRun uses your location in the background so the convoy can keep seeing your position."
+        }
+      ],
+      "@maplibre/maplibre-react-native"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

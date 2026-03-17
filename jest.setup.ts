@@ -1,0 +1,164 @@
+const mockExpoRouter = {
+  push: jest.fn(),
+  replace: jest.fn(),
+  back: jest.fn(),
+};
+
+(globalThis as { __mockExpoRouter?: typeof mockExpoRouter }).__mockExpoRouter = mockExpoRouter;
+(globalThis as { __mockExpoRouterParams?: Record<string, string> }).__mockExpoRouterParams = {};
+
+jest.mock('@react-native-async-storage/async-storage', () =>
+  require('@react-native-async-storage/async-storage/jest/async-storage-mock')
+);
+
+jest.mock('expo-font', () => ({
+  useFonts: () => [true, null],
+}));
+
+jest.mock('expo-location', () => ({
+  Accuracy: {
+    High: 'high',
+    Balanced: 'balanced',
+  },
+  requestForegroundPermissionsAsync: jest.fn(async () => ({
+    status: 'granted',
+    granted: true,
+  })),
+  requestBackgroundPermissionsAsync: jest.fn(async () => ({
+    status: 'granted',
+    granted: true,
+  })),
+  watchPositionAsync: jest.fn(async (_options, callback) => {
+    callback({
+      coords: {
+        latitude: -26.2041,
+        longitude: 28.0473,
+        speed: 0,
+        heading: 0,
+        accuracy: 5,
+      },
+      timestamp: 1000,
+    });
+    return {
+      remove: jest.fn(),
+    };
+  }),
+  hasStartedLocationUpdatesAsync: jest.fn(async () => false),
+  startLocationUpdatesAsync: jest.fn(async () => undefined),
+  stopLocationUpdatesAsync: jest.fn(async () => undefined),
+}));
+
+jest.mock('expo-task-manager', () => ({
+  defineTask: jest.fn(),
+  isTaskDefined: jest.fn(() => false),
+}));
+
+jest.mock('expo-splash-screen', () => ({
+  preventAutoHideAsync: jest.fn(),
+  hideAsync: jest.fn(),
+}));
+
+jest.mock('expo-sharing', () => ({
+  isAvailableAsync: jest.fn(async () => true),
+  shareAsync: jest.fn(async () => undefined),
+}));
+
+jest.mock('expo-print', () => ({
+  printToFileAsync: jest.fn(async () => ({
+    uri: '/tmp/clubrun-summary.pdf',
+  })),
+}));
+
+jest.mock('expo-router', () => {
+  const React = require('react');
+  const { Text } = require('react-native');
+
+  return {
+    Link: ({ children }: { children: React.ReactNode }) => children,
+    Stack: Object.assign(
+      ({ children }: { children: React.ReactNode }) => React.createElement(React.Fragment, null, children),
+      {
+        Screen: ({ name }: { name: string }) => React.createElement(Text, null, `screen:${name}`),
+      }
+    ),
+    useRouter: () => (globalThis as { __mockExpoRouter?: typeof mockExpoRouter }).__mockExpoRouter,
+    useLocalSearchParams: () =>
+      (globalThis as { __mockExpoRouterParams?: Record<string, string> }).__mockExpoRouterParams ?? {},
+  };
+});
+
+jest.mock('firebase/app', () => ({
+  getApp: jest.fn(() => ({ name: 'mock-app' })),
+  getApps: jest.fn(() => []),
+  initializeApp: jest.fn(() => ({ name: 'mock-app' })),
+}));
+
+const mockFirebaseAuth = {
+  currentUser: null as { uid: string } | null,
+};
+
+jest.mock('firebase/auth', () => ({
+  connectAuthEmulator: jest.fn(),
+  getAuth: jest.fn(() => mockFirebaseAuth),
+  signInAnonymously: jest.fn(async () => {
+    mockFirebaseAuth.currentUser = {
+      uid: 'mock-auth-user',
+    };
+    return {
+      user: mockFirebaseAuth.currentUser,
+    };
+  }),
+}));
+
+jest.mock('firebase/database', () => ({
+  child: jest.fn((_base, path) => path),
+  connectDatabaseEmulator: jest.fn(),
+  get: jest.fn(async () => ({
+    exists: () => false,
+    val: () => null,
+  })),
+  getDatabase: jest.fn(() => ({ name: 'mock-db' })),
+  onValue: jest.fn((_refValue, onData) => {
+    onData({
+      exists: () => false,
+      val: () => null,
+    });
+    return jest.fn();
+  }),
+  goOffline: jest.fn(),
+  goOnline: jest.fn(),
+  push: jest.fn(() => ({ key: 'mock-run-id' })),
+  ref: jest.fn(() => 'mock-ref'),
+  runTransaction: jest.fn(async (_refValue, updateFn) => ({
+    committed: Boolean(updateFn({ maxDrivers: 15, drivers: {} })),
+    snapshot: {
+      exists: () => true,
+      val: () => null,
+    },
+  })),
+  set: jest.fn(async () => undefined),
+}));
+
+jest.mock('@maplibre/maplibre-react-native', () => {
+  const React = require('react');
+  const { Text } = require('react-native');
+
+  function MockComponent({ children, label }: { children?: React.ReactNode; label: string }) {
+    return React.createElement(React.Fragment, null, React.createElement(Text, null, label), children);
+  }
+
+  return {
+    MapView: ({ children }: { children?: React.ReactNode }) =>
+      React.createElement(MockComponent, { label: 'mock-map-view' }, children),
+    Camera: () => React.createElement(Text, null, 'mock-map-camera'),
+    ShapeSource: ({ children }: { children?: React.ReactNode }) =>
+      React.createElement(MockComponent, { label: 'mock-shape-source' }, children),
+    LineLayer: () => React.createElement(Text, null, 'mock-line-layer'),
+    PointAnnotation: ({ children }: { children?: React.ReactNode }) =>
+      React.createElement(MockComponent, { label: 'mock-point-annotation' }, children),
+  };
+});
+
+jest.mock('react-native-view-shot', () => ({
+  captureRef: jest.fn(async () => '/tmp/clubrun-summary.png'),
+}));

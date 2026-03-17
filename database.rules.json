@@ -1,0 +1,70 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "joinCodes": {
+      "$code": {
+        ".read": "auth != null",
+        ".write": "auth != null && !data.exists() && newData.hasChildren(['runId', 'createdAt']) && newData.child('runId').isString() && newData.child('createdAt').isNumber()"
+      }
+    },
+    "runs": {
+      "$runId": {
+        ".read": "auth != null && (data.child('adminId').val() === auth.uid || data.child('drivers').child(auth.uid).exists())",
+        ".write": "auth != null && ((!data.exists() && newData.hasChildren(['name', 'joinCode', 'adminId', 'status', 'createdAt', 'startedAt', 'endedAt', 'maxDrivers']) && newData.child('adminId').val() === auth.uid && newData.child('name').isString() && (!newData.child('description').exists() || newData.child('description').isString()) && newData.child('joinCode').isString() && newData.child('status').val() === 'draft' && newData.child('createdAt').isNumber() && newData.child('startedAt').val() === null && newData.child('endedAt').val() === null && newData.child('maxDrivers').isNumber() && newData.child('maxDrivers').val() >= 1 && newData.child('maxDrivers').val() <= 50) || (data.exists() && data.child('status').val() !== 'ended' && !data.child('drivers').child(auth.uid).exists() && newData.child('drivers').child(auth.uid).exists() && newData.child('name').val() === data.child('name').val() && newData.child('description').val() === data.child('description').val() && newData.child('joinCode').val() === data.child('joinCode').val() && newData.child('adminId').val() === data.child('adminId').val() && newData.child('status').val() === data.child('status').val() && newData.child('createdAt').val() === data.child('createdAt').val() && newData.child('startedAt').val() === data.child('startedAt').val() && newData.child('endedAt').val() === data.child('endedAt').val() && newData.child('maxDrivers').val() === data.child('maxDrivers').val() && newData.child('route').val() === data.child('route').val() && newData.child('hazards').val() === data.child('hazards').val() && newData.child('summary').val() === data.child('summary').val()))",
+        "status": {
+          ".write": "auth != null && root.child('runs/'+$runId+'/adminId').val() === auth.uid && ((data.val() === 'draft' && newData.val() === 'active') || (data.val() === 'active' && newData.val() === 'ended'))",
+          ".validate": "newData.val() === 'draft' || newData.val() === 'active' || newData.val() === 'ended'"
+        },
+        "startedAt": {
+          ".write": "auth != null && root.child('runs/'+$runId+'/adminId').val() === auth.uid && data.val() === null && root.child('runs/'+$runId+'/status').val() === 'draft'",
+          ".validate": "newData.val() === null || newData.isNumber()"
+        },
+        "endedAt": {
+          ".write": "auth != null && root.child('runs/'+$runId+'/adminId').val() === auth.uid && data.val() === null && root.child('runs/'+$runId+'/status').val() === 'active'",
+          ".validate": "newData.val() === null || newData.isNumber()"
+        },
+        "maxDrivers": {
+          ".write": "auth != null && root.child('runs/'+$runId+'/adminId').val() === auth.uid && root.child('runs/'+$runId+'/status').val() === 'draft'",
+          ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 50"
+        },
+        "summary": {
+          ".write": "auth != null && root.child('runs/'+$runId+'/adminId').val() === auth.uid",
+          ".validate": "!newData.exists() || (newData.child('totalDistanceKm').isNumber() && newData.child('totalDriveTimeMinutes').isNumber() && newData.child('generatedAt').isNumber())"
+        },
+        "route": {
+          ".write": "auth != null && root.child('runs/'+$runId+'/adminId').val() === auth.uid",
+          ".validate": "!newData.exists() || (newData.hasChildren(['points', 'distanceMetres', 'source']) && newData.child('distanceMetres').isNumber() && newData.child('source').isString())"
+        },
+        "drivers": {
+          "$driverId": {
+            ".read": "auth != null && (root.child('runs/'+$runId+'/adminId').val() === auth.uid || root.child('runs/'+$runId+'/drivers').child(auth.uid).exists())",
+            ".write": "auth != null && (auth.uid === $driverId || (root.child('runs/'+$runId+'/adminId').val() === auth.uid && !newData.exists()))",
+            "profile": {
+              ".validate": "!newData.exists() || (newData.hasChildren(['name', 'carMake', 'carModel', 'fuelType']) && newData.child('name').isString() && newData.child('carMake').isString() && newData.child('carModel').isString() && newData.child('fuelType').isString())"
+            },
+            "joinedAt": {
+              ".validate": "newData.isNumber()"
+            },
+            "leftAt": {
+              ".validate": "newData.val() === null || newData.isNumber()"
+            },
+            "stats": {
+              ".validate": "!newData.exists() || (newData.child('topSpeed').val() === null || newData.child('topSpeed').isNumber())"
+            },
+            "location": {
+              ".validate": "!newData.exists() || (newData.hasChildren(['lat', 'lng', 'heading', 'speed', 'accuracy', 'timestamp']) && newData.child('lat').isNumber() && newData.child('lng').isNumber() && newData.child('heading').isNumber() && newData.child('speed').isNumber() && newData.child('accuracy').isNumber() && newData.child('timestamp').isNumber())"
+            }
+          }
+        },
+        "hazards": {
+          "$hazardId": {
+            ".read": "auth != null && (root.child('runs/'+$runId+'/adminId').val() === auth.uid || root.child('runs/'+$runId+'/drivers').child(auth.uid).exists())",
+            ".write": "auth != null && ((root.child('runs/'+$runId+'/drivers').child(auth.uid).exists() && !data.exists() && newData.hasChildren(['type', 'reportedBy', 'reporterName', 'lat', 'lng', 'timestamp', 'dismissed', 'reportCount']) && newData.child('reportedBy').val() === auth.uid && newData.child('dismissed').val() === false && newData.child('reportCount').val() === 1) || (root.child('runs/'+$runId+'/drivers').child(auth.uid).exists() && data.exists() && data.child('dismissed').val() === false && newData.child('dismissed').val() === false && newData.child('type').val() === data.child('type').val() && newData.child('reportedBy').val() === data.child('reportedBy').val() && newData.child('reporterName').val() === data.child('reporterName').val() && newData.child('lat').val() === data.child('lat').val() && newData.child('lng').val() === data.child('lng').val() && newData.child('timestamp').val() === data.child('timestamp').val() && newData.child('reportCount').val() === data.child('reportCount').val() + 1) || (root.child('runs/'+$runId+'/adminId').val() === auth.uid && data.exists() && newData.child('dismissed').val() === true && newData.child('type').val() === data.child('type').val() && newData.child('reportedBy').val() === data.child('reportedBy').val() && newData.child('reporterName').val() === data.child('reporterName').val() && newData.child('lat').val() === data.child('lat').val() && newData.child('lng').val() === data.child('lng').val() && newData.child('timestamp').val() === data.child('timestamp').val() && newData.child('reportCount').val() === data.child('reportCount').val()))",
+            ".validate": "newData.hasChildren(['type', 'reportedBy', 'reporterName', 'lat', 'lng', 'timestamp', 'dismissed', 'reportCount']) && newData.child('type').isString() && newData.child('reportedBy').isString() && newData.child('reporterName').isString() && newData.child('lat').isNumber() && newData.child('lng').isNumber() && newData.child('timestamp').isNumber() && newData.child('dismissed').isBoolean() && newData.child('reportCount').isNumber()"
+          }
+        }
+      }
+    }
+  }
+}
