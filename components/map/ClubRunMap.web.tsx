@@ -4,19 +4,36 @@ import { useAppTheme } from '@/contexts/ThemeContext';
 import { RoutePoint } from '@/lib/geo';
 import { LiveDriver } from '@/lib/driverRealtime';
 import { LiveHazard, formatHazardLabel } from '@/lib/hazardRealtime';
+import { RouteStopDraft } from '@/types/domain';
 
 type ClubRunMapProps = {
+  currentLocation?: RoutePoint | null;
   drivers?: LiveDriver[];
+  edgeToEdge?: boolean;
+  fitToRouteToken?: number;
+  focusPoint?: RoutePoint | null;
   hazards?: LiveHazard[];
+  onMapPress?: (point: RoutePoint) => void;
+  onRegionDidChange?: (point: RoutePoint) => void;
   waypoints?: RoutePoint[];
   routePoints?: RoutePoint[];
+  selectedStopId?: string | null;
+  showUserLocation?: boolean;
+  stops?: RouteStopDraft[];
   testID?: string;
 };
 
 export function ClubRunMap({
+  currentLocation,
   drivers = [],
+  edgeToEdge = false,
   hazards = [],
+  onMapPress,
+  onRegionDidChange,
   routePoints = [],
+  selectedStopId,
+  showUserLocation,
+  stops = [],
   testID,
   waypoints = [],
 }: ClubRunMapProps) {
@@ -27,9 +44,9 @@ export function ClubRunMap({
       style={{
         minHeight: 320,
         overflow: 'hidden',
-        borderRadius: 24,
-        borderWidth: 1,
-        borderColor: theme.colors.border,
+        borderRadius: edgeToEdge ? 0 : 24,
+        borderWidth: edgeToEdge ? 0 : 1,
+        borderColor: edgeToEdge ? 'transparent' : theme.colors.border,
         backgroundColor: theme.colors.surface,
         padding: 20,
         gap: 12,
@@ -62,12 +79,36 @@ export function ClubRunMap({
           Waypoints: {waypoints.length}
         </Text>
         <Text style={{ color: theme.colors.textPrimary, fontWeight: '700' }}>
+          Planned stops: {stops.length}
+        </Text>
+        <Text style={{ color: theme.colors.textPrimary, fontWeight: '700' }}>
           Drivers with GPS: {drivers.filter((driver) => driver.location).length}
         </Text>
         <Text style={{ color: theme.colors.textPrimary, fontWeight: '700' }}>
           Visible hazards: {hazards.length}
         </Text>
       </View>
+      {currentLocation ? (
+        <Text style={{ color: theme.colors.textSecondary }}>
+          Current location: {currentLocation[0].toFixed(4)}, {currentLocation[1].toFixed(4)}
+        </Text>
+      ) : null}
+      {selectedStopId ? (
+        <Text style={{ color: theme.colors.textSecondary }}>Selected stop: {selectedStopId}</Text>
+      ) : null}
+      {showUserLocation ? (
+        <Text style={{ color: theme.colors.textSecondary }}>User location puck enabled</Text>
+      ) : null}
+      {onMapPress ? (
+        <Text style={{ color: theme.colors.textSecondary }}>
+          Native map press placement is available in the iOS and Android development build.
+        </Text>
+      ) : null}
+      {onRegionDidChange ? (
+        <Text style={{ color: theme.colors.textSecondary }}>
+          Route planner camera tracking is active for native pin-pick mode.
+        </Text>
+      ) : null}
       {drivers.length > 0 ? (
         <Text style={{ color: theme.colors.textSecondary }}>
           Drivers: {drivers.map((driver) => driver.name).join(', ')}

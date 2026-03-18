@@ -67,7 +67,23 @@ export type DriverRecord = {
 export type RouteData = {
   points: [number, number][];
   distanceMetres: number;
+  durationSeconds?: number;
   source: 'drawn' | 'gpx';
+  stops?: RouteStopDraft[];
+};
+
+export type RouteStopKind = 'start' | 'waypoint' | 'destination';
+
+export type RouteStopInputMethod = 'search' | 'coordinates' | 'pin' | 'current_location';
+
+export type RouteStopDraft = {
+  id: string;
+  kind: RouteStopKind;
+  label: string;
+  lat: number | null;
+  lng: number | null;
+  source: RouteStopInputMethod;
+  placeId?: string;
 };
 
 export type Hazard = {

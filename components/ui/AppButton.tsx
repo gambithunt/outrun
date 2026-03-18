@@ -6,6 +6,7 @@ type AppButtonProps = {
   label: string;
   onPress: () => void;
   variant?: 'primary' | 'secondary' | 'ghost';
+  disabled?: boolean;
   testID?: string;
 };
 
@@ -13,6 +14,7 @@ export function AppButton({
   label,
   onPress,
   variant = 'primary',
+  disabled = false,
   testID,
 }: AppButtonProps) {
   const { theme } = useAppTheme();
@@ -30,6 +32,7 @@ export function AppButton({
   return (
     <Pressable
       accessibilityRole="button"
+      disabled={disabled}
       onPress={onPress}
       style={({ pressed }) => ({
         borderRadius: 18,
@@ -40,7 +43,7 @@ export function AppButton({
         alignItems: 'center',
         justifyContent: 'center',
         paddingHorizontal: 18,
-        opacity: pressed ? 0.88 : 1,
+        opacity: disabled ? 0.5 : pressed ? 0.88 : 1,
       })}
       testID={testID}
     >

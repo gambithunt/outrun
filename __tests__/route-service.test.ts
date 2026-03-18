@@ -1,4 +1,10 @@
-import { buildOsrmRouteUrl, fetchRoadRoute, saveRouteToRun, validateWaypoints } from '@/lib/routeService';
+import {
+  buildOsrmRouteUrl,
+  fetchRoadRoute,
+  saveRouteDraftToRun,
+  startRunWithSavedRoute,
+  validateWaypoints,
+} from '@/lib/routeService';
 
 describe('routeService', () => {
   it('validates waypoint counts and builds an OSRM url', () => {
@@ -13,12 +19,13 @@ describe('routeService', () => {
     expect(url).toContain('28.0473,-26.2041;28.2293,-25.7479');
   });
 
-  it('fetches and normalizes an OSRM route', async () => {
+  it('fetches and normalizes an OSRM route with distance and duration', async () => {
     const fetchImpl = jest.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
         routes: [
           {
+            duration: 3600.2,
             geometry: {
               coordinates: [
                 [28.0473, -26.2041],
@@ -41,16 +48,17 @@ describe('routeService', () => {
     expect(route.source).toBe('drawn');
     expect(route.points[0]).toEqual([-26.2041, 28.0473]);
     expect(route.distanceMetres).toBeGreaterThan(0);
+    expect(route.durationSeconds).toBe(3600);
   });
 
-  it('persists a route and activates the run', async () => {
+  it('persists a route draft without activating the run', async () => {
     const client = {
       writeRoute: jest.fn(),
       writeStatus: jest.fn(),
       writeStartedAt: jest.fn(),
     };
 
-    await saveRouteToRun(
+    await saveRouteDraftToRun(
       client,
       'run_123',
       {
@@ -59,7 +67,9 @@ describe('routeService', () => {
           [-25.7479, 28.2293],
         ],
         distanceMetres: 54000,
+        durationSeconds: 3600,
         source: 'drawn',
+        stops: [],
       },
       1234
     );
@@ -68,7 +78,21 @@ describe('routeService', () => {
       'run_123',
       expect.objectContaining({ distanceMetres: 54000 })
     );
+    expect(client.writeStartedAt).not.toHaveBeenCalled();
+    expect(client.writeStatus).not.toHaveBeenCalled();
+  });
+
+  it('starts a run from a saved route', async () => {
+    const client = {
+      writeRoute: jest.fn(),
+      writeStatus: jest.fn(),
+      writeStartedAt: jest.fn(),
+    };
+
+    await startRunWithSavedRoute(client, 'run_123', 1234);
+
     expect(client.writeStartedAt).toHaveBeenCalledWith('run_123', 1234);
     expect(client.writeStatus).toHaveBeenCalledWith('run_123', 'active');
+    expect(client.writeRoute).not.toHaveBeenCalled();
   });
 });

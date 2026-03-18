@@ -20,6 +20,37 @@ jest.mock('expo-location', () => ({
     High: 'high',
     Balanced: 'balanced',
   },
+  geocodeAsync: jest.fn(async (address: string) => {
+    if (address === 'Unknown') {
+      return [];
+    }
+    return [
+      {
+        latitude: -26.2041,
+        longitude: 28.0473,
+      },
+    ];
+  }),
+  getCurrentPositionAsync: jest.fn(async () => ({
+    coords: {
+      latitude: -26.2041,
+      longitude: 28.0473,
+      speed: 0,
+      heading: 0,
+      accuracy: 5,
+    },
+    timestamp: 1000,
+  })),
+  getLastKnownPositionAsync: jest.fn(async () => ({
+    coords: {
+      latitude: -26.2041,
+      longitude: 28.0473,
+      speed: 0,
+      heading: 0,
+      accuracy: 5,
+    },
+    timestamp: 900,
+  })),
   requestForegroundPermissionsAsync: jest.fn(async () => ({
     status: 'granted',
     granted: true,
@@ -28,6 +59,15 @@ jest.mock('expo-location', () => ({
     status: 'granted',
     granted: true,
   })),
+  reverseGeocodeAsync: jest.fn(async () => [
+    {
+      name: 'Main Rd',
+      street: 'Main Rd',
+      city: 'Johannesburg',
+      region: 'Gauteng',
+      country: 'South Africa',
+    },
+  ]),
   watchPositionAsync: jest.fn(async (_options, callback) => {
     callback({
       coords: {
@@ -143,21 +183,63 @@ jest.mock('firebase/database', () => ({
 
 jest.mock('@maplibre/maplibre-react-native', () => {
   const React = require('react');
-  const { Text } = require('react-native');
+  const { Pressable, Text } = require('react-native');
 
-  function MockComponent({ children, label }: { children?: React.ReactNode; label: string }) {
+  function MockComponent({
+    children,
+    label,
+    onPress,
+    testID,
+  }: {
+    children?: React.ReactNode;
+    label: string;
+    onPress?: () => void;
+    testID?: string;
+  }) {
+    if (onPress) {
+      return React.createElement(
+        Pressable,
+        { onPress, testID: testID ?? label },
+        React.createElement(Text, null, label),
+        children
+      );
+    }
+
     return React.createElement(React.Fragment, null, React.createElement(Text, null, label), children);
   }
 
   return {
-    MapView: ({ children }: { children?: React.ReactNode }) =>
-      React.createElement(MockComponent, { label: 'mock-map-view' }, children),
-    Camera: () => React.createElement(Text, null, 'mock-map-camera'),
+    MapView: ({
+      children,
+      onPress,
+    }: {
+      children?: React.ReactNode;
+      onPress?: (feature: { geometry: { type: string; coordinates: [number, number] } }) => void;
+    }) =>
+      React.createElement(
+        MockComponent,
+        {
+          label: 'mock-map-view',
+          testID: 'mock-map-view',
+          onPress: onPress
+            ? () =>
+                onPress({
+                  geometry: {
+                    type: 'Point',
+                    coordinates: [28.0473, -26.2041],
+                  },
+                })
+            : undefined,
+        },
+        children
+      ),
+    Camera: React.forwardRef(() => React.createElement(Text, null, 'mock-map-camera')),
     ShapeSource: ({ children }: { children?: React.ReactNode }) =>
       React.createElement(MockComponent, { label: 'mock-shape-source' }, children),
     LineLayer: () => React.createElement(Text, null, 'mock-line-layer'),
     PointAnnotation: ({ children }: { children?: React.ReactNode }) =>
       React.createElement(MockComponent, { label: 'mock-point-annotation' }, children),
+    UserLocation: () => React.createElement(Text, null, 'mock-user-location'),
   };
 });
 

@@ -1,8 +1,9 @@
 import { child, ref, set, type Database } from 'firebase/database';
 
 import { getFirebaseDatabase } from '@/lib/firebase';
+import { buildRouteWaypointsFromStops } from '@/lib/routePlanner';
 import { calculateRouteDistanceMeters, isValidRoutePoint, RoutePoint } from '@/lib/geo';
-import { RouteData } from '@/types/domain';
+import { RouteData, RouteStopDraft } from '@/types/domain';
 
 type RouteClient = {
   writeRoute: (runId: string, route: RouteData) => Promise<void>;
@@ -49,11 +50,13 @@ export async function fetchRoadRoute(
 
   const payload = (await response.json()) as {
     routes?: Array<{
+      duration?: number;
       geometry?: {
         coordinates?: [number, number][];
       };
     }>;
   };
+  const duration = payload.routes?.[0]?.duration;
   const coordinates = payload.routes?.[0]?.geometry?.coordinates;
 
   if (!coordinates || coordinates.length < 2) {
@@ -64,7 +67,19 @@ export async function fetchRoadRoute(
   return {
     points,
     distanceMetres: Math.round(calculateRouteDistanceMeters(points)),
+    durationSeconds: typeof duration === 'number' ? Math.round(duration) : undefined,
     source: 'drawn',
+  };
+}
+
+export async function fetchRoadRouteFromStops(
+  stops: RouteStopDraft[],
+  fetchImpl: typeof fetch = fetch
+): Promise<RouteData> {
+  const route = await fetchRoadRoute(buildRouteWaypointsFromStops(stops), fetchImpl);
+  return {
+    ...route,
+    stops: stops.filter((stop) => typeof stop.lat === 'number' && typeof stop.lng === 'number'),
   };
 }
 
@@ -97,7 +112,43 @@ export async function saveRouteToRun(
   await client.writeStatus(runId, 'active');
 }
 
+export async function saveRouteDraftToRun(
+  client: RouteClient,
+  runId: string,
+  route: RouteData,
+  _now = Date.now()
+) {
+  if (!runId) {
+    throw new Error('Run id is required before saving a route.');
+  }
+
+  await client.writeRoute(runId, route);
+}
+
+export async function startRunWithSavedRoute(
+  client: RouteClient,
+  runId: string,
+  now = Date.now()
+) {
+  if (!runId) {
+    throw new Error('Run id is required before starting a run.');
+  }
+
+  await client.writeStartedAt(runId, now);
+  await client.writeStatus(runId, 'active');
+}
+
 export async function saveRouteToRunWithFirebase(runId: string, route: RouteData) {
   const database = getFirebaseDatabase();
   return saveRouteToRun(createRouteClient(database), runId, route);
+}
+
+export async function saveRouteDraftToRunWithFirebase(runId: string, route: RouteData) {
+  const database = getFirebaseDatabase();
+  return saveRouteDraftToRun(createRouteClient(database), runId, route);
+}
+
+export async function startRunWithSavedRouteWithFirebase(runId: string) {
+  const database = getFirebaseDatabase();
+  return startRunWithSavedRoute(createRouteClient(database), runId);
 }

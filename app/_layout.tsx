@@ -1,5 +1,6 @@
 import { ThemeProvider as NavigationThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
+import { useEffect } from 'react';
 import { Text } from 'react-native';
 import 'react-native-reanimated';
 
@@ -7,6 +8,7 @@ import { Screen } from '@/components/Screen';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { AuthProvider, useAuthSession } from '@/contexts/AuthContext';
 import { ensureBackgroundTrackingTaskRegisteredWithExpo } from '@/lib/backgroundTracking';
+import { useDeviceLocationStore } from '@/stores/deviceLocationStore';
 import { AppThemeProvider, useAppTheme } from '@/contexts/ThemeContext';
 
 ensureBackgroundTrackingTaskRegisteredWithExpo();
@@ -24,6 +26,11 @@ export default function RootLayout() {
 function RootNavigator() {
   const { navigationTheme, theme } = useAppTheme();
   const auth = useAuthSession();
+  const bootstrapLocation = useDeviceLocationStore((state) => state.bootstrapLocation);
+
+  useEffect(() => {
+    void bootstrapLocation();
+  }, [bootstrapLocation]);
 
   if (auth.status === 'loading') {
     return (
@@ -52,7 +59,7 @@ function RootNavigator() {
         <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="settings" options={{ title: 'Settings' }} />
         <Stack.Screen name="create/index" options={{ title: 'Create a Run' }} />
-        <Stack.Screen name="create/route" options={{ title: 'Plan Route' }} />
+        <Stack.Screen name="create/route" options={{ headerShown: false }} />
         <Stack.Screen name="join/index" options={{ title: 'Join a Run' }} />
         <Stack.Screen name="join/[code]" options={{ title: 'Join ClubRun' }} />
         <Stack.Screen name="join/profile" options={{ title: 'Driver Profile' }} />
