@@ -1,5 +1,5 @@
-import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
 import { Screen } from '@/components/Screen';
@@ -30,9 +30,11 @@ export default function HomeScreen() {
   const setSession = useRunSessionStore((state) => state.setSession);
   const [recentRuns, setRecentRuns] = useState<AdminRunHistoryEntry[]>([]);
 
-  useEffect(() => {
-    void loadAdminRunHistory().then(setRecentRuns);
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      void loadAdminRunHistory().then(setRecentRuns);
+    }, [])
+  );
 
   function handleResumeRun(entry: AdminRunHistoryEntry) {
     setSession({

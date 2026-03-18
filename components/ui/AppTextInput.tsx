@@ -8,6 +8,8 @@ type AppTextInputProps = {
   onChangeText: (value: string) => void;
   placeholder?: string;
   error?: string;
+  multiline?: boolean;
+  numberOfLines?: number;
   testID?: string;
 };
 
@@ -17,6 +19,8 @@ export function AppTextInput({
   onChangeText,
   placeholder,
   error,
+  multiline = false,
+  numberOfLines,
   testID,
 }: AppTextInputProps) {
   const { theme } = useAppTheme();
@@ -28,14 +32,19 @@ export function AppTextInput({
         onChangeText={onChangeText}
         placeholder={placeholder}
         placeholderTextColor={theme.colors.textSecondary}
+        multiline={multiline}
+        numberOfLines={numberOfLines}
+        textAlignVertical={multiline ? 'top' : 'center'}
         style={{
           backgroundColor: theme.colors.surfaceElevated,
           borderRadius: 16,
           borderWidth: 1,
           borderColor: error ? theme.colors.danger : theme.colors.border,
           color: theme.colors.textPrimary,
-          minHeight: 52,
+          minHeight: multiline ? 112 : 52,
           paddingHorizontal: 16,
+          paddingTop: multiline ? 16 : 0,
+          paddingBottom: multiline ? 16 : 0,
         }}
         testID={testID}
         value={value}

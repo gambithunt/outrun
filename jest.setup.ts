@@ -123,6 +123,7 @@ jest.mock('expo-router', () => {
         Screen: ({ name }: { name: string }) => React.createElement(Text, null, `screen:${name}`),
       }
     ),
+    useFocusEffect: (cb: () => void) => { const { useEffect } = require('react'); useEffect(cb, []); },
     useRouter: () => (globalThis as { __mockExpoRouter?: typeof mockExpoRouter }).__mockExpoRouter,
     useLocalSearchParams: () =>
       (globalThis as { __mockExpoRouterParams?: Record<string, string> }).__mockExpoRouterParams ?? {},

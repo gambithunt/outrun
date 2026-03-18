@@ -41,7 +41,9 @@ describe('create and join screens', () => {
     const screen = renderWithProviders(<CreateRunScreen />);
 
     fireEvent.changeText(screen.getByTestId('input-run-name'), 'Morning Run');
-    fireEvent.changeText(screen.getByTestId('input-run-max-drivers'), '24');
+    for (let index = 0; index < 9; index += 1) {
+      fireEvent.press(screen.getByTestId('button-increase-max-drivers'));
+    }
     fireEvent.press(screen.getByTestId('button-submit-run'));
 
     await waitFor(() => expect(screen.getByTestId('text-generated-code')).toHaveTextContent('123456'));
@@ -57,6 +59,9 @@ describe('create and join screens', () => {
         role: 'admin',
       })
     );
+
+    fireEvent.press(screen.getByTestId('button-toggle-run-details'));
+    expect(screen.getByTestId('text-generated-run-id')).toHaveTextContent('run_42');
   });
 
   it('uses the default maxDrivers value when the admin leaves it unchanged', async () => {
@@ -73,7 +78,7 @@ describe('create and join screens', () => {
 
     const screen = renderWithProviders(<CreateRunScreen />);
 
-    expect(screen.getByTestId('input-run-max-drivers')).toHaveProp('value', '15');
+    expect(screen.getByTestId('input-run-max-drivers')).toHaveTextContent('15');
     fireEvent.changeText(screen.getByTestId('input-run-name'), 'Morning Run');
     fireEvent.press(screen.getByTestId('button-submit-run'));
 

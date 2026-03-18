@@ -131,6 +131,29 @@ describe('RoutePlanningScreen', () => {
     ).toHaveBeenCalledWith('/run/run_500/map');
   });
 
+  it('keeps route actions contextual until a valid route exists', async () => {
+    const screen = renderWithProviders(<RoutePlanningScreen />);
+
+    expect(screen.queryByTestId('button-save-route')).toBeNull();
+    expect(screen.queryByTestId('button-start-run')).toBeNull();
+    expect(screen.queryByTestId('button-swap-start-destination')).toBeNull();
+
+    fireEvent.press(screen.getByTestId('button-use-current-location'));
+    await waitFor(() => expect(screen.getByTestId('route-summary-chip')).toBeTruthy());
+    fireEvent.press(screen.getByTestId('route-summary-chip'));
+
+    expect(screen.queryByTestId('button-save-route')).toBeNull();
+    expect(screen.queryByTestId('button-swap-start-destination')).toBeNull();
+
+    fireEvent.changeText(screen.getByTestId('input-stop-search'), '-25.7479, 28.2293');
+
+    await waitFor(() => expect(screen.getByTestId('button-save-route')).toBeTruthy());
+    expect(screen.getByTestId('button-swap-start-destination')).toBeTruthy();
+
+    fireEvent.press(screen.getByTestId('button-add-stop'));
+    expect(screen.queryByTestId('button-swap-start-destination')).toBeNull();
+  });
+
   it('swaps start and destination, opens reorder mode from a stop handle, and can return to the main sheet', async () => {
     const screen = renderWithProviders(<RoutePlanningScreen />);
 
@@ -152,8 +175,8 @@ describe('RoutePlanningScreen', () => {
       expect(screen.getAllByText('-26.0000, 28.2000').length).toBeGreaterThan(0)
     );
 
-    fireEvent.press(screen.getByTestId('button-swap-start-destination'));
     fireEvent.press(screen.getByTestId('route-stop-row-start'));
+    fireEvent.press(screen.getByTestId('button-swap-start-destination'));
     expect(screen.getByTestId('text-selected-stop-label')).toHaveTextContent('Start');
 
     fireEvent.press(screen.getByTestId('drag-handle-waypoint-2'));

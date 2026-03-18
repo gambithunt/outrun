@@ -1,16 +1,18 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Text, View } from 'react-native';
+import { Pressable, Share, Text, View } from 'react-native';
 
 import { Screen } from '@/components/Screen';
 import { AppButton } from '@/components/ui/AppButton';
-import { AppCard } from '@/components/ui/AppCard';
 import { AppTextInput } from '@/components/ui/AppTextInput';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { useAppTheme } from '@/contexts/ThemeContext';
 import { saveAdminRunToHistory } from '@/lib/adminRunHistory';
 import { createRunWithFirebase } from '@/lib/runService';
 import { useRunSessionStore } from '@/stores/runSessionStore';
+
+const MIN_DRIVERS = 2;
+const MAX_DRIVERS = 99;
 
 export default function CreateRunScreen() {
   const router = useRouter();
@@ -24,6 +26,9 @@ export default function CreateRunScreen() {
   const [joinCode, setJoinCode] = useState<string | null>(null);
   const [runId, setRunId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showRunDetails, setShowRunDetails] = useState(false);
+
+  const parsedMaxDrivers = clampDriverCount(Number(maxDrivers));
 
   async function handleCreateRun() {
     setError(null);
@@ -33,10 +38,11 @@ export default function CreateRunScreen() {
       const createdRun = await createRunWithFirebase({
         name,
         description,
-        maxDrivers: Number(maxDrivers),
+        maxDrivers: parsedMaxDrivers,
       });
       setJoinCode(createdRun.joinCode);
       setRunId(createdRun.runId);
+      setMaxDrivers(String(createdRun.run.maxDrivers ?? parsedMaxDrivers));
       setSession({
         runId: createdRun.runId,
         driverId: createdRun.adminId,
@@ -65,77 +71,277 @@ export default function CreateRunScreen() {
     }
   }
 
+  async function handleShareInvite() {
+    if (!joinCode) {
+      return;
+    }
+
+    try {
+      await Share.share({
+        message: `Join the club run${name ? ` "${name}"` : ''} with code ${joinCode}.`,
+      });
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : 'Unable to open the share sheet.');
+    }
+  }
+
+  function adjustMaxDrivers(direction: 'decrease' | 'increase') {
+    const delta = direction === 'increase' ? 1 : -1;
+    setMaxDrivers(String(clampDriverCount(parsedMaxDrivers + delta)));
+  }
+
   return (
-    <Screen scrollable testID="screen-create-run" contentContainerStyle={{ gap: 16 }}>
-      <AppCard>
+    <Screen scrollable testID="screen-create-run" contentContainerStyle={{ gap: 20, paddingBottom: 40 }}>
+      <View style={{ gap: 10, paddingTop: 6 }}>
+        <Text
+          style={{
+            color: theme.colors.textSecondary,
+            fontSize: 13,
+            fontWeight: '700',
+            letterSpacing: 0.6,
+            textTransform: 'uppercase',
+          }}
+        >
+          Club Run Setup
+        </Text>
         <Text
           style={{
             color: theme.colors.textPrimary,
-            fontSize: 28,
+            fontSize: 34,
             fontWeight: '800',
+            letterSpacing: -0.8,
           }}
         >
-          Create a Run
+          Create the drive
         </Text>
-        <Text style={{ color: theme.colors.textSecondary, lineHeight: 22 }}>
-          Start a draft run, generate a shareable join code, and prepare the convoy before route
-          planning begins.
+        <Text style={{ color: theme.colors.textSecondary, fontSize: 17, lineHeight: 24 }}>
+          Set the basics, generate an invite code for the club, then move straight into route
+          planning.
         </Text>
-      </AppCard>
+      </View>
 
-      <AppCard>
-        <AppTextInput
-          label="Run name"
-          value={name}
-          onChangeText={setName}
-          placeholder="Sunday Scenic Drive"
-          testID="input-run-name"
-        />
-        <AppTextInput
-          label="Description"
-          value={description}
-          onChangeText={setDescription}
-          placeholder="Optional notes for the club"
-          testID="input-run-description"
-        />
-        <AppTextInput
-          label="Max drivers"
-          value={maxDrivers}
-          onChangeText={setMaxDrivers}
-          placeholder="15"
-          testID="input-run-max-drivers"
-        />
+      <View
+        style={{
+          backgroundColor: theme.colors.surface,
+          borderRadius: 28,
+          borderWidth: 1,
+          borderColor: theme.colors.border,
+          padding: 20,
+          gap: 20,
+        }}
+      >
+        <View style={{ gap: 6 }}>
+          <Text style={{ color: theme.colors.textPrimary, fontSize: 22, fontWeight: '800' }}>
+            Run details
+          </Text>
+          <Text style={{ color: theme.colors.textSecondary, lineHeight: 20 }}>
+            Keep it simple now. You can still refine the route and the invite after this step.
+          </Text>
+        </View>
+
+        <View style={{ gap: 18 }}>
+          <AppTextInput
+            label="Run name"
+            value={name}
+            onChangeText={setName}
+            placeholder="Sunday Scenic Drive"
+            testID="input-run-name"
+          />
+          <AppTextInput
+            label="Description"
+            value={description}
+            onChangeText={setDescription}
+            multiline
+            numberOfLines={4}
+            placeholder="Add a short note for drivers, meetup context, or the vibe of the run."
+            testID="input-run-description"
+          />
+          <View style={{ gap: 10 }}>
+            <View style={{ gap: 4 }}>
+              <Text style={{ color: theme.colors.textPrimary, fontWeight: '600' }}>
+                Max drivers
+              </Text>
+              <Text style={{ color: theme.colors.textSecondary, lineHeight: 20 }}>
+                Choose how many cars can join this draft run.
+              </Text>
+            </View>
+
+            <View
+              style={{
+                borderRadius: 20,
+                borderWidth: 1,
+                borderColor: theme.colors.border,
+                backgroundColor: theme.colors.surfaceElevated,
+                padding: 12,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12,
+              }}
+            >
+              <Pressable
+                accessibilityRole="button"
+                disabled={parsedMaxDrivers <= MIN_DRIVERS}
+                onPress={() => adjustMaxDrivers('decrease')}
+                style={({ pressed }) => ({
+                  width: 44,
+                  height: 44,
+                  borderRadius: 22,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: theme.colors.surface,
+                  borderWidth: 1,
+                  borderColor: theme.colors.border,
+                  opacity: parsedMaxDrivers <= MIN_DRIVERS ? 0.35 : pressed ? 0.86 : 1,
+                })}
+                testID="button-decrease-max-drivers"
+              >
+                <Text style={{ color: theme.colors.textPrimary, fontSize: 24, fontWeight: '500' }}>
+                  −
+                </Text>
+              </Pressable>
+
+              <View style={{ alignItems: 'center', gap: 4 }}>
+                <Text
+                  style={{
+                    color: theme.colors.textPrimary,
+                    fontSize: 30,
+                    fontWeight: '800',
+                    letterSpacing: -0.5,
+                  }}
+                  testID="input-run-max-drivers"
+                >
+                  {parsedMaxDrivers}
+                </Text>
+                <Text style={{ color: theme.colors.textSecondary, fontWeight: '600' }}>
+                  drivers
+                </Text>
+              </View>
+
+              <Pressable
+                accessibilityRole="button"
+                disabled={parsedMaxDrivers >= MAX_DRIVERS}
+                onPress={() => adjustMaxDrivers('increase')}
+                style={({ pressed }) => ({
+                  width: 44,
+                  height: 44,
+                  borderRadius: 22,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: theme.colors.surface,
+                  borderWidth: 1,
+                  borderColor: theme.colors.border,
+                  opacity: parsedMaxDrivers >= MAX_DRIVERS ? 0.35 : pressed ? 0.86 : 1,
+                })}
+                testID="button-increase-max-drivers"
+              >
+                <Text style={{ color: theme.colors.textPrimary, fontSize: 24, fontWeight: '500' }}>
+                  +
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+
         {error ? <Text style={{ color: theme.colors.danger }}>{error}</Text> : null}
         {isSubmitting ? <LoadingSpinner /> : null}
-        <AppButton label="Generate Join Code" onPress={handleCreateRun} testID="button-submit-run" />
-      </AppCard>
+        <View style={{ gap: 10 }}>
+          <AppButton
+            label="Create Draft Run"
+            onPress={handleCreateRun}
+            testID="button-submit-run"
+          />
+          <Text style={{ color: theme.colors.textSecondary, lineHeight: 20 }}>
+            You can still adjust the details before sharing the drive with the club.
+          </Text>
+        </View>
+      </View>
 
       {joinCode ? (
-        <AppCard>
-          <Text style={{ color: theme.colors.textSecondary }}>Draft run created</Text>
-          <Text
+        <View
+          style={{
+            backgroundColor: theme.colors.surface,
+            borderRadius: 28,
+            borderWidth: 1,
+            borderColor: theme.colors.border,
+            padding: 20,
+            gap: 18,
+          }}
+        >
+          <View style={{ gap: 8 }}>
+            <Text style={{ color: theme.colors.success, fontWeight: '700' }}>Draft run created</Text>
+            <Text style={{ color: theme.colors.textPrimary, fontSize: 28, fontWeight: '800' }}>
+              Invite the club
+            </Text>
+            <Text style={{ color: theme.colors.textSecondary, lineHeight: 21 }}>
+              Share this join code with drivers, then move into route planning when you’re ready.
+            </Text>
+          </View>
+
+          <View
             style={{
-              color: theme.colors.textPrimary,
-              fontSize: 36,
-              fontWeight: '800',
-              letterSpacing: 4,
+              borderRadius: 24,
+              backgroundColor: theme.colors.surfaceElevated,
+              borderWidth: 1,
+              borderColor: theme.colors.border,
+              padding: 18,
+              gap: 10,
+              alignItems: 'center',
             }}
-            testID="text-generated-code"
           >
-            {joinCode}
-          </Text>
-          <View style={{ gap: 8 }}>
-            <Text style={{ color: theme.colors.textSecondary }}>Run id</Text>
-            <Text style={{ color: theme.colors.textPrimary }} testID="text-generated-run-id">
-              {runId}
+            <Text style={{ color: theme.colors.textSecondary, fontWeight: '600' }}>Join code</Text>
+            <Text
+              style={{
+                color: theme.colors.textPrimary,
+                fontSize: 42,
+                fontWeight: '800',
+                letterSpacing: 5,
+              }}
+              testID="text-generated-code"
+            >
+              {joinCode}
+            </Text>
+            <Text style={{ color: theme.colors.textSecondary }}>
+              Up to {createdRunCapacityLabel(maxDrivers)} drivers
             </Text>
           </View>
-          <View style={{ gap: 8 }}>
-            <Text style={{ color: theme.colors.textSecondary }}>Max drivers</Text>
-            <Text style={{ color: theme.colors.textPrimary }} testID="text-generated-max-drivers">
-              {createdRunCapacityLabel(maxDrivers)}
-            </Text>
+
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <View style={{ flex: 1 }}>
+              <AppButton
+                label="Share Invite"
+                onPress={handleShareInvite}
+                testID="button-share-run"
+                variant="secondary"
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <AppButton
+                label={showRunDetails ? 'Hide Details' : 'Show Details'}
+                onPress={() => setShowRunDetails((current) => !current)}
+                testID="button-toggle-run-details"
+                variant="ghost"
+              />
+            </View>
           </View>
+
+          {showRunDetails ? (
+            <View style={{ gap: 12 }}>
+              <View style={{ gap: 4 }}>
+                <Text style={{ color: theme.colors.textSecondary }}>Run id</Text>
+                <Text style={{ color: theme.colors.textPrimary }} testID="text-generated-run-id">
+                  {runId}
+                </Text>
+              </View>
+              <View style={{ gap: 4 }}>
+                <Text style={{ color: theme.colors.textSecondary }}>Max drivers</Text>
+                <Text style={{ color: theme.colors.textPrimary }} testID="text-generated-max-drivers">
+                  {createdRunCapacityLabel(maxDrivers)}
+                </Text>
+              </View>
+            </View>
+          ) : null}
+
           <AppButton
             label="Plan Route"
             onPress={() =>
@@ -149,7 +355,7 @@ export default function CreateRunScreen() {
             }
             testID="button-plan-route"
           />
-        </AppCard>
+        </View>
       ) : null}
     </Screen>
   );
@@ -158,4 +364,12 @@ export default function CreateRunScreen() {
 function createdRunCapacityLabel(value: string) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? String(parsed) : value;
+}
+
+function clampDriverCount(value: number) {
+  if (!Number.isFinite(value)) {
+    return 15;
+  }
+
+  return Math.max(MIN_DRIVERS, Math.min(MAX_DRIVERS, Math.round(value)));
 }
