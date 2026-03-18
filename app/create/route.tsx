@@ -11,6 +11,7 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { useAppTheme } from '@/contexts/ThemeContext';
 import { RoutePoint } from '@/lib/geo';
 import { PlaceSearchResult, searchPlacesWithProvider } from '@/lib/placeSearchService';
+import { updateAdminRunStatusInHistory } from '@/lib/adminRunHistory';
 import {
   clearRoutePlannerDraft,
   loadRoutePlannerDraft,
@@ -711,9 +712,10 @@ export default function RoutePlanningScreen() {
     try {
       await startRunWithSavedRouteWithFirebase(runId ?? '');
       await clearRoutePlannerDraft(runId ?? '');
+      void updateAdminRunStatusInHistory(runId ?? '', 'ready');
       setRunSnapshot({
         route: routePreview,
-        status: 'active',
+        status: 'ready',
       });
       router.push(`/run/${runId}/map`);
     } catch (nextError) {

@@ -8,6 +8,7 @@ import { AppCard } from '@/components/ui/AppCard';
 import { AppTextInput } from '@/components/ui/AppTextInput';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { useAppTheme } from '@/contexts/ThemeContext';
+import { saveAdminRunToHistory } from '@/lib/adminRunHistory';
 import { createRunWithFirebase } from '@/lib/runService';
 import { useRunSessionStore } from '@/stores/runSessionStore';
 
@@ -48,6 +49,14 @@ export default function CreateRunScreen() {
         name: createdRun.run.name,
         status: createdRun.run.status,
         route: createdRun.run.route ?? null,
+      });
+      void saveAdminRunToHistory({
+        runId: createdRun.runId,
+        name: createdRun.run.name,
+        joinCode: createdRun.joinCode,
+        driverId: createdRun.adminId,
+        status: createdRun.run.status,
+        createdAt: Date.now(),
       });
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : 'Unable to create run.');
