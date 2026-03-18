@@ -31,7 +31,12 @@ export type DriverLocation = {
 };
 
 export type DriverStats = {
-  topSpeed?: number;
+  topSpeed?: number;              // m/s — raw GPS peak speed
+  avgMovingSpeedMs?: number;      // m/s — mean speed only while moving (≥ 0.5 m/s)
+  totalDistanceKm?: number;       // km  — haversine sum of consecutive GPS points
+  totalDriveTimeMinutes?: number; // min — first to last recorded GPS point
+  stopCount?: number;             // number of stops lasting ≥ 15 seconds
+  avgStopTimeSec?: number;        // average stop duration in seconds
 };
 
 export type SummaryDriverStat = {
@@ -39,6 +44,11 @@ export type SummaryDriverStat = {
   carMake: string;
   carModel: string;
   topSpeedKmh: number | null;
+  avgMovingSpeedKmh: number | null;
+  totalDistanceKm: number | null;
+  totalDriveTimeMinutes: number | null;
+  stopCount: number | null;
+  avgStopTimeSec: number | null;
   fuelUsedLitres?: number;
   fuelUsedKwh?: number;
   fuelType: FuelType;

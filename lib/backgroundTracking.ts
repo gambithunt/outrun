@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
-import { child, ref, set, type Database } from 'firebase/database';
+import { child, push, ref, set, type Database } from 'firebase/database';
 
 import { getFirebaseDatabase, hasFirebaseConfig } from '@/lib/firebase';
 import { mapLocationUpdateToDriverLocation } from '@/lib/locationService';
@@ -77,6 +77,8 @@ type BackgroundTrackingStorage = {
 
 type BackgroundTrackingClient = {
   writeDriverLocation: (runId: string, driverId: string, location: DriverLocation) => Promise<void>;
+  /** Appends the location as a new immutable track point (append-only, never overwrites). */
+  appendTrackPoint: (runId: string, driverId: string, location: DriverLocation) => Promise<void>;
 };
 
 type BackgroundTrackingStartResult = {
@@ -116,7 +118,13 @@ export function createBackgroundTrackingStorage(
 export function createBackgroundTrackingClient(database: Database): BackgroundTrackingClient {
   return {
     writeDriverLocation: async (runId, driverId, location) => {
+      // Overwrites the single live-position node used by the real-time map.
       await set(child(ref(database), `runs/${runId}/drivers/${driverId}/location`), location);
+    },
+    appendTrackPoint: async (runId, driverId, location) => {
+      // push() generates a unique key — points accumulate and are never overwritten.
+      // Firebase rules reject this write unless the run status is 'active'.
+      await push(child(ref(database), `tracks/${runId}/${driverId}`), location);
     },
   };
 }
@@ -141,11 +149,10 @@ export function registerBackgroundTrackingTask(options: {
     }
 
     for (const update of data?.locations ?? []) {
-      await options.client.writeDriverLocation(
-        session.runId,
-        session.driverId,
-        mapLocationUpdateToDriverLocation(update)
-      );
+      const location = mapLocationUpdateToDriverLocation(update);
+      await options.client.writeDriverLocation(session.runId, session.driverId, location);
+      // Fire-and-forget — a rejection here (e.g. run not yet active) is non-fatal.
+      options.client.appendTrackPoint(session.runId, session.driverId, location).catch(() => undefined);
     }
   });
 }

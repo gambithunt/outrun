@@ -101,9 +101,11 @@ describe('backgroundTracking', () => {
 
     const defineTask = jest.fn();
     const writeDriverLocation = jest.fn(async () => undefined);
+    const appendTrackPoint = jest.fn(async () => undefined);
     registerBackgroundTrackingTask({
       client: {
         writeDriverLocation,
+        appendTrackPoint,
       },
       storage,
       taskManagerModule: {
@@ -143,6 +145,17 @@ describe('backgroundTracking', () => {
         speed: 10,
       })
     );
+
+    // appendTrackPoint must be called with the same location for every update.
+    expect(appendTrackPoint).toHaveBeenCalledWith(
+      'run_3',
+      'driver_3',
+      expect.objectContaining({
+        lat: -26.2041,
+        lng: 28.0473,
+        speed: 10,
+      })
+    );
   });
 
   it('does not redefine the task when it already exists', () => {
@@ -150,6 +163,7 @@ describe('backgroundTracking', () => {
     registerBackgroundTrackingTask({
       client: {
         writeDriverLocation: jest.fn(async () => undefined),
+        appendTrackPoint: jest.fn(async () => undefined),
       },
       storage: createBackgroundTrackingStorage(AsyncStorage),
       taskManagerModule: {

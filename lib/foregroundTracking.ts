@@ -1,5 +1,5 @@
 import * as Location from 'expo-location';
-import { child, ref, set, type Database } from 'firebase/database';
+import { child, push, ref, set, type Database } from 'firebase/database';
 
 import { getFirebaseDatabase } from '@/lib/firebase';
 import { mapLocationUpdateToDriverLocation, shouldWriteLocation } from '@/lib/locationService';
@@ -7,6 +7,8 @@ import { DriverLocation } from '@/types/domain';
 
 type ForegroundTrackingClient = {
   writeDriverLocation: (runId: string, driverId: string, location: DriverLocation) => Promise<void>;
+  /** Appends the location as a new immutable track point (append-only, never overwrites). */
+  appendTrackPoint: (runId: string, driverId: string, location: DriverLocation) => Promise<void>;
 };
 
 type LocationPermissionResult = {
@@ -41,7 +43,13 @@ type ForegroundLocationModule = {
 export function createForegroundTrackingClient(database: Database): ForegroundTrackingClient {
   return {
     writeDriverLocation: async (runId, driverId, location) => {
+      // Overwrites the single live-position node used by the real-time map.
       await set(child(ref(database), `runs/${runId}/drivers/${driverId}/location`), location);
+    },
+    appendTrackPoint: async (runId, driverId, location) => {
+      // push() generates a unique key — points accumulate and are never overwritten.
+      // Firebase rules reject this write unless the run status is 'active'.
+      await push(child(ref(database), `tracks/${runId}/${driverId}`), location);
     },
   };
 }
@@ -80,6 +88,8 @@ export async function startForegroundTracking(
 
       previousLocation = nextLocation;
       await client.writeDriverLocation(options.runId, options.driverId, nextLocation);
+      // Fire-and-forget — a rejection here (e.g. run not yet active) is non-fatal.
+      client.appendTrackPoint(options.runId, options.driverId, nextLocation).catch(() => undefined);
       options.onLocation?.(nextLocation);
     }
   );

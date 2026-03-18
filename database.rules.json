@@ -54,7 +54,7 @@
               ".validate": "newData.val() === null || newData.isNumber()"
             },
             "stats": {
-              ".validate": "!newData.exists() || (newData.child('topSpeed').val() === null || newData.child('topSpeed').isNumber())"
+              ".validate": "!newData.exists() || ((!newData.child('topSpeed').exists() || newData.child('topSpeed').isNumber()) && (!newData.child('avgMovingSpeedMs').exists() || newData.child('avgMovingSpeedMs').isNumber()) && (!newData.child('totalDistanceKm').exists() || newData.child('totalDistanceKm').isNumber()) && (!newData.child('totalDriveTimeMinutes').exists() || newData.child('totalDriveTimeMinutes').isNumber()) && (!newData.child('stopCount').exists() || newData.child('stopCount').isNumber()) && (!newData.child('avgStopTimeSec').exists() || newData.child('avgStopTimeSec').isNumber()))"
             },
             "location": {
               ".validate": "!newData.exists() || (newData.hasChildren(['lat', 'lng', 'heading', 'speed', 'accuracy', 'timestamp']) && newData.child('lat').isNumber() && newData.child('lng').isNumber() && newData.child('heading').isNumber() && newData.child('speed').isNumber() && newData.child('accuracy').isNumber() && newData.child('timestamp').isNumber())"
@@ -66,6 +66,17 @@
             ".read": "auth != null && (root.child('runs/'+$runId+'/adminId').val() === auth.uid || root.child('runs/'+$runId+'/drivers').child(auth.uid).exists())",
             ".write": "auth != null && ((root.child('runs/'+$runId+'/drivers').child(auth.uid).exists() && !data.exists() && newData.hasChildren(['type', 'reportedBy', 'reporterName', 'lat', 'lng', 'timestamp', 'dismissed', 'reportCount']) && newData.child('reportedBy').val() === auth.uid && newData.child('dismissed').val() === false && newData.child('reportCount').val() === 1) || (root.child('runs/'+$runId+'/drivers').child(auth.uid).exists() && data.exists() && data.child('dismissed').val() === false && newData.child('dismissed').val() === false && newData.child('type').val() === data.child('type').val() && newData.child('reportedBy').val() === data.child('reportedBy').val() && newData.child('reporterName').val() === data.child('reporterName').val() && newData.child('lat').val() === data.child('lat').val() && newData.child('lng').val() === data.child('lng').val() && newData.child('timestamp').val() === data.child('timestamp').val() && newData.child('reportCount').val() === data.child('reportCount').val() + 1) || (root.child('runs/'+$runId+'/adminId').val() === auth.uid && data.exists() && newData.child('dismissed').val() === true && newData.child('type').val() === data.child('type').val() && newData.child('reportedBy').val() === data.child('reportedBy').val() && newData.child('reporterName').val() === data.child('reporterName').val() && newData.child('lat').val() === data.child('lat').val() && newData.child('lng').val() === data.child('lng').val() && newData.child('timestamp').val() === data.child('timestamp').val() && newData.child('reportCount').val() === data.child('reportCount').val()))",
             ".validate": "newData.hasChildren(['type', 'reportedBy', 'reporterName', 'lat', 'lng', 'timestamp', 'dismissed', 'reportCount']) && newData.child('type').isString() && newData.child('reportedBy').isString() && newData.child('reporterName').isString() && newData.child('lat').isNumber() && newData.child('lng').isNumber() && newData.child('timestamp').isNumber() && newData.child('dismissed').isBoolean() && newData.child('reportCount').isNumber()"
+          }
+        }
+      }
+    },
+    "tracks": {
+      "$runId": {
+        "$driverId": {
+          ".read": "auth != null && (root.child('runs/'+$runId+'/adminId').val() === auth.uid || root.child('runs/'+$runId+'/drivers').child(auth.uid).exists())",
+          "$trackPointId": {
+            ".write": "auth != null && auth.uid === $driverId && !data.exists() && root.child('runs/'+$runId+'/status').val() === 'active'",
+            ".validate": "newData.hasChildren(['lat', 'lng', 'heading', 'speed', 'accuracy', 'timestamp']) && newData.child('lat').isNumber() && newData.child('lng').isNumber() && newData.child('heading').isNumber() && newData.child('speed').isNumber() && newData.child('accuracy').isNumber() && newData.child('timestamp').isNumber()"
           }
         }
       }

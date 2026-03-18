@@ -10,7 +10,7 @@ describe('foregroundTracking', () => {
 
     await expect(
       startForegroundTracking(
-        { writeDriverLocation: jest.fn() },
+        { writeDriverLocation: jest.fn(), appendTrackPoint: jest.fn() },
         locationModule,
         { runId: 'run_1', driverId: 'driver_1' }
       )
@@ -19,6 +19,7 @@ describe('foregroundTracking', () => {
 
   it('writes the first location and throttles subsequent rapid updates', async () => {
     const writeDriverLocation = jest.fn();
+    const appendTrackPoint = jest.fn(async () => undefined);
     const remove = jest.fn();
     const locationModule = {
       Accuracy: { High: 'high' },
@@ -59,13 +60,24 @@ describe('foregroundTracking', () => {
     };
 
     const stop = await startForegroundTracking(
-      { writeDriverLocation },
+      { writeDriverLocation, appendTrackPoint },
       locationModule,
       { runId: 'run_1', driverId: 'driver_1' }
     );
 
     expect(writeDriverLocation).toHaveBeenCalledTimes(2);
     expect(writeDriverLocation).toHaveBeenCalledWith(
+      'run_1',
+      'driver_1',
+      expect.objectContaining({
+        lat: -26.2041,
+        lng: 28.0473,
+      })
+    );
+
+    // appendTrackPoint must be called for every accepted location update.
+    expect(appendTrackPoint).toHaveBeenCalledTimes(2);
+    expect(appendTrackPoint).toHaveBeenCalledWith(
       'run_1',
       'driver_1',
       expect.objectContaining({

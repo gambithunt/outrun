@@ -5,6 +5,7 @@ import { calculateRouteDistanceMeters } from '@/lib/geo';
 import {
   CollectiveFuelSummary,
   DriverRecord,
+  DriverStats,
   Hazard,
   HazardSummary,
   Run,
@@ -90,7 +91,29 @@ function inferTopSpeedKmh(driver: DriverRecord) {
   return roundToSingleDecimal(speed * 3.6);
 }
 
-export function buildRunSummary(run: Run, now = Date.now()): RunSummary {
+function inferAvgMovingSpeedKmh(driver: DriverRecord): number | null {
+  const speed = driver.stats?.avgMovingSpeedMs;
+  if (typeof speed !== 'number') {
+    return null;
+  }
+
+  return roundToSingleDecimal(speed * 3.6);
+}
+
+/**
+ * @param run                  The run object as stored in Firebase.
+ * @param now                  Wall-clock time in ms (defaults to Date.now()).
+ * @param trackStatsByDriver   Optional map of driverId → DriverStats computed
+ *                             from the driver's GPS track.  When supplied the
+ *                             per-driver stats (speed, distance, stops) are
+ *                             derived from the actual recorded track rather
+ *                             than estimated from the planned route.
+ */
+export function buildRunSummary(
+  run: Run,
+  now = Date.now(),
+  trackStatsByDriver?: Record<string, DriverStats>
+): RunSummary {
   const routeDistanceMetres = run.route?.distanceMetres ?? calculateRouteDistanceMeters(run.route?.points ?? []);
   const totalDistanceKm = roundToSingleDecimal(routeDistanceMetres / 1000);
   const totalDriveTimeMinutes =
@@ -102,13 +125,44 @@ export function buildRunSummary(run: Run, now = Date.now()): RunSummary {
         return summary;
       }
 
+      // Track-derived stats take precedence over estimates from the driver record.
+      const track = trackStatsByDriver?.[driverId];
+
+      // Use the driver's actual driven distance for fuel, falling back to route distance.
+      const distanceForFuel = track?.totalDistanceKm ?? totalDistanceKm;
+
       summary[driverId] = {
         name: driver.profile.name,
         carMake: driver.profile.carMake,
         carModel: driver.profile.carModel,
-        topSpeedKmh: inferTopSpeedKmh(driver),
+
+        topSpeedKmh:
+          track?.topSpeed != null
+            ? roundToSingleDecimal(track.topSpeed * 3.6)
+            : inferTopSpeedKmh(driver),
+
+        avgMovingSpeedKmh:
+          track?.avgMovingSpeedMs != null
+            ? roundToSingleDecimal(track.avgMovingSpeedMs * 3.6)
+            : inferAvgMovingSpeedKmh(driver),
+
+        totalDistanceKm:
+          track?.totalDistanceKm != null
+            ? roundToSingleDecimal(track.totalDistanceKm)
+            : null,
+
+        totalDriveTimeMinutes:
+          track?.totalDriveTimeMinutes != null
+            ? Math.round(track.totalDriveTimeMinutes)
+            : null,
+
+        stopCount: track?.stopCount ?? null,
+
+        avgStopTimeSec:
+          track?.avgStopTimeSec != null ? Math.round(track.avgStopTimeSec) : null,
+
         fuelType: driver.profile.fuelType,
-        ...calculateFuelUsage(totalDistanceKm, driver),
+        ...calculateFuelUsage(distanceForFuel, driver),
       };
       return summary;
     },
@@ -145,18 +199,21 @@ export function createSummaryClient(database: Database): SummaryClient {
   };
 }
 
-export async function endRun(client: SummaryClient, runId: string, run: Run, now = Date.now()) {
+export async function endRun(
+  client: SummaryClient,
+  runId: string,
+  run: Run,
+  now = Date.now(),
+  trackStatsByDriver?: Record<string, DriverStats>
+) {
   if (!runId) {
     throw new Error('Run id is required to end the run.');
   }
 
   const summary = buildRunSummary(
-    {
-      ...run,
-      endedAt: now,
-      status: 'ended',
-    },
-    now
+    { ...run, endedAt: now, status: 'ended' },
+    now,
+    trackStatsByDriver
   );
 
   await client.writeEndedAt(runId, now);
@@ -166,7 +223,16 @@ export async function endRun(client: SummaryClient, runId: string, run: Run, now
   return summary;
 }
 
-export async function endRunWithFirebase(runId: string, run: Run) {
+/**
+ * @param trackStatsByDriver  Optional per-driver track stats.  Pass these in
+ *                            when the caller has already loaded and computed
+ *                            stats from each driver's GPS track.
+ */
+export async function endRunWithFirebase(
+  runId: string,
+  run: Run,
+  trackStatsByDriver?: Record<string, DriverStats>
+) {
   const database = getFirebaseDatabase();
-  return endRun(createSummaryClient(database), runId, run);
+  return endRun(createSummaryClient(database), runId, run, Date.now(), trackStatsByDriver);
 }
