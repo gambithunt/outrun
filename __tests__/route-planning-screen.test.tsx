@@ -178,7 +178,7 @@ describe('RoutePlanningScreen', () => {
     expect(screen.getByTestId('button-enter-pick-mode')).toBeTruthy();
   });
 
-  it('swaps start and destination, opens reorder mode from a stop handle, and can return to the main sheet', async () => {
+  it('swaps start and destination, opens in-card reorder mode, and can return to the summary flow', async () => {
     const screen = renderWithProviders(<RoutePlanningScreen />);
 
     fireEvent.press(screen.getByTestId('button-use-current-location'));
@@ -203,18 +203,21 @@ describe('RoutePlanningScreen', () => {
     fireEvent.press(screen.getByTestId('button-swap-start-destination'));
     expect(screen.getByTestId('text-selected-stop-label')).toHaveTextContent('Start');
 
-    fireEvent.press(screen.getByTestId('drag-handle-waypoint-2'));
+    fireEvent.press(screen.getByTestId('button-enter-drive-reorder-mode'));
 
-    expect(screen.getByTestId('route-reorder-sheet')).toBeTruthy();
-    expect(screen.queryByTestId('route-planner-sheet')).toBeNull();
+    expect(screen.getByTestId('route-flow-reorder-list')).toBeTruthy();
+    expect(screen.getByTestId('route-reorder-row-start')).toBeTruthy();
+    expect(screen.getByTestId('route-reorder-row-waypoint-1')).toBeTruthy();
+    expect(screen.getByTestId('route-reorder-row-waypoint-2')).toBeTruthy();
+    expect(screen.getByTestId('route-reorder-row-destination')).toBeTruthy();
 
-    fireEvent.press(screen.getByTestId('button-exit-reorder-mode'));
+    fireEvent.press(screen.getByTestId('button-exit-drive-reorder-mode'));
 
-    expect(screen.getByTestId('route-planner-sheet')).toBeTruthy();
+    expect(screen.getByTestId('route-flow-composer')).toBeTruthy();
     expect(screen.getAllByTestId(/route-stop-row-waypoint-/)).toHaveLength(2);
   });
 
-  it('lets leaders remove a waypoint directly from reorder mode', async () => {
+  it('lets leaders remove a waypoint directly from in-card reorder mode', async () => {
     const screen = renderWithProviders(<RoutePlanningScreen />);
 
     fireEvent.press(screen.getByTestId('button-use-current-location'));
@@ -229,13 +232,13 @@ describe('RoutePlanningScreen', () => {
       expect(screen.getAllByText('-26.1000, 28.1000').length).toBeGreaterThan(0)
     );
 
-    fireEvent.press(screen.getByTestId('drag-handle-waypoint-1'));
+    fireEvent.press(screen.getByTestId('button-enter-drive-reorder-mode'));
 
-    expect(screen.getByTestId('route-reorder-sheet')).toBeTruthy();
+    expect(screen.getByTestId('route-flow-reorder-list')).toBeTruthy();
     fireEvent.press(screen.getByTestId('button-remove-waypoint-reorder-1'));
-    fireEvent.press(screen.getByTestId('button-exit-reorder-mode'));
 
     expect(screen.queryByTestId('route-stop-row-waypoint-1')).toBeNull();
+    expect(screen.queryByTestId('button-exit-drive-reorder-mode')).toBeNull();
   });
 
   it('shows live place suggestions and applies a tapped result', async () => {
