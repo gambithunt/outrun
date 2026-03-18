@@ -174,3 +174,37 @@ export async function resolveJoinCodeWithFirebase(code: string) {
   const database = getFirebaseDatabase();
   return resolveJoinCode(createRunClient(database), code);
 }
+
+type DriveClient = {
+  writeDriveStartedAt: (runId: string, timestamp: number) => Promise<void>;
+  writeStatus: (runId: string, status: 'active') => Promise<void>;
+};
+
+export function createDriveClient(database: Database): DriveClient {
+  return {
+    writeDriveStartedAt: async (runId, timestamp) => {
+      await set(child(ref(database), `runs/${runId}/driveStartedAt`), timestamp);
+    },
+    writeStatus: async (runId, status) => {
+      await set(child(ref(database), `runs/${runId}/status`), status);
+    },
+  };
+}
+
+export async function startDrive(
+  client: DriveClient,
+  runId: string,
+  now = Date.now()
+) {
+  if (!runId) {
+    throw new Error('Run id is required before starting the drive.');
+  }
+
+  await client.writeDriveStartedAt(runId, now);
+  await client.writeStatus(runId, 'active');
+}
+
+export async function startDriveWithFirebase(runId: string) {
+  const database = getFirebaseDatabase();
+  return startDrive(createDriveClient(database), runId);
+}

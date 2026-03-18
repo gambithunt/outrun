@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, Text, View } from 'react-native';
 import {
   Camera,
   LineLayer,
@@ -8,29 +9,52 @@ import {
   UserLocation,
   type CameraRef,
 } from '@maplibre/maplibre-react-native';
-import { Text, View } from 'react-native';
 
 import { useAppTheme } from '@/contexts/ThemeContext';
 import { RoutePoint } from '@/lib/geo';
-import { LiveDriver } from '@/lib/driverRealtime';
-import { LiveHazard, formatHazardLabel } from '@/lib/hazardRealtime';
+import { LiveDriver, DriverPresenceStatus, getDriverPresenceStatus } from '@/lib/driverRealtime';
+import { LiveHazard } from '@/lib/hazardRealtime';
 import { RouteStopDraft } from '@/types/domain';
 
+type MapMode = 'planning' | 'lobby' | 'navigation';
+
 type ClubRunMapProps = {
+  currentDriverId?: string | null;
   currentLocation?: RoutePoint | null;
   drivers?: LiveDriver[];
   edgeToEdge?: boolean;
   fitToRouteToken?: number;
   focusPoint?: RoutePoint | null;
   hazards?: LiveHazard[];
+  mapMode?: MapMode;
   onMapPress?: (point: RoutePoint) => void;
   onRegionDidChange?: (point: RoutePoint) => void;
+  onUserPanned?: () => void;
+  recenterToken?: number;
   routePoints?: RoutePoint[];
   selectedStopId?: string | null;
   showUserLocation?: boolean;
   stops?: RouteStopDraft[];
   testID?: string;
   waypoints?: RoutePoint[];
+};
+
+const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json';
+
+const HAZARD_EMOJI: Record<string, string> = {
+  pothole: '🕳️',
+  roadworks: '🚧',
+  police: '🚓',
+  debris: '⚠️',
+  animal: '🐄',
+  broken_down_car: '🚗',
+};
+
+const PRESENCE_COLORS: Record<DriverPresenceStatus, string> = {
+  active: '',      // filled in from theme.colors.accent at render time
+  stale: '#F59E0B',
+  lost_signal: '#6B7280',
+  awaiting_gps: '#6B7280',
 };
 
 function toGeoJsonLine(points: RoutePoint[]) {
@@ -44,7 +68,7 @@ function toGeoJsonLine(points: RoutePoint[]) {
   };
 }
 
-function getRouteBounds(points: RoutePoint[]) {
+function getRouteBoundsForCamera(points: RoutePoint[]) {
   const lats = points.map(([lat]) => lat);
   const lngs = points.map(([, lng]) => lng);
   return {
@@ -53,17 +77,247 @@ function getRouteBounds(points: RoutePoint[]) {
   };
 }
 
-const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json';
+function getFirstName(name: string) {
+  return name.split(' ')[0] ?? name;
+}
+
+function getDriverInitials(name: string) {
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('');
+}
+
+function isCompleteStopPoint(stop: RouteStopDraft) {
+  return typeof stop.lat === 'number' && typeof stop.lng === 'number';
+}
+
+function getStopColor(kind: RouteStopDraft['kind'], accent: string) {
+  if (kind === 'start') return '#22C55E';
+  if (kind === 'destination') return '#EF4444';
+  return accent;
+}
+
+// Pulsing ring shown behind a lobby driver pin
+function LobbyPulseRing({ size, color }: { size: number; color: string }) {
+  const scale = useRef(new Animated.Value(1)).current;
+  const opacity = useRef(new Animated.Value(0.5)).current;
+
+  useEffect(() => {
+    const anim = Animated.loop(
+      Animated.parallel([
+        Animated.sequence([
+          Animated.timing(scale, { toValue: 1.9, duration: 900, useNativeDriver: true }),
+          Animated.timing(scale, { toValue: 1, duration: 900, useNativeDriver: true }),
+        ]),
+        Animated.sequence([
+          Animated.timing(opacity, { toValue: 0, duration: 900, useNativeDriver: true }),
+          Animated.timing(opacity, { toValue: 0.5, duration: 900, useNativeDriver: true }),
+        ]),
+      ])
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [opacity, scale]);
+
+  return (
+    <Animated.View
+      style={{
+        position: 'absolute',
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        backgroundColor: color,
+        transform: [{ scale }],
+        opacity,
+      }}
+    />
+  );
+}
+
+// Driver pin for lobby mode: large circle with name, pulsing ring, self-highlight
+function LobbyDriverPin({
+  driver,
+  isSelf,
+  accentColor,
+}: {
+  driver: LiveDriver;
+  isSelf: boolean;
+  accentColor: string;
+}) {
+  const size = isSelf ? 48 : 40;
+  const color = isSelf ? accentColor : '#6B7280';
+
+  return (
+    <View style={{ alignItems: 'center' }}>
+      <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
+        <LobbyPulseRing size={size} color={color} />
+        <View
+          style={{
+            width: size,
+            height: size,
+            borderRadius: size / 2,
+            backgroundColor: isSelf ? accentColor : '#374151',
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderWidth: isSelf ? 3 : 2,
+            borderColor: isSelf ? '#FFFFFF' : color,
+          }}
+        >
+          <Text style={{ color: '#FFFFFF', fontSize: isSelf ? 14 : 12, fontWeight: '800' }}>
+            {getDriverInitials(driver.name)}
+          </Text>
+        </View>
+      </View>
+      <View
+        style={{
+          backgroundColor: isSelf ? accentColor : 'rgba(0,0,0,0.7)',
+          borderRadius: 10,
+          paddingHorizontal: 6,
+          paddingVertical: 2,
+          marginTop: 3,
+        }}
+      >
+        <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '700' }}>
+          {isSelf ? `${getFirstName(driver.name)} (you)` : getFirstName(driver.name)}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+// Driver pin for navigation mode: heading arrow + circle + first name
+function NavigationDriverPin({
+  driver,
+  isSelf,
+  accentColor,
+}: {
+  driver: LiveDriver;
+  isSelf: boolean;
+  accentColor: string;
+}) {
+  const status = getDriverPresenceStatus(driver);
+  const pinColor = isSelf ? accentColor : (PRESENCE_COLORS[status] || accentColor);
+  const size = isSelf ? 44 : 36;
+  const heading = driver.location?.heading ?? 0;
+
+  return (
+    <View style={{ alignItems: 'center' }}>
+      {/* Heading direction arrow */}
+      <View style={{ transform: [{ rotate: `${heading}deg` }], marginBottom: -2 }}>
+        <View
+          style={{
+            width: 0,
+            height: 0,
+            borderLeftWidth: 5,
+            borderRightWidth: 5,
+            borderBottomWidth: 9,
+            borderStyle: 'solid',
+            borderLeftColor: 'transparent',
+            borderRightColor: 'transparent',
+            borderBottomColor: pinColor,
+          }}
+        />
+      </View>
+      {/* Circle with initials */}
+      <View
+        style={{
+          width: size,
+          height: size,
+          borderRadius: size / 2,
+          backgroundColor: pinColor,
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderWidth: isSelf ? 3 : 2,
+          borderColor: '#FFFFFF',
+        }}
+      >
+        <Text style={{ color: '#FFFFFF', fontSize: isSelf ? 14 : 11, fontWeight: '800' }}>
+          {getDriverInitials(driver.name)}
+        </Text>
+      </View>
+      {/* Name label */}
+      <View
+        style={{
+          backgroundColor: 'rgba(0,0,0,0.65)',
+          borderRadius: 8,
+          paddingHorizontal: 5,
+          paddingVertical: 1,
+          marginTop: 3,
+        }}
+      >
+        <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '700' }}>
+          {isSelf ? `${getFirstName(driver.name)} ✦` : getFirstName(driver.name)}
+        </Text>
+      </View>
+      {status === 'lost_signal' ? (
+        <Text style={{ color: '#EF4444', fontSize: 9, fontWeight: '600', marginTop: 1 }}>
+          Signal lost
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+// Waze-style hazard pin with emoji and count badge
+function HazardPin({ hazard }: { hazard: LiveHazard }) {
+  const emoji = HAZARD_EMOJI[hazard.type] ?? '⚠️';
+
+  return (
+    <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+      <View
+        style={{
+          width: 48,
+          height: 48,
+          borderRadius: 24,
+          backgroundColor: '#FEF3C7',
+          borderWidth: 2.5,
+          borderColor: '#F59E0B',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Text style={{ fontSize: 24 }}>{emoji}</Text>
+      </View>
+      {hazard.reportCount > 1 ? (
+        <View
+          style={{
+            position: 'absolute',
+            top: -4,
+            right: -4,
+            backgroundColor: '#EF4444',
+            borderRadius: 9,
+            minWidth: 18,
+            height: 18,
+            alignItems: 'center',
+            justifyContent: 'center',
+            paddingHorizontal: 3,
+          }}
+        >
+          <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '800' }}>
+            ×{hazard.reportCount}
+          </Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
 
 export function ClubRunMap({
+  currentDriverId = null,
   currentLocation = null,
   drivers = [],
   edgeToEdge = false,
   fitToRouteToken = 0,
   focusPoint = null,
   hazards = [],
+  mapMode,
   onMapPress,
   onRegionDidChange,
+  onUserPanned,
+  recenterToken = 0,
   routePoints = [],
   selectedStopId = null,
   showUserLocation = false,
@@ -73,6 +327,35 @@ export function ClubRunMap({
 }: ClubRunMapProps) {
   const { theme } = useAppTheme();
   const cameraRef = useRef<CameraRef>(null);
+  const [isFollowing, setIsFollowing] = useState(mapMode === 'navigation');
+
+  // Re-enable following when recenterToken changes or mapMode enters navigation
+  useEffect(() => {
+    if (mapMode === 'navigation') {
+      setIsFollowing(true);
+    }
+  }, [mapMode, recenterToken]);
+
+  // Fit to route when entering lobby or on fitToRouteToken change
+  useEffect(() => {
+    if (mapMode === 'lobby' && routePoints.length > 1) {
+      const bounds = getRouteBoundsForCamera(routePoints);
+      cameraRef.current?.fitBounds(bounds.ne, bounds.sw, [80, 40, 80, 40], 600);
+    }
+  }, [mapMode, routePoints]);
+
+  useEffect(() => {
+    if (fitToRouteToken > 0 && routePoints.length > 1) {
+      const bounds = getRouteBoundsForCamera(routePoints);
+      cameraRef.current?.fitBounds(bounds.ne, bounds.sw, [84, 48, 320, 48], 600);
+    }
+  }, [fitToRouteToken, routePoints]);
+
+  useEffect(() => {
+    if (focusPoint) {
+      cameraRef.current?.moveTo([focusPoint[1], focusPoint[0]], 450);
+    }
+  }, [focusPoint]);
 
   const fallbackDriverPoint = useMemo(() => {
     const driver = drivers.find((item) => item.location);
@@ -93,18 +376,9 @@ export function ClubRunMap({
     fallbackDriverPoint ??
     [-26.2041, 28.0473];
 
-  useEffect(() => {
-    if (fitToRouteToken > 0 && routePoints.length > 1) {
-      const bounds = getRouteBounds(routePoints);
-      cameraRef.current?.fitBounds(bounds.ne, bounds.sw, [84, 48, 320, 48], 600);
-    }
-  }, [fitToRouteToken, routePoints]);
-
-  useEffect(() => {
-    if (focusPoint) {
-      cameraRef.current?.moveTo([focusPoint[1], focusPoint[0]], 450);
-    }
-  }, [focusPoint]);
+  const isNavigation = mapMode === 'navigation';
+  const isLobby = mapMode === 'lobby';
+  const accentColor = theme.colors.accent;
 
   return (
     <View
@@ -139,37 +413,58 @@ export function ClubRunMap({
             }
           }
         }}
-        rotateEnabled={false}
+        onRegionWillChange={(feature) => {
+          if (
+            isNavigation &&
+            isFollowing &&
+            (feature as { properties?: { isUserInteraction?: boolean } }).properties
+              ?.isUserInteraction
+          ) {
+            setIsFollowing(false);
+            onUserPanned?.();
+          }
+        }}
+        rotateEnabled={isNavigation ? true : false}
         style={{ flex: 1 }}
       >
-        <Camera
-          ref={cameraRef}
-          defaultSettings={{
-            centerCoordinate: [initialPoint[1], initialPoint[0]],
-            zoomLevel: routePoints.length > 1 ? 8 : 11,
-          }}
-        />
-        {showUserLocation ? <UserLocation animated visible /> : null}
+        {isNavigation ? (
+          <Camera
+            ref={cameraRef}
+            followUserLocation={isFollowing}
+            followUserMode="course"
+            followZoomLevel={16}
+            followPitch={45}
+            animationMode="flyTo"
+            animationDuration={300}
+          />
+        ) : (
+          <Camera
+            ref={cameraRef}
+            defaultSettings={{
+              centerCoordinate: [initialPoint[1], initialPoint[0]],
+              zoomLevel: routePoints.length > 1 ? 8 : 11,
+            }}
+          />
+        )}
+
+        {/* Always show user location puck */}
+        {showUserLocation || isNavigation ? <UserLocation animated visible /> : null}
+
+        {/* Route line */}
         {routePoints.length > 1 ? (
           <ShapeSource id="route-shape" shape={toGeoJsonLine(routePoints)}>
             <LineLayer
               id="route-line-casing"
-              style={{
-                lineColor: '#FFFFFF',
-                lineWidth: 8,
-                lineOpacity: 0.95,
-              }}
+              style={{ lineColor: '#FFFFFF', lineWidth: 8, lineOpacity: 0.95 }}
             />
             <LineLayer
               id="route-line"
-              style={{
-                lineColor: theme.colors.accent,
-                lineWidth: 5,
-                lineOpacity: 0.95,
-              }}
+              style={{ lineColor: accentColor, lineWidth: 5, lineOpacity: 0.95 }}
             />
           </ShapeSource>
         ) : null}
+
+        {/* Route stops / waypoints */}
         {stops.length > 0
           ? stops.filter(isCompleteStopPoint).map((stop) => (
               <PointAnnotation
@@ -182,7 +477,7 @@ export function ClubRunMap({
                     minWidth: 36,
                     height: 36,
                     borderRadius: 18,
-                    backgroundColor: getStopColor(stop.kind, theme.colors.accent),
+                    backgroundColor: getStopColor(stop.kind, accentColor),
                     alignItems: 'center',
                     justifyContent: 'center',
                     borderWidth: selectedStopId === stop.id ? 3 : 2,
@@ -190,15 +485,13 @@ export function ClubRunMap({
                     paddingHorizontal: 8,
                   }}
                 >
-                  <Text
-                    style={{
-                      color: '#FFFFFF',
-                      fontSize: 12,
-                      fontWeight: '800',
-                    }}
-                  >
+                  <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '800' }}>
                     {stop.kind === 'waypoint'
-                      ? String(stops.filter((item) => item.kind === 'waypoint').findIndex((item) => item.id === stop.id) + 1)
+                      ? String(
+                          stops
+                            .filter((item) => item.kind === 'waypoint')
+                            .findIndex((item) => item.id === stop.id) + 1
+                        )
                       : stop.kind === 'start'
                         ? 'S'
                         : 'E'}
@@ -207,13 +500,17 @@ export function ClubRunMap({
               </PointAnnotation>
             ))
           : waypoints.map(([lat, lng], index) => (
-              <PointAnnotation id={`waypoint-${index}`} key={`waypoint-${index}`} coordinate={[lng, lat]}>
+              <PointAnnotation
+                id={`waypoint-${index}`}
+                key={`waypoint-${index}`}
+                coordinate={[lng, lat]}
+              >
                 <View
                   style={{
                     width: 28,
                     height: 28,
                     borderRadius: 14,
-                    backgroundColor: theme.colors.accent,
+                    backgroundColor: accentColor,
                     alignItems: 'center',
                     justifyContent: 'center',
                     borderWidth: 2,
@@ -226,95 +523,60 @@ export function ClubRunMap({
                 </View>
               </PointAnnotation>
             ))}
+
+        {/* Driver pins */}
         {drivers
           .filter((driver) => driver.location)
-          .map((driver) => (
-            <PointAnnotation
-              id={`driver-${driver.id}`}
-              key={`driver-${driver.id}`}
-              coordinate={[driver.location!.lng, driver.location!.lat]}
-            >
-              <View
-                style={{
-                  minWidth: 34,
-                  height: 34,
-                  borderRadius: 17,
-                  backgroundColor: theme.colors.surface,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  borderWidth: 2,
-                  borderColor: theme.colors.accent,
-                  paddingHorizontal: 6,
-                }}
+          .map((driver) => {
+            const isSelf = driver.id === currentDriverId;
+            return (
+              <PointAnnotation
+                id={`driver-${driver.id}`}
+                key={`driver-${driver.id}`}
+                coordinate={[driver.location!.lng, driver.location!.lat]}
+                anchor={isNavigation ? { x: 0.5, y: 0.85 } : { x: 0.5, y: 0.5 }}
               >
-                <Text style={{ color: theme.colors.textPrimary, fontSize: 11, fontWeight: '700' }}>
-                  {getDriverInitials(driver.name)}
-                </Text>
-              </View>
-            </PointAnnotation>
-          ))}
+                {isLobby ? (
+                  <LobbyDriverPin driver={driver} isSelf={isSelf} accentColor={accentColor} />
+                ) : isNavigation ? (
+                  <NavigationDriverPin driver={driver} isSelf={isSelf} accentColor={accentColor} />
+                ) : (
+                  // Planning mode fallback — simple initials pin
+                  <View
+                    style={{
+                      minWidth: 34,
+                      height: 34,
+                      borderRadius: 17,
+                      backgroundColor: theme.colors.surface,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderWidth: 2,
+                      borderColor: accentColor,
+                      paddingHorizontal: 6,
+                    }}
+                  >
+                    <Text
+                      style={{ color: theme.colors.textPrimary, fontSize: 11, fontWeight: '700' }}
+                    >
+                      {getDriverInitials(driver.name)}
+                    </Text>
+                  </View>
+                )}
+              </PointAnnotation>
+            );
+          })}
+
+        {/* Hazard pins — Waze style */}
         {hazards.map((hazard) => (
           <PointAnnotation
             id={`hazard-${hazard.id}`}
             key={`hazard-${hazard.id}`}
             coordinate={[hazard.lng, hazard.lat]}
           >
-            <View
-              style={{
-                minWidth: 40,
-                minHeight: 30,
-                borderRadius: 15,
-                backgroundColor: theme.colors.warning,
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderWidth: 2,
-                borderColor: theme.colors.surface,
-                paddingHorizontal: 8,
-              }}
-            >
-              <Text style={{ color: theme.colors.textPrimary, fontSize: 10, fontWeight: '700' }}>
-                {getHazardGlyph(hazard.type)}
-              </Text>
-              <Text style={{ color: theme.colors.textPrimary, fontSize: 8 }}>
-                {hazard.reportCount > 1 ? `x${hazard.reportCount}` : ''}
-              </Text>
-            </View>
+            <HazardPin hazard={hazard} />
           </PointAnnotation>
         ))}
       </MapView>
     </View>
   );
-}
-
-function isCompleteStopPoint(stop: RouteStopDraft) {
-  return typeof stop.lat === 'number' && typeof stop.lng === 'number';
-}
-
-function getStopColor(kind: RouteStopDraft['kind'], accent: string) {
-  if (kind === 'start') {
-    return '#22C55E';
-  }
-
-  if (kind === 'destination') {
-    return '#EF4444';
-  }
-
-  return accent;
-}
-
-function getDriverInitials(name: string) {
-  return name
-    .split(' ')
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? '')
-    .join('');
-}
-
-function getHazardGlyph(type: LiveHazard['type']) {
-  return formatHazardLabel(type)
-    .split(' ')
-    .map((part) => part[0]?.toUpperCase() ?? '')
-    .join('')
-    .slice(0, 3);
 }

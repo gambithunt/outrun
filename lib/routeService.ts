@@ -7,7 +7,7 @@ import { RouteData, RouteStopDraft } from '@/types/domain';
 
 type RouteClient = {
   writeRoute: (runId: string, route: RouteData) => Promise<void>;
-  writeStatus: (runId: string, status: 'active') => Promise<void>;
+  writeStatus: (runId: string, status: 'ready' | 'active') => Promise<void>;
   writeStartedAt: (runId: string, startedAt: number) => Promise<void>;
 };
 
@@ -133,7 +133,7 @@ export async function saveRouteToRun(
 
   await client.writeRoute(runId, route);
   await client.writeStartedAt(runId, now);
-  await client.writeStatus(runId, 'active');
+  await client.writeStatus(runId, 'ready');
 }
 
 export async function saveRouteDraftToRun(
@@ -159,7 +159,7 @@ export async function startRunWithSavedRoute(
   }
 
   await client.writeStartedAt(runId, now);
-  await client.writeStatus(runId, 'active');
+  await client.writeStatus(runId, 'ready');
 }
 
 export async function saveRouteToRunWithFirebase(runId: string, route: RouteData) {

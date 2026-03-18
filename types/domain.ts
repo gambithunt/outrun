@@ -1,4 +1,4 @@
-export type RunStatus = 'draft' | 'active' | 'ended';
+export type RunStatus = 'draft' | 'ready' | 'active' | 'ended';
 
 export type FuelType = 'petrol' | 'diesel' | 'electric' | 'hybrid';
 
@@ -114,6 +114,7 @@ export type Run = {
   status: RunStatus;
   createdAt: number;
   startedAt: number | null;
+  driveStartedAt?: number | null;
   endedAt: number | null;
   maxDrivers: number;
   route?: RouteData;

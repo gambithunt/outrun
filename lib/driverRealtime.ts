@@ -14,7 +14,7 @@ export type LiveDriver = {
   location: DriverRecord['location'] | null;
 };
 
-export type DriverPresenceStatus = 'active' | 'stale' | 'awaiting_gps';
+export type DriverPresenceStatus = 'active' | 'stale' | 'lost_signal' | 'awaiting_gps';
 
 export function normalizeDriversSnapshot(value: unknown): LiveDriver[] {
   if (!value || typeof value !== 'object') {
@@ -33,7 +33,12 @@ export function getDriverPresenceStatus(driver: LiveDriver, now = Date.now()): D
     return 'awaiting_gps';
   }
 
-  return now - driver.location.timestamp > 60_000 ? 'stale' : 'active';
+  const age = now - driver.location.timestamp;
+  if (age > 120_000) {
+    return 'lost_signal';
+  }
+
+  return age > 60_000 ? 'stale' : 'active';
 }
 
 export function createRealtimeDriversClient(database: Database) {

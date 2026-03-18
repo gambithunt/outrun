@@ -7,14 +7,18 @@ import { LiveHazard, formatHazardLabel } from '@/lib/hazardRealtime';
 import { RouteStopDraft } from '@/types/domain';
 
 type ClubRunMapProps = {
+  currentDriverId?: string | null;
   currentLocation?: RoutePoint | null;
   drivers?: LiveDriver[];
   edgeToEdge?: boolean;
   fitToRouteToken?: number;
   focusPoint?: RoutePoint | null;
   hazards?: LiveHazard[];
+  mapMode?: 'planning' | 'lobby' | 'navigation';
   onMapPress?: (point: RoutePoint) => void;
   onRegionDidChange?: (point: RoutePoint) => void;
+  onUserPanned?: () => void;
+  recenterToken?: number;
   waypoints?: RoutePoint[];
   routePoints?: RoutePoint[];
   selectedStopId?: string | null;
@@ -28,6 +32,7 @@ export function ClubRunMap({
   drivers = [],
   edgeToEdge = false,
   hazards = [],
+  mapMode,
   onMapPress,
   onRegionDidChange,
   routePoints = [],

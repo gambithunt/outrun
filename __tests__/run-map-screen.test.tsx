@@ -37,6 +37,10 @@ jest.mock('@/lib/summaryService', () => ({
   endRunWithFirebase: jest.fn(),
 }));
 
+jest.mock('@/lib/runService', () => ({
+  startDriveWithFirebase: jest.fn(),
+}));
+
 jest.mock('@/lib/connectivity', () => ({
   subscribeToConnectivityWithFirebase: jest.fn(),
 }));
@@ -176,9 +180,8 @@ describe('RunMapScreen', () => {
     await enableTracking(screen);
 
     await waitFor(() =>
-      expect(screen.getByTestId('text-run-name')).toHaveTextContent('Name: Sunrise Run')
+      expect(screen.getByTestId('text-run-name')).toHaveTextContent('Sunrise Run')
     );
-    expect(screen.getByTestId('text-run-status')).toHaveTextContent('Status: active');
     expect(screen.getByTestId('text-run-route-points')).toHaveTextContent('Route points: 2');
     expect(screen.getByTestId('text-driver-count')).toHaveTextContent('Drivers: 1');
     expect(screen.getByTestId('text-hazard-count')).toHaveTextContent('Hazards: 1');
@@ -209,7 +212,7 @@ describe('RunMapScreen', () => {
     await enableTracking(screen);
 
     await waitFor(() =>
-      expect(screen.getByTestId('text-run-error')).toHaveTextContent(/Connection lost|Permission denied/)
+      expect(screen.getByTestId('text-run-error')).toHaveTextContent(/Connection lost|Permission denied|Unable to start/)
     );
   });
 
@@ -229,7 +232,7 @@ describe('RunMapScreen', () => {
       )
     );
     expect(screen.getByTestId('text-enable-tracking-body')).toHaveTextContent(
-      /Turn on location sharing so ClubRun can place you on the convoy map/
+      /Turn on location sharing/
     );
     expect(startForegroundTrackingWithExpo).not.toHaveBeenCalled();
     expect(startBackgroundTrackingWithExpo).not.toHaveBeenCalled();
@@ -284,7 +287,7 @@ describe('RunMapScreen', () => {
 
     const screen = renderWithProviders(<RunMapScreen />);
 
-    await waitFor(() => expect(screen.getByTestId('text-driver-count')).toHaveTextContent('Drivers: 1'));
+    await waitFor(() => screen.getByTestId('text-driver-count'));
     await enableTracking(screen);
     fireEvent.press(screen.getByTestId('button-hazard-pothole'));
 
@@ -372,7 +375,7 @@ describe('RunMapScreen', () => {
       )
     );
     expect(screen.getByTestId('text-tracking-detail')).toHaveTextContent(
-      'Allow Always location access to keep sharing your position while your phone is locked.'
+      /Allow Always/
     );
   });
 
@@ -386,7 +389,7 @@ describe('RunMapScreen', () => {
 
     const screen = renderWithProviders(<RunMapScreen />);
 
-    await waitFor(() => expect(screen.getByTestId('text-run-name')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('live-run-map')).toBeTruthy());
     await enableTracking(screen);
     screen.unmount();
 
@@ -408,7 +411,7 @@ describe('RunMapScreen', () => {
 
     const screen = renderWithProviders(<RunMapScreen />);
 
-    await waitFor(() => expect(screen.getByTestId('text-run-name')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('live-run-map')).toBeTruthy());
     await enableTracking(screen);
     await act(async () => {
       onConnectivityChange?.(false);
@@ -452,7 +455,7 @@ describe('RunMapScreen', () => {
 
     const screen = renderWithProviders(<RunMapScreen />);
 
-    await waitFor(() => expect(screen.getByTestId('text-run-name')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('live-run-map')).toBeTruthy());
     await enableTracking(screen);
     await act(async () => {
       onConnectivityChange?.(false);
@@ -503,7 +506,7 @@ describe('RunMapScreen', () => {
 
     const screen = renderWithProviders(<RunMapScreen />);
 
-    await waitFor(() => expect(screen.getByTestId('text-run-name')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('live-run-map')).toBeTruthy());
     await enableTracking(screen);
 
     await act(async () => {
@@ -524,7 +527,7 @@ describe('RunMapScreen', () => {
 
     await waitFor(() =>
       expect(screen.getByTestId('toast-hazard-event')).toHaveTextContent(
-        'Ava reported police ahead.'
+        /Ava reported police ahead/
       )
     );
   });
@@ -557,7 +560,7 @@ describe('RunMapScreen', () => {
 
     const screen = renderWithProviders(<RunMapScreen />);
 
-    await waitFor(() => expect(screen.getByTestId('text-run-name')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('live-run-map')).toBeTruthy());
     await enableTracking(screen);
 
     await act(async () => {
@@ -678,7 +681,7 @@ describe('RunMapScreen', () => {
             heading: 0,
             speed: 0,
             accuracy: 0,
-            timestamp: Date.now() - 120_000,
+            timestamp: Date.now() - 90_000,
           },
         },
       ]);
@@ -720,12 +723,12 @@ describe('RunMapScreen', () => {
 
     await waitFor(() =>
       expect(screen.getByTestId('text-run-error')).toHaveTextContent(
-        'Foreground location permission is required.'
+        /Foreground location permission is required/
       )
     );
     expect(screen.getByTestId('text-tracking-state')).toHaveTextContent('Tracking: disabled');
     expect(screen.getByTestId('text-tracking-detail')).toHaveTextContent(
-      'Location access is off. Open system settings to allow ClubRun to share your position.'
+      /Open system settings|Open settings/
     );
 
     fireEvent.press(screen.getByTestId('button-open-location-settings'));

@@ -125,7 +125,7 @@ describe('routeService', () => {
     });
   });
 
-  it('starts a run from a saved route', async () => {
+  it('starts a run from a saved route by setting status to ready', async () => {
     const client = {
       writeRoute: jest.fn(),
       writeStatus: jest.fn(),
@@ -135,7 +135,7 @@ describe('routeService', () => {
     await startRunWithSavedRoute(client, 'run_123', 1234);
 
     expect(client.writeStartedAt).toHaveBeenCalledWith('run_123', 1234);
-    expect(client.writeStatus).toHaveBeenCalledWith('run_123', 'active');
+    expect(client.writeStatus).toHaveBeenCalledWith('run_123', 'ready');
     expect(client.writeRoute).not.toHaveBeenCalled();
   });
 });
