@@ -65,6 +65,29 @@ describe('Realtime Database rules', () => {
     );
   });
 
+  it('allows an authenticated admin to create a draft run and its join code', async () => {
+    await assertSucceeds(
+      adminDb().ref('runs/run_1').set({
+        name: 'Sunrise Run',
+        description: 'Scenic club morning drive',
+        joinCode: '123456',
+        adminId: 'admin_1',
+        status: 'draft',
+        createdAt: 1,
+        startedAt: null,
+        endedAt: null,
+        maxDrivers: 12,
+      })
+    );
+
+    await assertSucceeds(
+      adminDb().ref('joinCodes/123456').set({
+        runId: 'run_1',
+        createdAt: 1,
+      })
+    );
+  });
+
   it('allows drivers to write only their own location node', async () => {
     await seed({
       runs: {

@@ -258,6 +258,29 @@ In Firebase Console, verify data appears under:
 - `/runs/{runId}/hazards`
 - `/runs/{runId}/summary`
 
+## 11. Troubleshooting
+
+If `Create a Run` shows `permission_denied`, the most likely cause is that your live Realtime Database is still using older rules.
+
+ClubRun now expects draft run creation to allow:
+
+- a new `/runs/{runId}` write with `startedAt` and `endedAt` unset
+- a new `/joinCodes/{code}` write by the same authenticated anonymous user
+
+Fix it by redeploying the repo rules:
+
+```bash
+firebase deploy --only database
+```
+
+Then restart Expo so the browser reloads cleanly:
+
+```bash
+npx expo start --web -c
+```
+
+Also confirm `Settings` shows a signed-in auth uid. If it does not, re-check that Firebase Anonymous auth is enabled.
+
 Important checks:
 
 - `adminId` should be a Firebase auth uid, not a random local string
