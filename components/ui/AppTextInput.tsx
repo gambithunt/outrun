@@ -8,6 +8,7 @@ type AppTextInputProps = {
   onChangeText: (value: string) => void;
   placeholder?: string;
   error?: string;
+  autoFocus?: boolean;
   multiline?: boolean;
   numberOfLines?: number;
   testID?: string;
@@ -19,6 +20,7 @@ export function AppTextInput({
   onChangeText,
   placeholder,
   error,
+  autoFocus = false,
   multiline = false,
   numberOfLines,
   testID,
@@ -29,6 +31,7 @@ export function AppTextInput({
     <View style={{ gap: 8 }}>
       <Text style={{ color: theme.colors.textPrimary, fontWeight: '600' }}>{label}</Text>
       <TextInput
+        autoFocus={autoFocus}
         onChangeText={onChangeText}
         placeholder={placeholder}
         placeholderTextColor={theme.colors.textSecondary}

@@ -171,6 +171,11 @@ describe('RoutePlanningScreen', () => {
 
     expect(screen.getByTestId('text-selected-stop-label')).toHaveTextContent('Stop 1');
     expect(screen.getByTestId('route-stop-row-waypoint-1')).toBeTruthy();
+    expect(screen.getByTestId('text-waypoint-placement-helper')).toHaveTextContent(
+      'Search for a place or drop this stop directly on the map.'
+    );
+    expect(screen.queryByTestId('button-use-current-location')).toBeNull();
+    expect(screen.getByTestId('button-enter-pick-mode')).toBeTruthy();
   });
 
   it('swaps start and destination, opens reorder mode from a stop handle, and can return to the main sheet', async () => {

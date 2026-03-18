@@ -86,6 +86,7 @@ export default function RoutePlanningScreen() {
   const [hasHydratedDraft, setHasHydratedDraft] = useState(false);
   const hasAutoCentered = useRef(false);
   const previousVisibleSheetStateRef = useRef<VisibleSheetState>('main');
+  const mainSheetScrollRef = useRef<ScrollView | null>(null);
   const stopsRef = useRef(stops);
   const waypointStopsRef = useRef<RouteStopDraft[]>([]);
   const reorderDragStateRef = useRef<ReorderDragState | null>(null);
@@ -126,6 +127,8 @@ export default function RoutePlanningScreen() {
   const isMainSheet = sheetState === 'main';
   const isMinimizedSheet = sheetState === 'minimized';
   const isReorderSheet = sheetState === 'reorder';
+  const isSelectedStopComplete = isRouteStopComplete(selectedStop);
+  const isWaypointPlacementMode = selectedStop.kind === 'waypoint' && !isSelectedStopComplete;
   const mapButtonBottom = isPickMode ? 148 : isMinimizedSheet ? SHEET_MINIMIZED_BOTTOM : SHEET_EXPANDED_BOTTOM;
   const shouldShowNoMatches =
     !isPickMode &&
@@ -497,6 +500,9 @@ export default function RoutePlanningScreen() {
     setError(null);
     setStatusMessage('Choose a location for the new stop.');
     focusStop(waypoint.id, nextStops);
+    setTimeout(() => {
+      mainSheetScrollRef.current?.scrollTo({ y: 420, animated: true });
+    }, 0);
   }
 
   const handleRemoveWaypoint = useCallback((stopId: string) => {
@@ -1116,7 +1122,12 @@ export default function RoutePlanningScreen() {
                 }}
               />
             </Pressable>
-
+            <ScrollView
+              ref={mainSheetScrollRef}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={{ gap: 16, paddingTop: 6 }}
+            >
             <View style={{ gap: 8 }}>
               <View
                 style={{
@@ -1412,9 +1423,21 @@ export default function RoutePlanningScreen() {
                     {selectedStop.kind === 'start'
                       ? 'Set the convoy start point.'
                       : selectedStop.kind === 'destination'
-                        ? 'Choose where the drive finishes.'
-                        : 'Dial in this stop or remove it from the route.'}
+                        ? isSelectedStopComplete
+                          ? 'Choose where the drive finishes.'
+                          : 'Search for the destination or place it on the map.'
+                        : isWaypointPlacementMode
+                          ? 'Search for a place or drop this stop directly on the map.'
+                          : 'Dial in this stop or remove it from the route.'}
                   </Text>
+                  {isWaypointPlacementMode ? (
+                    <Text
+                      style={{ color: theme.colors.textSecondary, fontWeight: '600', lineHeight: 20 }}
+                      testID="text-waypoint-placement-helper"
+                    >
+                      Search for a place or drop this stop directly on the map.
+                    </Text>
+                  ) : null}
                 </View>
                 {plannerStage === 'stops' &&
                 (selectedStop.kind === 'start' || selectedStop.kind === 'destination') ? (
@@ -1436,7 +1459,12 @@ export default function RoutePlanningScreen() {
               </View>
 
               <AppTextInput
-                label={`Search ${getStopTitle(selectedStop)}`}
+                autoFocus={isWaypointPlacementMode}
+                label={
+                  isWaypointPlacementMode
+                    ? `Set ${getStopTitle(selectedStop)}`
+                    : `Search ${getStopTitle(selectedStop)}`
+                }
                 onChangeText={(text) => {
                   setError(null);
                   setStatusMessage(null);
@@ -1487,20 +1515,21 @@ export default function RoutePlanningScreen() {
 
               {shouldShowNoMatches ? (
                 <Text style={{ color: theme.colors.textSecondary }}>
-                  No search matches yet. You can still use current location, paste coordinates, or
-                  pick on the map.
+                  No search matches yet. You can still paste coordinates or pick on the map.
                 </Text>
               ) : null}
 
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+                {selectedStop.kind === 'start' ? (
+                  <AppButton
+                    label="Use Current"
+                    onPress={handleUseCurrentLocation}
+                    testID="button-use-current-location"
+                    variant="secondary"
+                  />
+                ) : null}
                 <AppButton
-                  label="Use Current"
-                  onPress={handleUseCurrentLocation}
-                  testID="button-use-current-location"
-                  variant="secondary"
-                />
-                <AppButton
-                  label="Pick On Map"
+                  label={isWaypointPlacementMode ? `Place ${getStopTitle(selectedStop)} On Map` : 'Pick On Map'}
                   onPress={handleEnterPickMode}
                   testID="button-enter-pick-mode"
                   variant="secondary"
@@ -1630,7 +1659,9 @@ export default function RoutePlanningScreen() {
                           <Text style={{ color: theme.colors.textSecondary }} numberOfLines={1}>
                             {typeof stop.lat === 'number' && typeof stop.lng === 'number'
                               ? formatStopCoordinateLabel(stop.lat, stop.lng)
-                              : 'Search, use current location, or pick on map'}
+                              : stop.kind === 'start'
+                                ? 'Search, use current location, or pick on map'
+                                : 'Search or pick on map'}
                           </Text>
                         </View>
                       </View>
@@ -1703,6 +1734,7 @@ export default function RoutePlanningScreen() {
                 Choose a start and destination to unlock the live route preview and save actions.
               </Text>
             )}
+            </ScrollView>
           </View>
         )}
       </View>
