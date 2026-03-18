@@ -1,7 +1,7 @@
 import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, SafeAreaView, ScrollView, Text, View } from 'react-native';
+import { PanResponder, Pressable, SafeAreaView, ScrollView, Text, View } from 'react-native';
 
 import { ClubRunMap } from '@/components/map/ClubRunMap';
 import { AppButton } from '@/components/ui/AppButton';
@@ -11,13 +11,20 @@ import { useAppTheme } from '@/contexts/ThemeContext';
 import { RoutePoint } from '@/lib/geo';
 import { PlaceSearchResult, searchPlacesWithProvider } from '@/lib/placeSearchService';
 import {
+  clearRoutePlannerDraft,
+  loadRoutePlannerDraft,
+  RoutePlannerSheetState,
+  saveRoutePlannerDraft,
+} from '@/lib/routePlannerDraftService';
+import {
   buildRouteWaypointsFromStops,
   countWaypointStops,
   createRouteStop,
   formatStopCoordinateLabel,
   getRoutePlannerStage,
+  isRouteStopComplete,
   parseCoordinateInput,
-  reorderWaypointStopBefore,
+  reorderWaypointStopToIndex,
   reorderWaypointStopToEnd,
   removeWaypointStop,
   swapStartAndDestinationStops,
@@ -32,43 +39,50 @@ import { useRunSessionStore } from '@/stores/runSessionStore';
 import { RouteData, RouteStopDraft } from '@/types/domain';
 
 const FALLBACK_POINT: RoutePoint = [-26.2041, 28.0473];
+const REORDER_ROW_HEIGHT = 88;
+const SHEET_EXPANDED_BOTTOM = 468;
+const SHEET_MINIMIZED_BOTTOM = 112;
+
+type VisibleSheetState = Exclude<RoutePlannerSheetState, 'hidden'>;
+type ReorderDragState = {
+  stopId: string;
+  initialIndex: number;
+  targetIndex: number;
+  dy: number;
+};
 
 export default function RoutePlanningScreen() {
   const router = useRouter();
   const { runId, joinCode } = useLocalSearchParams<{ runId?: string; joinCode?: string }>();
   const { theme } = useAppTheme();
   const setRunSnapshot = useRunSessionStore((state) => state.setRunSnapshot);
+  const savedRoute = useRunSessionStore((state) => state.route);
   const currentLocation = useDeviceLocationStore((state) => state.currentLocation);
   const bootstrapLocation = useDeviceLocationStore((state) => state.bootstrapLocation);
+  const refreshLocation = useDeviceLocationStore((state) => state.refreshLocation);
 
-  const [stops, setStops] = useState<RouteStopDraft[]>([
-    createRouteStop('start', { id: 'start', label: 'Start', source: 'current_location' }),
-    createRouteStop('destination', {
-      id: 'destination',
-      label: 'Destination',
-      source: 'coordinates',
-    }),
-  ]);
+  const [stops, setStops] = useState<RouteStopDraft[]>(() => createInitialPlannerStops());
   const [selectedStopId, setSelectedStopId] = useState<string>('start');
   const [searchInput, setSearchInput] = useState('');
-  const [routePreview, setRoutePreview] = useState<RouteData | null>(null);
+  const [routePreview, setRoutePreview] = useState<RouteData | null>(savedRoute ?? null);
   const [error, setError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [isResolving, setIsResolving] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
-  const [isRouteSaved, setIsRouteSaved] = useState(false);
-  const [pickMode, setPickMode] = useState(false);
-  const [fitToRouteToken, setFitToRouteToken] = useState(0);
+  const [isRouteSaved, setIsRouteSaved] = useState(Boolean(savedRoute?.points.length));
+  const [sheetState, setSheetState] = useState<VisibleSheetState>('main');
+  const [isPickMode, setIsPickMode] = useState(false);
+  const [pendingPickedPoint, setPendingPickedPoint] = useState<RoutePoint | null>(null);
   const [focusPoint, setFocusPoint] = useState<RoutePoint | null>(null);
   const [mapCenterPoint, setMapCenterPoint] = useState<RoutePoint>(FALLBACK_POINT);
-  const [pendingPickedPoint, setPendingPickedPoint] = useState<RoutePoint | null>(null);
-  const [draggedStopId, setDraggedStopId] = useState<string | null>(null);
+  const [reorderDragState, setReorderDragState] = useState<ReorderDragState | null>(null);
   const [placeResults, setPlaceResults] = useState<PlaceSearchResult[]>([]);
   const [isSearchingPlaces, setIsSearchingPlaces] = useState(false);
-  const [isSheetExpanded, setIsSheetExpanded] = useState(false);
+  const [hasHydratedDraft, setHasHydratedDraft] = useState(false);
   const hasAutoCentered = useRef(false);
+  const previousVisibleSheetStateRef = useRef<VisibleSheetState>('main');
 
   const selectedStop = useMemo(
     () => stops.find((stop) => stop.id === selectedStopId) ?? stops[0],
@@ -79,10 +93,91 @@ export default function RoutePlanningScreen() {
   const waypointStops = useMemo(() => stops.filter((stop) => stop.kind === 'waypoint'), [stops]);
   const routeDuration = formatRouteDuration(routePreview?.durationSeconds);
   const routeDistance = routePreview ? `${(routePreview.distanceMetres / 1000).toFixed(1)} km` : null;
+  const routeStats = useMemo(
+    () => [
+      { key: 'distance', label: 'Distance', value: routeDistance ?? 'Route TBD' },
+      { key: 'duration', label: 'Drive time', value: routePreview ? routeDuration : 'Time TBD' },
+      { key: 'stops', label: 'Stops', value: `${countWaypointStops(stops)} stops` },
+    ],
+    [routeDistance, routeDuration, routePreview, stops]
+  );
+  const hasMeaningfulDraft = useMemo(
+    () => stops.some((stop) => isRouteStopComplete(stop)) || waypointStops.length > 0,
+    [stops, waypointStops.length]
+  );
+  const routeSaveStateLabel = isRouteSaved
+    ? 'Ready to start'
+    : hasMeaningfulDraft
+      ? 'Draft changed'
+      : 'Draft in progress';
+  const sheetPrompt =
+    plannerStage === 'start'
+      ? 'Choose start'
+      : plannerStage === 'destination'
+        ? 'Choose destination'
+        : 'Add stops or save route';
+  const currentSheetState: RoutePlannerSheetState = isPickMode ? 'hidden' : sheetState;
+  const isMainSheet = sheetState === 'main';
+  const isMinimizedSheet = sheetState === 'minimized';
+  const isReorderSheet = sheetState === 'reorder';
+  const mapButtonBottom = isPickMode ? 148 : isMinimizedSheet ? SHEET_MINIMIZED_BOTTOM : SHEET_EXPANDED_BOTTOM;
+  const shouldShowNoMatches =
+    !isPickMode &&
+    searchInput.trim().length >= 3 &&
+    !parseCoordinateInput(searchInput) &&
+    !isSearchingPlaces &&
+    placeResults.length === 0;
 
   useEffect(() => {
     void bootstrapLocation();
   }, [bootstrapLocation]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function hydrateDraft() {
+      const localDraft = await loadRoutePlannerDraft(runId ?? '');
+      if (cancelled) {
+        return;
+      }
+
+      if (localDraft) {
+        const nextStops = normalizePlannerStops(localDraft.stops);
+        setStops(nextStops);
+        setSelectedStopId(resolveSelectedStopId(nextStops, localDraft.selectedStopId));
+        applySheetState(localDraft.sheetState);
+        setIsRouteSaved(localDraft.isRouteSaved);
+        setStatusMessage('Route draft restored.');
+      } else if (savedRoute?.stops?.length) {
+        const nextStops = normalizePlannerStops(savedRoute.stops);
+        setStops(nextStops);
+        setSelectedStopId(getDefaultSelectedStopId(nextStops));
+        setIsRouteSaved(true);
+        setStatusMessage('Saved route restored.');
+      }
+
+      setHasHydratedDraft(true);
+    }
+
+    void hydrateDraft();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [runId, savedRoute]);
+
+  useEffect(() => {
+    if (!runId || !hasHydratedDraft) {
+      return;
+    }
+
+    void saveRoutePlannerDraft(runId, {
+      stops,
+      selectedStopId,
+      sheetState: currentSheetState,
+      isRouteSaved,
+    });
+  }, [currentSheetState, hasHydratedDraft, isRouteSaved, runId, selectedStopId, stops]);
 
   useEffect(() => {
     if (!currentLocation || hasAutoCentered.current) {
@@ -110,7 +205,6 @@ export default function RoutePlanningScreen() {
           return;
         }
         setRoutePreview(route);
-        setFitToRouteToken((current) => current + 1);
       })
       .catch((nextError) => {
         if (cancelled) {
@@ -132,7 +226,7 @@ export default function RoutePlanningScreen() {
   useEffect(() => {
     const trimmed = searchInput.trim();
 
-    if (!trimmed || pickMode) {
+    if (!trimmed || isPickMode) {
       setPlaceResults([]);
       setIsSearchingPlaces(false);
       return;
@@ -194,7 +288,40 @@ export default function RoutePlanningScreen() {
       cancelled = true;
       clearTimeout(timeout);
     };
-  }, [pickMode, searchInput, selectedStopId]);
+  }, [isPickMode, searchInput, selectedStopId]);
+
+  function setVisibleSheetState(nextState: VisibleSheetState) {
+    previousVisibleSheetStateRef.current = nextState;
+    setSheetState(nextState);
+  }
+
+  function applySheetState(nextState: RoutePlannerSheetState) {
+    const normalizedState =
+      nextState === 'hidden'
+        ? 'minimized'
+        : nextState === 'minimized'
+          ? 'minimized'
+        : nextState === 'reorder'
+          ? 'reorder'
+          : 'main';
+
+    previousVisibleSheetStateRef.current =
+      normalizedState === 'minimized' ? 'main' : normalizedState;
+    setSheetState(normalizedState);
+  }
+
+  function restoreVisibleSheet() {
+    setSheetState(previousVisibleSheetStateRef.current);
+  }
+
+  function minimizeSheet() {
+    previousVisibleSheetStateRef.current = sheetState === 'minimized' ? 'main' : sheetState;
+    setSheetState('minimized');
+  }
+
+  function restoreSheetFromSummary() {
+    setSheetState(previousVisibleSheetStateRef.current);
+  }
 
   function focusStop(stopId: string, nextStops: RouteStopDraft[] = stops) {
     const stop = nextStops.find((item) => item.id === stopId);
@@ -253,8 +380,9 @@ export default function RoutePlanningScreen() {
     source: RouteStopDraft['source'],
     label?: string
   ) {
+    const activeStop = selectedStop;
     const resolvedLabel = label ?? (await describePoint(point));
-    const nextStops = updateStop(selectedStop.id, {
+    const nextStops = updateStop(activeStop.id, {
       label: resolvedLabel,
       lat: point[0],
       lng: point[1],
@@ -263,25 +391,34 @@ export default function RoutePlanningScreen() {
 
     setSearchInput('');
     setPlaceResults([]);
-    setPickMode(false);
     setPendingPickedPoint(null);
+    setIsPickMode(false);
     setMapCenterPoint(point);
     setFocusPoint(point);
 
-    if (selectedStop.kind === 'start' && getRoutePlannerStage(nextStops) === 'destination') {
-      focusStop('destination', nextStops);
-      setStatusMessage('Start set. Choose destination.');
+    const nextStage = getRoutePlannerStage(nextStops);
+
+    if (activeStop.kind === 'start' && nextStage === 'destination') {
+      setSelectedStopId('destination');
+      if (source === 'current_location') {
+        minimizeSheet();
+      } else {
+        setVisibleSheetState('main');
+      }
+      setStatusMessage('Start locked in. Choose destination.');
       return;
     }
 
-    if (selectedStop.kind === 'destination' && getRoutePlannerStage(nextStops) === 'stops') {
-      focusStop('destination', nextStops);
-      setStatusMessage('Destination set. Add stops or save the route.');
+    if (activeStop.kind === 'destination' && nextStage === 'stops') {
+      setSelectedStopId('destination');
+      setVisibleSheetState('main');
+      setStatusMessage('Destination locked in. Add stops or save the route.');
       return;
     }
 
-    focusStop(selectedStop.id, nextStops);
-    setStatusMessage(`${getStopTitle(selectedStop)} updated.`);
+    restoreVisibleSheet();
+    focusStop(activeStop.id, nextStops);
+    setStatusMessage(`${getStopTitle(activeStop)} updated.`);
   }
 
   async function handleSelectPlaceResult(result: PlaceSearchResult) {
@@ -297,11 +434,8 @@ export default function RoutePlanningScreen() {
   }
 
   async function handleUseCurrentLocation() {
-    let nextCurrentLocation = currentLocation;
-    if (!nextCurrentLocation) {
-      await bootstrapLocation();
-      nextCurrentLocation = useDeviceLocationStore.getState().currentLocation;
-    }
+    let nextCurrentLocation =
+      (await refreshLocation()) ?? currentLocation ?? useDeviceLocationStore.getState().currentLocation;
 
     if (!nextCurrentLocation) {
       setError('Current location is not ready yet.');
@@ -313,21 +447,21 @@ export default function RoutePlanningScreen() {
     setIsResolving(true);
 
     try {
-      await applyPointToSelectedStop(nextCurrentLocation, 'current_location', 'Current location');
+      await applyPointToSelectedStop(nextCurrentLocation, 'current_location', 'Your location');
     } finally {
       setIsResolving(false);
     }
   }
 
   function handleMapPress(point: RoutePoint) {
-    if (!pickMode) {
+    if (!isPickMode) {
       return;
     }
 
     setPendingPickedPoint(point);
     setFocusPoint(point);
     setMapCenterPoint(point);
-    setStatusMessage(`${getStopTitle(selectedStop)} pin selected. Confirm this location.`);
+    setError(null);
   }
 
   function handleAddStop() {
@@ -341,9 +475,9 @@ export default function RoutePlanningScreen() {
     nextStops.splice(destinationIndex, 0, waypoint);
     setStops(nextStops);
     setIsRouteSaved(false);
-    setIsSheetExpanded(true);
+    setVisibleSheetState('main');
     setError(null);
-    setStatusMessage('Add a location for the new stop.');
+    setStatusMessage('Choose a location for the new stop.');
     focusStop(waypoint.id, nextStops);
   }
 
@@ -364,14 +498,17 @@ export default function RoutePlanningScreen() {
   }
 
   function handleRecenterOnUser() {
-    if (!currentLocation) {
-      setError('Current location is not ready yet.');
-      return;
-    }
-
     setError(null);
-    setFocusPoint(currentLocation);
-    setMapCenterPoint(currentLocation);
+
+    void refreshLocation().then((nextLocation) => {
+      if (!nextLocation) {
+        setError('Current location is not ready yet.');
+        return;
+      }
+
+      setFocusPoint(nextLocation);
+      setMapCenterPoint(nextLocation);
+    });
   }
 
   function handleFitRoute() {
@@ -381,61 +518,113 @@ export default function RoutePlanningScreen() {
     }
 
     setError(null);
-    setFitToRouteToken((current) => current + 1);
+    setFocusPoint(routePreview.points[0] ?? null);
   }
 
-  function handleStartDraggingStop(stopId: string) {
+  function handleEnterReorderMode(stopId?: string) {
+    if (!waypointStops.length) {
+      setStatusMessage('Add a stop before reordering the drive.');
+      return;
+    }
+
+    if (stopId) {
+      setSelectedStopId(stopId);
+    }
+
+    setReorderDragState(null);
+    setVisibleSheetState('reorder');
+    setStatusMessage('Drag stops to shape the drive.');
+  }
+
+  function handleExitReorderMode() {
+    setReorderDragState(null);
+    setVisibleSheetState('main');
+    setStatusMessage('Back to route editing.');
+  }
+
+  function handleStartDraggingStop(stopId: string, dy = 0) {
     const stop = stops.find((item) => item.id === stopId);
     if (stop?.kind !== 'waypoint') {
       return;
     }
 
-    setDraggedStopId(stopId);
-    setStatusMessage('Choose where to drop this stop.');
-  }
-
-  function handleDropWaypointBefore(targetStopId: string) {
-    if (!draggedStopId) {
+    const waypointIndex = waypointStops.findIndex((item) => item.id === stopId);
+    if (waypointIndex < 0) {
       return;
     }
 
-    const nextStops = reorderWaypointStopBefore(stops, draggedStopId, targetStopId);
+    setSelectedStopId(stopId);
+    setReorderDragState({
+      stopId,
+      initialIndex: waypointIndex,
+      targetIndex: waypointIndex,
+      dy,
+    });
+  }
+
+  function handleUpdateDraggedStop(dy: number) {
+    setReorderDragState((currentState) => {
+      if (!currentState) {
+        return currentState;
+      }
+
+      const nextTargetIndex = Math.max(
+        0,
+        Math.min(
+          currentState.initialIndex + Math.round(dy / REORDER_ROW_HEIGHT),
+          Math.max(waypointStops.length - 1, 0)
+        )
+      );
+
+      return {
+        ...currentState,
+        dy,
+        targetIndex: nextTargetIndex,
+      };
+    });
+  }
+
+  function handleFinishDraggingStop() {
+    if (!reorderDragState) {
+      return;
+    }
+
+    const nextStops =
+      reorderDragState.targetIndex === waypointStops.length - 1
+        ? reorderWaypointStopToEnd(stops, reorderDragState.stopId)
+        : reorderWaypointStopToIndex(stops, reorderDragState.stopId, reorderDragState.targetIndex);
+
+    setReorderDragState(null);
+
+    if (nextStops === stops) {
+      setStatusMessage('Stop order unchanged.');
+      return;
+    }
+
     setStops(nextStops);
-    setDraggedStopId(null);
     setIsRouteSaved(false);
+    focusStop(reorderDragState.stopId, nextStops);
     setStatusMessage('Stop order updated.');
   }
 
-  function handleDropWaypointToEnd() {
-    if (!draggedStopId) {
-      return;
-    }
-
-    const nextStops = reorderWaypointStopToEnd(stops, draggedStopId);
-    setStops(nextStops);
-    setDraggedStopId(null);
-    setIsRouteSaved(false);
-    setStatusMessage('Stop moved to the final waypoint slot.');
-  }
-
   function handleCancelDraggingStop() {
-    setDraggedStopId(null);
-    setStatusMessage('Reorder cancelled.');
+    setReorderDragState(null);
+    setStatusMessage('Drag cancelled.');
   }
 
   function handleEnterPickMode() {
-    setPickMode(true);
+    previousVisibleSheetStateRef.current = isMinimizedSheet ? 'main' : sheetState;
+    setIsPickMode(true);
     setPendingPickedPoint(null);
     setSearchInput('');
     setPlaceResults([]);
-    setIsSheetExpanded(false);
     setError(null);
-    setStatusMessage(`Tap the map to choose ${getStopTitle(selectedStop)}.`);
+    setStatusMessage(null);
   }
 
   async function handleConfirmMapPick() {
     if (!pendingPickedPoint) {
-      setError('Tap the map to choose a location first.');
+      setError('Tap the map to drop a pin first.');
       return;
     }
 
@@ -445,15 +634,15 @@ export default function RoutePlanningScreen() {
 
     try {
       await applyPointToSelectedStop(pendingPickedPoint, 'pin');
-      setStatusMessage(`${getStopTitle(selectedStop)} updated from the map.`);
     } finally {
       setIsResolving(false);
     }
   }
 
   function handleCancelMapPick() {
-    setPickMode(false);
+    setIsPickMode(false);
     setPendingPickedPoint(null);
+    restoreVisibleSheet();
     setStatusMessage('Map pick cancelled.');
   }
 
@@ -474,7 +663,7 @@ export default function RoutePlanningScreen() {
         status: 'draft',
       });
       setIsRouteSaved(true);
-      setStatusMessage('Route draft saved. You can keep editing or start the run.');
+      setStatusMessage('Route draft saved. You can come back later or start the run when ready.');
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : 'Unable to save route draft.');
     } finally {
@@ -493,6 +682,7 @@ export default function RoutePlanningScreen() {
 
     try {
       await startRunWithSavedRouteWithFirebase(runId ?? '');
+      await clearRoutePlannerDraft(runId ?? '');
       setRunSnapshot({
         route: routePreview,
         status: 'active',
@@ -505,26 +695,15 @@ export default function RoutePlanningScreen() {
     }
   }
 
-  const sheetPrompt =
-    pickMode
-      ? `Tap the map to choose ${getStopTitle(selectedStop)}`
-      : plannerStage === 'start'
-        ? 'Choose start'
-        : plannerStage === 'destination'
-          ? 'Choose destination'
-          : 'Add stops or save route';
-
-  const mapButtonBottom = pickMode ? 112 : isSheetExpanded ? 432 : 240;
-  const shouldShowNoMatches =
-    !pickMode && searchInput.trim().length >= 3 && !parseCoordinateInput(searchInput) && !isSearchingPlaces && placeResults.length === 0;
-
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.background }} testID="screen-route-planning">
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: theme.colors.background }}
+      testID="screen-route-planning"
+    >
       <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
         <ClubRunMap
-          currentLocation={currentLocation ?? FALLBACK_POINT}
+          currentLocation={currentLocation ?? mapCenterPoint}
           edgeToEdge
-          fitToRouteToken={fitToRouteToken}
           focusPoint={focusPoint}
           onMapPress={handleMapPress}
           onRegionDidChange={setMapCenterPoint}
@@ -560,15 +739,20 @@ export default function RoutePlanningScreen() {
           <View
             style={{
               borderRadius: 20,
-              paddingHorizontal: 14,
+              paddingHorizontal: 16,
               paddingVertical: 10,
-              backgroundColor: 'rgba(255,255,255,0.94)',
+              backgroundColor: 'rgba(255,255,255,0.95)',
               borderWidth: 1,
               borderColor: theme.colors.border,
+              minWidth: 178,
+              alignItems: 'center',
             }}
           >
             <Text style={{ color: theme.colors.textPrimary, fontWeight: '800' }}>
               Route Draft {joinCode ? `• ${joinCode}` : ''}
+            </Text>
+            <Text style={{ color: theme.colors.textSecondary, marginTop: 2, fontWeight: '600' }}>
+              {routeSaveStateLabel}
             </Text>
           </View>
         </View>
@@ -603,87 +787,337 @@ export default function RoutePlanningScreen() {
           </Pressable>
         </View>
 
-        {pickMode ? (
-          <View
-            pointerEvents="none"
-            style={{
-              position: 'absolute',
-              left: '50%',
-              top: '38%',
-              marginLeft: -24,
-              marginTop: -24,
-              width: 48,
-              height: 48,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
+        {isPickMode ? (
+          <>
             <View
+              pointerEvents="none"
               style={{
-                width: 44,
-                height: 44,
-                borderRadius: 22,
-                backgroundColor: `${theme.colors.surface}DD`,
-                borderWidth: 2,
-                borderColor: theme.colors.accent,
+                position: 'absolute',
+                left: '50%',
+                top: '40%',
+                marginLeft: -26,
+                marginTop: -26,
+                width: 52,
+                height: 52,
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
               <View
                 style={{
-                  width: 10,
-                  height: 10,
-                  borderRadius: 5,
-                  backgroundColor: theme.colors.accent,
+                  width: 50,
+                  height: 50,
+                  borderRadius: 25,
+                  backgroundColor: `${theme.colors.surface}EE`,
+                  borderWidth: 2,
+                  borderColor: theme.colors.accent,
+                  alignItems: 'center',
+                  justifyContent: 'center',
                 }}
-              />
+              >
+                <View
+                  style={{
+                    width: 12,
+                    height: 12,
+                    borderRadius: 6,
+                    backgroundColor: theme.colors.accent,
+                  }}
+                />
+              </View>
             </View>
-          </View>
-        ) : null}
 
-        {pickMode ? (
+            <View
+              style={{
+                position: 'absolute',
+                left: 16,
+                right: 16,
+                bottom: 16,
+                borderRadius: 24,
+                backgroundColor: 'rgba(255,255,255,0.95)',
+                borderWidth: 1,
+                borderColor: theme.colors.border,
+                padding: 16,
+                gap: 12,
+                shadowColor: '#000000',
+                shadowOpacity: 0.12,
+                shadowRadius: 14,
+                shadowOffset: { width: 0, height: 8 },
+                elevation: 10,
+              }}
+            >
+              <Text
+                style={{ color: theme.colors.textPrimary, fontSize: 18, fontWeight: '800' }}
+                testID="text-map-pick-mode"
+              >
+                {`Choose ${getStopTitle(selectedStop)} On The Map`}
+              </Text>
+              <Text style={{ color: theme.colors.textSecondary, lineHeight: 20 }}>
+                Pan around, tap once to drop a pin, and confirm when the location feels right for
+                the club route.
+              </Text>
+              {pendingPickedPoint ? (
+                <Text
+                  style={{ color: theme.colors.textPrimary, fontWeight: '700' }}
+                  testID="text-map-pick-selection"
+                >
+                  {`Pin ready for ${getStopTitle(selectedStop)}`}
+                </Text>
+              ) : null}
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                {pendingPickedPoint ? (
+                  <AppButton
+                    label="Confirm Pin"
+                    onPress={handleConfirmMapPick}
+                    testID="button-confirm-map-pick"
+                  />
+                ) : null}
+                <AppButton
+                  label="Cancel"
+                  onPress={handleCancelMapPick}
+                  testID="button-cancel-map-pick"
+                  variant="secondary"
+                />
+              </View>
+            </View>
+          </>
+        ) : isMinimizedSheet ? (
+          <Pressable
+            accessibilityRole="button"
+            onPress={restoreSheetFromSummary}
+            style={{
+              position: 'absolute',
+              left: 16,
+              right: 16,
+              bottom: 16,
+              borderRadius: 22,
+              backgroundColor: 'rgba(255,255,255,0.95)',
+              borderWidth: 1,
+              borderColor: theme.colors.border,
+              paddingHorizontal: 18,
+              paddingVertical: 14,
+              shadowColor: '#000000',
+              shadowOpacity: 0.12,
+              shadowRadius: 16,
+              shadowOffset: { width: 0, height: 8 },
+              elevation: 10,
+            }}
+            testID="route-summary-chip"
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              {routeStats.map((stat) => (
+                <View key={stat.key} style={{ flex: 1, gap: 4 }}>
+                  <Text style={{ color: theme.colors.textSecondary, fontSize: 11, fontWeight: '700' }}>
+                    {stat.label}
+                  </Text>
+                  <Text
+                    style={{ color: theme.colors.textPrimary, fontSize: 16, fontWeight: '800' }}
+                    testID={
+                      stat.key === 'distance'
+                        ? 'text-route-summary-distance'
+                        : stat.key === 'duration'
+                          ? 'text-route-summary-duration'
+                          : 'text-route-summary-stops'
+                    }
+                  >
+                    {stat.value}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </Pressable>
+        ) : isReorderSheet ? (
           <View
             style={{
               position: 'absolute',
               left: 16,
               right: 16,
               bottom: 16,
-              borderRadius: 24,
-              backgroundColor: 'rgba(255,255,255,0.96)',
+              borderRadius: 30,
+              backgroundColor: 'rgba(255,255,255,0.97)',
               borderWidth: 1,
               borderColor: theme.colors.border,
-              padding: 16,
-              gap: 10,
+              paddingHorizontal: 18,
+              paddingTop: 12,
+              paddingBottom: 18,
+              gap: 14,
+              maxHeight: '70%',
               shadowColor: '#000000',
-              shadowOpacity: 0.12,
-              shadowRadius: 14,
-              shadowOffset: { width: 0, height: 8 },
-              elevation: 10,
+              shadowOpacity: 0.14,
+              shadowRadius: 20,
+              shadowOffset: { width: 0, height: 10 },
+              elevation: 12,
             }}
+            testID="route-reorder-sheet"
           >
-            <Text
-              style={{ color: theme.colors.textPrimary, fontSize: 18, fontWeight: '800' }}
-              testID="text-map-pick-mode"
+            <Pressable
+              accessibilityRole="button"
+              onPress={minimizeSheet}
+              style={{ gap: 10 }}
+              testID="button-minimize-route-sheet"
             >
-              Tap the map to choose {getStopTitle(selectedStop)}
-            </Text>
-            <Text style={{ color: theme.colors.textSecondary }}>
-              After tapping, confirm the selected location for {getStopTitle(selectedStop).toLowerCase()}.
-            </Text>
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              <AppButton
-                label="Confirm Pin"
-                onPress={handleConfirmMapPick}
-                testID="button-confirm-map-pick"
+              <View
+                style={{
+                  alignSelf: 'center',
+                  width: 48,
+                  height: 5,
+                  borderRadius: 999,
+                  backgroundColor: theme.colors.border,
+                }}
               />
-              <AppButton
-                label="Cancel"
-                onPress={handleCancelMapPick}
-                testID="button-cancel-map-pick"
-                variant="secondary"
-              />
+            </Pressable>
+
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <View style={{ gap: 4 }}>
+                <Text style={{ color: theme.colors.textPrimary, fontSize: 20, fontWeight: '800' }}>
+                  Reorder Stops
+                </Text>
+                <Text style={{ color: theme.colors.textSecondary }} testID="text-sheet-state">
+                  Reorder
+                </Text>
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                onPress={handleExitReorderMode}
+                style={miniActionButtonStyle(theme.colors.border)}
+                testID="button-exit-reorder-mode"
+              >
+                <Text style={{ color: theme.colors.textPrimary, fontSize: 20, fontWeight: '800' }}>
+                  ‹
+                </Text>
+              </Pressable>
             </View>
+
+            <Text style={{ color: theme.colors.textSecondary, lineHeight: 20 }}>
+              Drag a stop up or down to reshape the drive between the locked start and destination.
+            </Text>
+
+            <ScrollView
+              scrollEnabled={!reorderDragState}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ gap: 10 }}
+            >
+              {stops.map((stop) => {
+                const waypointIndex = waypointStops.findIndex((item) => item.id === stop.id);
+                const isWaypoint = stop.kind === 'waypoint';
+                const isDragging = reorderDragState?.stopId === stop.id;
+                const isDragTarget =
+                  isWaypoint &&
+                  !isDragging &&
+                  typeof waypointIndex === 'number' &&
+                  waypointIndex >= 0 &&
+                  reorderDragState?.targetIndex === waypointIndex;
+                const panHandlers = isWaypoint
+                  ? PanResponder.create({
+                      onStartShouldSetPanResponder: () => true,
+                      onStartShouldSetPanResponderCapture: () => true,
+                      onMoveShouldSetPanResponder: () => true,
+                      onMoveShouldSetPanResponderCapture: () => true,
+                      onPanResponderGrant: () => handleStartDraggingStop(stop.id),
+                      onPanResponderMove: (_event, gestureState) =>
+                        handleUpdateDraggedStop(gestureState.dy),
+                      onPanResponderRelease: () => handleFinishDraggingStop(),
+                      onPanResponderTerminate: () => handleCancelDraggingStop(),
+                      onPanResponderTerminationRequest: () => false,
+                      onShouldBlockNativeResponder: () => true,
+                    }).panHandlers
+                  : undefined;
+
+                return (
+                  <View
+                    key={stop.id}
+                    style={[
+                      {
+                        minHeight: REORDER_ROW_HEIGHT,
+                        borderRadius: 20,
+                        paddingHorizontal: 14,
+                        paddingVertical: 12,
+                        backgroundColor: isDragging
+                          ? theme.colors.accentMuted
+                          : isDragTarget
+                            ? `${theme.colors.accentMuted}DD`
+                            : theme.colors.surfaceElevated,
+                        borderWidth: 1,
+                        borderColor:
+                          isDragging || isDragTarget ? theme.colors.accent : theme.colors.border,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 12,
+                      },
+                      isDragging ? { transform: [{ translateY: reorderDragState?.dy ?? 0 }] } : null,
+                    ]}
+                    testID={
+                      isWaypoint
+                        ? `route-reorder-row-waypoint-${waypointIndex + 1}`
+                        : `route-reorder-row-${stop.kind}`
+                    }
+                  >
+                    <View
+                      style={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: 14,
+                        borderWidth: 1,
+                        borderColor: theme.colors.border,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        backgroundColor: '#FFFFFF',
+                      }}
+                    >
+                      <Text style={{ color: theme.colors.textPrimary, fontWeight: '800' }}>
+                        {stop.kind === 'start'
+                          ? 'S'
+                          : stop.kind === 'destination'
+                            ? 'E'
+                            : waypointIndex + 1}
+                      </Text>
+                    </View>
+
+                    <View style={{ flex: 1, gap: 4 }}>
+                      <Text style={{ color: theme.colors.textPrimary, fontWeight: '800' }}>
+                        {stop.label}
+                      </Text>
+                      <Text style={{ color: theme.colors.textSecondary }} numberOfLines={1}>
+                        {typeof stop.lat === 'number' && typeof stop.lng === 'number'
+                          ? formatStopCoordinateLabel(stop.lat, stop.lng)
+                          : 'Location still needed'}
+                      </Text>
+                    </View>
+
+                    {isWaypoint ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                        <Pressable
+                          accessibilityRole="button"
+                          onPress={() => handleRemoveWaypoint(stop.id)}
+                          style={miniActionButtonStyle(theme.colors.border)}
+                          testID={`button-remove-waypoint-reorder-${waypointIndex + 1}`}
+                        >
+                          <Text style={{ color: theme.colors.textPrimary, fontSize: 18 }}>🗑</Text>
+                        </Pressable>
+                        <View
+                          {...panHandlers}
+                          style={miniActionButtonStyle(theme.colors.border)}
+                          testID={`reorder-handle-waypoint-${waypointIndex + 1}`}
+                        >
+                          <Text style={{ color: theme.colors.textPrimary, fontWeight: '800' }}>
+                            ≡
+                          </Text>
+                        </View>
+                      </View>
+                    ) : (
+                      <Text style={{ color: theme.colors.textSecondary, fontWeight: '700' }}>
+                        Locked
+                      </Text>
+                    )}
+                  </View>
+                );
+              })}
+            </ScrollView>
+
+            {reorderDragState ? (
+              <Text style={{ color: theme.colors.textSecondary }}>
+                Release to place the stop in its new slot.
+              </Text>
+            ) : null}
           </View>
         ) : (
           <View
@@ -692,223 +1126,206 @@ export default function RoutePlanningScreen() {
               left: 16,
               right: 16,
               bottom: 16,
-              borderRadius: 28,
-              backgroundColor: 'rgba(255,255,255,0.96)',
+              borderRadius: 30,
+              backgroundColor: 'rgba(255,255,255,0.97)',
               borderWidth: 1,
               borderColor: theme.colors.border,
               paddingHorizontal: 18,
               paddingTop: 12,
               paddingBottom: 18,
-              gap: 12,
-              maxHeight: isSheetExpanded ? '64%' : undefined,
+              gap: 14,
+              maxHeight: '72%',
               shadowColor: '#000000',
               shadowOpacity: 0.14,
               shadowRadius: 20,
               shadowOffset: { width: 0, height: 10 },
               elevation: 12,
             }}
+            testID="route-planner-sheet"
           >
-            <View style={{ gap: 10 }}>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => setIsSheetExpanded((current) => !current)}
-                style={{ gap: 10 }}
-                testID={isSheetExpanded ? 'button-collapse-route-sheet' : 'button-expand-route-sheet'}
-              >
-                <View
-                  style={{
-                    alignSelf: 'center',
-                    width: 48,
-                    height: 5,
-                    borderRadius: 999,
-                    backgroundColor: theme.colors.border,
-                  }}
-                />
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                  }}
-                >
-                  <Text style={{ color: theme.colors.textPrimary, fontSize: 18, fontWeight: '800' }}>
-                    {routeDistance ?? sheetPrompt}
-                  </Text>
-                  <Text
-                    style={{ color: theme.colors.textSecondary, fontWeight: '700' }}
-                    testID="text-sheet-state"
-                  >
-                    {isSheetExpanded ? 'Expanded' : 'Collapsed'}
-                  </Text>
-                </View>
-                <Text
-                  style={{ color: theme.colors.textSecondary, fontWeight: '600' }}
-                  testID="text-guided-step"
-                >
-                  {sheetPrompt}
-                </Text>
-              </Pressable>
-            </View>
-
-            {isSheetExpanded ? (
-              <View style={{ gap: 12 }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}>
-                  {plannerStage === 'stops' ? (
-                    <AppButton
-                      label="+ Add Stop"
-                      onPress={handleAddStop}
-                      testID="button-add-stop"
-                      variant="secondary"
-                    />
-                  ) : (
-                    <View />
-                  )}
-                  <AppButton
-                    label="Swap"
-                    onPress={handleSwapStartAndDestination}
-                    testID="button-swap-start-destination"
-                    variant="ghost"
-                  />
-                </View>
-
-                <ScrollView
-                  showsVerticalScrollIndicator={false}
-                  style={{ maxHeight: 220 }}
-                  contentContainerStyle={{ gap: 8 }}
-                >
-                  {stops.map((stop) => {
-                    const waypointIndex = waypointStops.findIndex((item) => item.id === stop.id) + 1;
-                    const isWaypoint = stop.kind === 'waypoint';
-                    const rowTestId =
-                      stop.kind === 'waypoint'
-                        ? `route-stop-row-waypoint-${waypointIndex}`
-                        : `route-stop-row-${stop.kind}`;
-
-                    return (
-                      <View key={stop.id} style={{ gap: 6 }}>
-                        {draggedStopId && isWaypoint && draggedStopId !== stop.id ? (
-                          <Pressable
-                            accessibilityRole="button"
-                            onPress={() => handleDropWaypointBefore(stop.id)}
-                            style={{
-                              borderRadius: 12,
-                              borderWidth: 1,
-                              borderStyle: 'dashed',
-                              borderColor: theme.colors.accent,
-                              paddingVertical: 8,
-                              alignItems: 'center',
-                            }}
-                            testID={`drop-target-before-waypoint-${waypointIndex}`}
-                          >
-                            <Text style={{ color: theme.colors.accent, fontWeight: '700' }}>
-                              Drop here
-                            </Text>
-                          </Pressable>
-                        ) : null}
-
-                        <Pressable
-                          accessibilityRole="button"
-                          onPress={() => focusStop(stop.id)}
-                          style={{
-                            borderRadius: 18,
-                            padding: 14,
-                            backgroundColor:
-                              selectedStopId === stop.id
-                                ? theme.colors.accentMuted
-                                : theme.colors.surfaceElevated,
-                            borderWidth: 1,
-                            borderColor:
-                              draggedStopId === stop.id ? theme.colors.accent : theme.colors.border,
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            gap: 12,
-                          }}
-                          testID={rowTestId}
-                        >
-                          <View style={{ flex: 1, gap: 4 }}>
-                            <Text style={{ color: theme.colors.textSecondary, fontSize: 12, fontWeight: '700' }}>
-                              {stop.kind === 'start'
-                                ? 'START'
-                                : stop.kind === 'destination'
-                                  ? 'END'
-                                  : `STOP ${waypointIndex}`}
-                            </Text>
-                            <Text style={{ color: theme.colors.textPrimary, fontWeight: '800' }}>
-                              {stop.label}
-                            </Text>
-                            <Text style={{ color: theme.colors.textSecondary }} numberOfLines={1}>
-                              {typeof stop.lat === 'number' && typeof stop.lng === 'number'
-                                ? formatStopCoordinateLabel(stop.lat, stop.lng)
-                                : 'Search, use current location, or pick on map'}
-                            </Text>
-                          </View>
-
-                          {isWaypoint ? (
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                              <Pressable
-                                accessibilityRole="button"
-                                onPress={() => handleRemoveWaypoint(stop.id)}
-                                style={miniActionButtonStyle(theme.colors.border)}
-                                testID={`button-remove-waypoint-${waypointIndex}`}
-                              >
-                                <Text style={{ color: theme.colors.textPrimary, fontWeight: '800' }}>
-                                  ×
-                                </Text>
-                              </Pressable>
-                              <Pressable
-                                accessibilityRole="button"
-                                onLongPress={() => handleStartDraggingStop(stop.id)}
-                                style={miniActionButtonStyle(theme.colors.border)}
-                                testID={`drag-handle-waypoint-${waypointIndex}`}
-                              >
-                                <Text style={{ color: theme.colors.textPrimary, fontWeight: '800' }}>
-                                  ≡
-                                </Text>
-                              </Pressable>
-                            </View>
-                          ) : null}
-                        </Pressable>
-                      </View>
-                    );
-                  })}
-                </ScrollView>
-              </View>
-            ) : null}
-
-            {draggedStopId ? (
+            <Pressable
+              accessibilityRole="button"
+              onPress={minimizeSheet}
+              style={{ gap: 10 }}
+              testID="button-minimize-route-sheet"
+            >
               <View
                 style={{
-                  borderRadius: 16,
-                  padding: 12,
-                  backgroundColor: theme.colors.accentMuted,
-                  borderWidth: 1,
-                  borderColor: theme.colors.accent,
-                  gap: 8,
+                  alignSelf: 'center',
+                  width: 48,
+                  height: 5,
+                  borderRadius: 999,
+                  backgroundColor: theme.colors.border,
+                }}
+              />
+            </Pressable>
+
+            <View style={{ gap: 4 }}>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
                 }}
               >
-                <Text style={{ color: theme.colors.textPrimary, fontWeight: '700' }}>
-                  Drag mode active
+                <Text style={{ color: theme.colors.textPrimary, fontSize: 20, fontWeight: '800' }}>
+                  {routeDistance ?? 'Route Builder'}
                 </Text>
-                <Text style={{ color: theme.colors.textSecondary }}>
-                  Tap a drop target or send this stop to the final waypoint slot.
+                <Text
+                  style={{ color: theme.colors.textSecondary, fontWeight: '700' }}
+                  testID="text-sheet-state"
+                >
+                  Main
                 </Text>
-                <View style={{ flexDirection: 'row', gap: 10 }}>
-                  <AppButton
-                    label="Move To End"
-                    onPress={handleDropWaypointToEnd}
-                    testID="button-drop-waypoint-to-end"
-                    variant="secondary"
-                  />
-                  <AppButton
-                    label="Cancel"
-                    onPress={handleCancelDraggingStop}
-                    testID="button-cancel-drag"
-                    variant="ghost"
-                  />
-                </View>
               </View>
-            ) : null}
+              <Text
+                style={{ color: theme.colors.textSecondary, fontWeight: '600' }}
+                testID="text-guided-step"
+              >
+                {sheetPrompt}
+              </Text>
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              {routeStats.map((stat) => (
+                <View
+                  key={stat.key}
+                  style={{
+                    flex: 1,
+                    borderRadius: 18,
+                    padding: 12,
+                    backgroundColor: theme.colors.surfaceElevated,
+                    gap: 4,
+                  }}
+                >
+                  <Text style={{ color: theme.colors.textSecondary, fontSize: 11, fontWeight: '700' }}>
+                    {stat.label}
+                  </Text>
+                  <Text
+                    style={{ color: theme.colors.textPrimary, fontSize: 17, fontWeight: '800' }}
+                    testID={
+                      stat.key === 'distance'
+                        ? 'text-route-distance'
+                        : stat.key === 'duration'
+                          ? 'text-route-duration'
+                          : 'text-route-stop-count'
+                    }
+                  >
+                    {stat.value}
+                  </Text>
+                </View>
+              ))}
+            </View>
+
+            <Text style={{ color: theme.colors.textSecondary }} testID="text-route-save-state">
+              {routeSaveStateLabel}
+            </Text>
+
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}>
+              {plannerStage === 'stops' ? (
+                <AppButton
+                  label="+ Add Stop"
+                  onPress={handleAddStop}
+                  testID="button-add-stop"
+                  variant="secondary"
+                />
+              ) : (
+                <View />
+              )}
+              <AppButton
+                label="Swap"
+                onPress={handleSwapStartAndDestination}
+                testID="button-swap-start-destination"
+                variant="ghost"
+              />
+            </View>
+
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              style={{ maxHeight: 210 }}
+              contentContainerStyle={{ gap: 8 }}
+            >
+              {stops.map((stop) => {
+                const waypointIndex = waypointStops.findIndex((item) => item.id === stop.id) + 1;
+                const isWaypoint = stop.kind === 'waypoint';
+                const rowTestId =
+                  stop.kind === 'waypoint'
+                    ? `route-stop-row-waypoint-${waypointIndex}`
+                    : `route-stop-row-${stop.kind}`;
+
+                return (
+                  <Pressable
+                    key={stop.id}
+                    accessibilityRole="button"
+                    onPress={() => focusStop(stop.id)}
+                    style={{
+                      borderRadius: 18,
+                      padding: 14,
+                      backgroundColor:
+                        selectedStopId === stop.id
+                          ? theme.colors.accentMuted
+                          : theme.colors.surfaceElevated,
+                      borderWidth: 1,
+                      borderColor: theme.colors.border,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 12,
+                    }}
+                    testID={rowTestId}
+                  >
+                    <View style={{ flex: 1, gap: 4 }}>
+                      <Text
+                        style={{
+                          color: theme.colors.textSecondary,
+                          fontSize: 12,
+                          fontWeight: '700',
+                        }}
+                      >
+                        {stop.kind === 'start'
+                          ? 'START'
+                          : stop.kind === 'destination'
+                            ? 'DESTINATION'
+                            : `STOP ${waypointIndex}`}
+                      </Text>
+                      <Text style={{ color: theme.colors.textPrimary, fontWeight: '800' }}>
+                        {stop.label}
+                      </Text>
+                      <Text style={{ color: theme.colors.textSecondary }} numberOfLines={1}>
+                        {typeof stop.lat === 'number' && typeof stop.lng === 'number'
+                          ? formatStopCoordinateLabel(stop.lat, stop.lng)
+                          : 'Search, use current location, or pick on map'}
+                      </Text>
+                    </View>
+
+                    {isWaypoint ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                        <Pressable
+                          accessibilityRole="button"
+                          onPress={() => handleRemoveWaypoint(stop.id)}
+                          style={miniActionButtonStyle(theme.colors.border)}
+                          testID={`button-remove-waypoint-${waypointIndex}`}
+                        >
+                          <Text style={{ color: theme.colors.textPrimary, fontWeight: '800' }}>
+                            ×
+                          </Text>
+                        </Pressable>
+                        <Pressable
+                          accessibilityRole="button"
+                          onPress={() => handleEnterReorderMode(stop.id)}
+                          style={miniActionButtonStyle(theme.colors.border)}
+                          testID={`drag-handle-waypoint-${waypointIndex}`}
+                        >
+                          <Text style={{ color: theme.colors.textPrimary, fontWeight: '800' }}>
+                            ≡
+                          </Text>
+                        </Pressable>
+                      </View>
+                    ) : null}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
 
             <View style={{ gap: 8 }}>
               <Text
@@ -981,7 +1398,8 @@ export default function RoutePlanningScreen() {
 
             {shouldShowNoMatches ? (
               <Text style={{ color: theme.colors.textSecondary }}>
-                No search matches yet. You can still use current location, paste coordinates, or pick on the map.
+                No search matches yet. You can still use current location, paste coordinates, or
+                pick on the map.
               </Text>
             ) : null}
 
@@ -998,46 +1416,21 @@ export default function RoutePlanningScreen() {
                 testID="button-enter-pick-mode"
                 variant="secondary"
               />
-              {plannerStage === 'stops' && !isSheetExpanded ? (
+              {plannerStage === 'stops' ? (
                 <AppButton
-                  label="+ Add Stop"
-                  onPress={handleAddStop}
-                  testID="button-add-stop-collapsed"
+                  label="Reorder"
+                  onPress={() => handleEnterReorderMode()}
+                  testID="button-enter-reorder-mode"
                   variant="ghost"
                 />
               ) : null}
             </View>
 
             {error ? <Text style={{ color: theme.colors.danger }}>{error}</Text> : null}
-            {statusMessage ? <Text style={{ color: theme.colors.success }}>{statusMessage}</Text> : null}
-            {isResolving || isPreviewing || isSaving || isStarting ? <LoadingSpinner /> : null}
-
-            {routePreview ? (
-              <View
-                style={{
-                  borderRadius: 18,
-                  padding: 16,
-                  backgroundColor: theme.colors.surfaceElevated,
-                  gap: 8,
-                }}
-              >
-                <Text style={{ color: theme.colors.textSecondary, fontWeight: '700' }}>
-                  Route ready
-                </Text>
-                <Text
-                  style={{ color: theme.colors.textPrimary, fontSize: 18, fontWeight: '800' }}
-                  testID="text-route-distance"
-                >
-                  {routeDistance}
-                </Text>
-                <Text style={{ color: theme.colors.textSecondary }} testID="text-route-duration">
-                  {routeDuration}
-                </Text>
-                <Text style={{ color: theme.colors.textSecondary }}>
-                  {countWaypointStops(stops)} stops between start and destination
-                </Text>
-              </View>
+            {statusMessage ? (
+              <Text style={{ color: theme.colors.success }}>{statusMessage}</Text>
             ) : null}
+            {isResolving || isPreviewing || isSaving || isStarting ? <LoadingSpinner /> : null}
 
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <AppButton
@@ -1059,6 +1452,61 @@ export default function RoutePlanningScreen() {
       </View>
     </SafeAreaView>
   );
+}
+
+function createInitialPlannerStops() {
+  return [
+    createRouteStop('start', { id: 'start', label: 'Start', source: 'current_location' }),
+    createRouteStop('destination', {
+      id: 'destination',
+      label: 'Destination',
+      source: 'coordinates',
+    }),
+  ];
+}
+
+function normalizePlannerStops(stops?: RouteStopDraft[]) {
+  if (!stops?.length) {
+    return createInitialPlannerStops();
+  }
+
+  const start =
+    stops.find((stop) => stop.kind === 'start') ??
+    createRouteStop('start', { id: 'start', label: 'Start', source: 'current_location' });
+  const destination =
+    stops.find((stop) => stop.kind === 'destination') ??
+    createRouteStop('destination', {
+      id: 'destination',
+      label: 'Destination',
+      source: 'coordinates',
+    });
+
+  return [
+    { ...start, id: start.id || 'start' },
+    ...stops.filter((stop) => stop.kind === 'waypoint').map((stop) => ({ ...stop })),
+    { ...destination, id: destination.id || 'destination' },
+  ];
+}
+
+function resolveSelectedStopId(stops: RouteStopDraft[], selectedStopId?: string) {
+  if (selectedStopId && stops.some((stop) => stop.id === selectedStopId)) {
+    return selectedStopId;
+  }
+
+  return getDefaultSelectedStopId(stops);
+}
+
+function getDefaultSelectedStopId(stops: RouteStopDraft[]) {
+  const plannerStage = getRoutePlannerStage(stops);
+  if (plannerStage === 'start') {
+    return 'start';
+  }
+
+  if (plannerStage === 'destination') {
+    return 'destination';
+  }
+
+  return stops.find((stop) => stop.kind === 'waypoint')?.id ?? 'destination';
 }
 
 function getStopTitle(stop: RouteStopDraft) {

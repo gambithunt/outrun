@@ -1,215 +1,333 @@
 # Route Planner UX Refresh
 
-## Summary
+## Goal
 
-The ClubRun route planner should feel like a mobile map tool first, not a form with a map inside it. This refresh replaces the previous top-card-driven planner with a Google Maps-inspired flow built around:
+The route planner should behave like a guided mobile map flow instead of a form living above a map. The map must be the primary surface from the first frame, and the bottom sheet should guide the user through:
 
-- a full-screen map surface
-- minimal top chrome
-- a permanent bottom-right current-position button
-- a hybrid bottom sheet that guides the user through `Start` -> `End` -> `Stops`, while still allowing full route-list editing when expanded
+1. choose a start
+2. choose a destination
+3. add, edit, remove, and reorder stops
+4. save the route
+5. offer to start then run or save for later
 
-This redesign is a planner-shell refactor around the existing stop model and routing engine. Route save and run activation stay separate.
+This document updates the implementation plan for the existing route planner in [app/create/route.tsx](/Users/delon/Documents/code/outrun/app/create/route.tsx).
+
+## What We Learned From The Current Screen
+
+The current planner already has useful building blocks:
+
+- full-screen map with floating back button and top draft chip
+- bottom sheet with collapsed and expanded states
+- guided stage detection via `start -> destination -> stops`
+- support for search, coordinate paste, `Use Current`, and `Pick On Map`
+- automatic OSRM route preview after enough stops exist
+- stop add/remove/reorder helpers
+- separate `Save Route` and `Start Run` actions
+
+The main gaps versus the target experience are:
+
+- entry does not reliably feel centered on the user from the first interaction
+- `Use Current` does not transition into a focused map confirmation state
+- the sheet can still feel like a generic editor instead of a locked guided flow
+- map-pick mode still keeps a confirmation card on screen instead of fully giving the map to the user
+- stop management is present, but not yet shaped like the ordered route list in the reference
+- the route preview is not treated as a persistent planning artifact across all planner states
 
 ## Product Direction
 
-- The map is always the primary surface.
-- The top of the screen should stay minimal:
-  - floating back button
-  - small route status chip only when useful
-  - no persistent top `Start / Destination` card
-- Route editing belongs inside one bottom sheet.
-- The default interaction model is guided:
-  - choose `Start`
-  - choose `End`
-  - add or reorder `Stops`
-- The sheet can expand at any time into a full ordered route editor.
-- The permanent current-position control is required and takes priority over extra map chrome.
-- `Fit route` is secondary and only appears when a valid route preview exists.
-- The reference is Google Maps interaction quality and visual hierarchy, not a literal clone.
+- The map is always the hero.
+- On entry, the planner should immediately orient around the user's current location.
+- The sheet should behave like a guided assistant, not a generic form.
+- Until a valid start is set, the planner is in `Start` mode.
+- Once a valid start is set, the planner must immediately move to `Destination` mode.
+- Even if the user expands the sheet after setting the start, the primary prompt must still ask for a destination until one exists.
+- After both start and destination are valid, the planner unlocks richer stop editing.
+- Every stop can be resolved via:
+  - search result
+  - coordinate paste
+  - current location
+  - map picking
+- The route line should remain visible whenever a valid routed preview can be computed.
+- Saving a route remains separate from starting the run.
+
+## Target UX Flow
+
+### 1. Enter planner
+
+- The screen opens with the map already centered on the user's live location.
+- If live location is not ready yet:
+  - keep the map visible
+  - show the user-location affordance in a loading state
+  - center as soon as the first good device location arrives
+- The bottom sheet opens in a compact guided state.
+- The active task is `Choose start`.
+
+### 2. Choose start
+
+The user can set the start in one of four ways:
+
+- search for an address/place
+- paste coordinates
+- tap `Use Current`
+- tap `Pick On Map`
+
+Rules:
+
+- choosing `Use Current` should immediately apply the user's current position as the start
+- after `Use Current`, the sheet should collapse away so the user can clearly see the chosen start point on the map
+- after the start is applied, the planner should automatically advance to `Choose destination`
+- when the sheet is brought back up after this transition, the active prompt must still be destination-first
+
+### 3. Choose destination
+
+Once the start exists, destination becomes the locked next step.
+
+Rules:
+
+- expanded mode must still emphasize destination selection, not general stop editing
+- the user may search, paste coordinates, or pick on map for destination
+- a route preview should appear as soon as both start and destination are valid
+- once destination is confirmed, the planner transitions into `Stops` mode
+
+### 4. Pick on map flow
+
+`Pick On Map` needs to become a true map-first mode.
+
+Rules:
+
+- entering map-pick mode should dismiss the sheet instead of leaving a large card over the map
+- the user should be able to freely pan and inspect the map
+- the active stop context must still be obvious through minimal floating guidance only
+- the user taps the map to choose a point
+- after tapping, the planner asks for confirmation before applying the point
+- cancel returns to the previous editing state without changing the stop
+
+The goal is to avoid the feeling that the map is constrained by the editor while picking.
+
+### 5. Stops mode
+
+After start and destination are valid, the planner unlocks the full route editor.
+
+The expanded sheet should show an ordered list inspired by the second reference:
+
+- start row
+- zero or more stop rows
+- destination row
+- add-stop row or button
+
+Rules:
+
+- start and destination are always present
+- start and destination are not removable
+- waypoints are removable
+- waypoints are reorderable
+- selecting any row makes that stop the active edit target
+- editing a selected row can happen through search, coordinates, current location, or map pick
+- route preview updates automatically after every structural or location change
+
+### 6. Route visibility
+
+The route should feel persistent, not temporary.
+
+Rules:
+
+- when at least two valid routed stops exist, the routed line should stay visible on the map
+- the route line must remain visible when:
+  - the sheet is collapsed
+  - the sheet is expanded
+  - the user is editing a stop
+  - the user is reviewing stop order
+- when a route cannot yet be computed, chosen stop markers should still remain visible
 
 ## Screen Structure
 
 ### Map layer
 
-- Full-screen map under the safe area.
-- Bright, legible day-mode road map styling.
-- Route line must stay highly visible with a white casing and colored inner line.
-- Stop markers:
-  - `Start`: green / `S`
-  - `End`: red / `E`
+- full-screen map under the safe area
+- visible user location dot
+- route line with strong contrast
+- stop markers:
+  - `Start`: green `S`
+  - `Destination`: red `E`
   - `Stops`: numbered markers
-- Selected stop marker gets stronger contrast.
+- selected stop marker should be visually emphasized
 
 ### Top chrome
 
-- Floating circular back button in the top-left.
-- Optional compact route draft chip near the top center/right.
-- No stacked cards, form fields, or stop editors at the top.
+- floating back button
+- compact route-draft chip
+- no large top form card
 
-### Floating map controls
+### Floating controls
 
-- Bottom-right current-position button is always visible.
-- `Fit route` appears above it only after a route preview exists.
-- No other persistent map controls unless they serve a clear route-planning purpose.
+- permanent current-location recenter button
+- optional fit-route button only when a route exists
 
 ### Bottom sheet
 
-- One sheet owns route structure, stop editing, search, map-pick mode, route summary, and route actions.
-- The sheet must avoid duplicated controls and overlapping floating surfaces.
-- The sheet has two main states:
-  - `Collapsed`: guided prompt plus active stop editing
-  - `Expanded`: ordered route list plus active stop editing
+The sheet should have three practical states:
 
-## Interaction Model
+- `Guided`
+  - compact
+  - focused on the current required step
+- `Expanded`
+  - full ordered route editor
+  - still honors the current required step
+- `Hidden for map picking`
+  - the map owns the screen
+  - only minimal instruction or confirmation chrome is visible
 
-### Guided flow
+## State Model
 
-- Empty planner opens focused on `Start`.
-- Once `Start` is set, the planner automatically guides the user to `End`.
-- Once `End` is set, the planner shifts to `Stops` mode:
-  - add intermediate stops
-  - reorder stops
-  - remove stops
-  - save route
+The current planner already uses a simple stage model from [lib/routePlanner.ts](/Users/delon/Documents/code/outrun/lib/routePlanner.ts). The next implementation should keep that idea, but split it more clearly into UX states.
 
-### Active stop editing
+### Planner stages
 
-The currently selected stop is edited through one shared input area in the bottom sheet.
+- `start_required`
+- `destination_required`
+- `stops_ready`
 
-Supported input methods for every stop:
+### Sheet states
 
-- place/address search
-- coordinate paste in `lat,lng` format
-- `Use Current`
-- `Pick On Map`
+- `guided`
+- `expanded`
+- `hidden_for_map_pick`
 
-These are parallel ways to set the same stop; they should not feel like separate flows.
+### Selection states
 
-### Expanded ordered route list
+- active stop id
+- pending map-picked point
+- route saved / dirty
 
-When expanded, the sheet shows the full route order:
+### Important transitions
 
-- `Start`
-- zero or more `Stops`
-- `End`
+- planner opens -> center on current user location -> `start_required`
+- `Use Current` for start -> apply start -> hide sheet briefly -> advance to `destination_required`
+- start chosen through search/coordinates/pick -> advance to `destination_required`
+- destination chosen -> compute route -> enter `stops_ready`
+- select waypoint -> keep route visible while editing that waypoint
+- pick on map -> hide sheet -> wait for tap -> ask for confirmation -> apply or cancel
+- any stop edit after save -> mark route dirty and disable `Start Run` again until re-saved
 
-Rules:
+## Interaction Details To Build
 
-- `Start` and `End` are first-class stops and always visible.
-- `Start` and `End` are not removable.
-- `Stops` are removable.
-- `Stops` are reorderable using drag handles on the right.
-- `Start` and `End` may be swapped through an explicit swap action.
-- Reordering and edits should automatically refresh the preview route.
+### Entry centering
 
-### Map pick mode
+- bootstrap location immediately on screen mount
+- if current location already exists in store, center without delay
+- ignore the old fallback-first feel when a real user location is available
+- recenter button remains available at all times
 
-- Entering `Pick On Map` switches the planner into a focused map-picking state.
-- The sheet stays minimal and keeps the active stop context visible.
-- The map shows a clear crosshair-style pick affordance.
-- The user can:
-  - pan the map to the desired location
-  - tap the map to refine the pin if supported
-  - confirm the chosen point
-  - cancel without applying changes
+### `Use Current` behavior
 
-### Route actions
+- should feel like a shortcut, not just another input source
+- after applying, visually show the chosen point on the map
+- avoid leaving the user wondering whether anything changed
 
-- `Save Route` writes the route draft only.
-- `Start Run` remains disabled until a valid route has been saved.
-- Route distance and duration appear once a valid preview exists.
-- Route preview should update automatically after:
-  - setting `Start`
-  - setting `End`
-  - adding a stop
-  - removing a stop
-  - reordering stops
-  - changing a stop location
+### Search and coordinates
 
-## Visual Design Guidance
+- search input should support:
+  - place text
+  - street/address text
+  - raw `lat, lng`
+- coordinate input should continue auto-applying once parsed
+- place results should remain scoped to the active stop
 
-- Prioritize strong hierarchy and uncluttered spacing.
-- Use restrained floating surfaces with rounded corners and subtle elevation.
-- Prefer one obvious primary action in each state.
-- Avoid exposing raw coordinate fields as the default visual model.
-- Raw coordinates are acceptable as fallback data labels, not as the primary planner UI.
-- The planner should feel premium on mobile:
-  - large tap targets
-  - consistent spacing
-  - readable labels
-  - clear selection states
+### Map pick behavior
 
-## Implementation Notes
+- hide the full sheet
+- allow free map navigation
+- show a minimal instruction banner or chip
+- allow tap-to-pick
+- show a clear confirmation step before committing
 
-- Reuse the current `RouteStopDraft` model and route preview pipeline.
-- Reuse the current search provider abstraction and coordinate parsing helpers.
-- Keep OSRM as the route preview engine.
-- Keep route save and route start as separate backend operations.
-- The main implementation work is:
-  - screen hierarchy
-  - guided state transitions
-  - sheet behavior
-  - map control placement
-  - clearer stop editing and reordering
+### Expanded route editor
 
-## Required UI States
+- mirror the mental model from the second reference:
+  - ordered rows
+  - clear row identity
+  - drag handles
+  - remove actions for waypoints
+- selecting a row should focus map and editor state on that stop
+- add-stop action should insert before destination
 
-The planner must explicitly support these states:
+## Implementation Plan
 
-- empty planner
-- selecting `Start`
-- selecting `End`
-- `Stops` mode after `Start` and `End` are valid
-- map-pick mode
-- expanded reorder mode
-- route preview ready
-- route saved
+### Phase 1. Tighten state and guided flow
 
-Required state transitions:
+- refine planner state names and transitions in [app/create/route.tsx](/Users/delon/Documents/code/outrun/app/create/route.tsx)
+- make entry centering deterministic around current device location
+- make `Use Current` for start advance directly into destination flow
+- ensure expanded mode still reflects the required next step
 
-- `Start set` -> prompt `End`
-- `End set` -> show route preview and unlock `Stops` flow
-- `Route preview ready` -> allow add/remove/reorder stops
-- `Route saved` -> enable `Start Run`
+### Phase 2. Rework sheet behavior
 
-## Testing
+- separate guided, expanded, and hidden-for-map-pick sheet states
+- reduce sheet content while choosing start and destination
+- keep expanded route-list editing for `stops_ready`
+
+### Phase 3. Rework map-pick mode
+
+- remove the large bottom card while picking on map
+- replace it with lighter floating instruction and confirmation UI
+- preserve active-stop context through the pick lifecycle
+
+### Phase 4. Strengthen ordered stop editing
+
+- refine the expanded stop list to match the intended route-order mental model
+- make add/edit/remove/reorder actions clearer
+- keep selected stop and map focus aligned
+
+### Phase 5. Persist route feedback
+
+- ensure route preview remains visible through all non-empty route states
+- confirm dirty/saved transitions behave correctly after edits
+- verify `Start Run` is re-disabled after post-save edits
+
+## Testing Plan
 
 ### Screen tests
 
-- minimal top chrome renders with no top `Start / End` card
-- full-screen map renders with permanent current-position control
-- guided flow advances from `Start` to `End` to `Stops`
-- expanded sheet shows ordered route rows
-- `Start` and `End` can be swapped
-- stops can be reordered and removed
-- map-pick mode supports confirm and cancel
-- `Save Route` does not activate the run
-- `Start Run` stays disabled until the route is saved
+- planner centers on user location when entering the screen
+- guided sheet opens asking for start
+- `Use Current` applies the start and advances to destination
+- after start is set, reopening or expanding the sheet still asks for destination until one exists
+- destination can be chosen by search, coordinates, and map pick
+- entering map-pick mode hides the main sheet
+- tapping the map creates a pending selection that requires confirmation
+- after destination is set, expanded mode shows the ordered route list
+- add/edit/remove/reorder stop interactions refresh the route preview
+- editing after save marks the route dirty and disables `Start Run`
 
 ### Pure logic tests
 
-- guided stage derivation from stop completeness
-- coordinate parsing
-- waypoint reorder helpers
-- swap logic
-- stop count helpers
+- planner stage derivation
+- stop insertion before destination
+- reorder helpers
+- swap behavior
+- route dirty/reset behavior after save
 
 ### Manual acceptance
 
-- map remains readable with sheet collapsed
-- current-position button is easy to reach at bottom-right
-- route structure is understandable without training
-- expanded list feels reliable for editing order
-- route line remains visible over the chosen map style
-- native iOS/Android route-planning flow feels closer to Google Maps than to a form UI
+- the first thing the user sees is their area on the map
+- setting start with `Use Current` feels immediate and obvious
+- destination is the clear next task after start
+- map-pick mode feels uncluttered and usable
+- the expanded editor feels close to the route ordering model in the reference
+- the route line remains visible whenever a routed preview exists
 
-## Assumptions And Defaults
+## Open Product Questions
 
-- This document supersedes the earlier top-card planner spec rather than extending it.
-- The planner uses a hybrid interaction model:
-  - guided by default
-  - expandable for full ordered editing
-- Native mobile is the primary target; web remains a degraded fallback.
-- `Fit route` is secondary to the permanent current-position control.
-- Search provider quality may improve later, but the planner should already feel structurally correct now.
+These do not block planning, but they should be confirmed before implementation starts:
+
+1. After `Use Current` sets the start, should the sheet fully disappear until the user taps or drags it back up, or should it auto-collapse to a very small handle plus destination prompt?
+2. In map-pick mode, do you want the confirmation UI to appear only after the user taps a location, or should there always be a small floating `Cancel` affordance visible while picking?
+3. When only the start is set and destination is still missing, is showing only the start marker enough, or do you want a provisional straight line or ghost route treatment before the real route preview exists?
+
+## Assumptions For Now
+
+- Native mobile remains the primary target.
+- The existing stop model, route preview service, and search helpers stay in place.
+- OSRM remains the preview routing engine.
+- Saving a route and starting a run remain separate actions.
+- The planner should be optimized for clarity first, then visual polish.

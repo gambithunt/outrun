@@ -4,6 +4,7 @@ import {
   moveWaypointStop,
   parseCoordinateInput,
   reorderWaypointStopBefore,
+  reorderWaypointStopToIndex,
   reorderWaypointStopToEnd,
   swapStartAndDestinationStops,
 } from '@/lib/routePlanner';
@@ -143,6 +144,32 @@ describe('routePlanner helpers', () => {
     expect(reorderWaypointStopToEnd(stops, 'waypoint-1').map((stop) => stop.id)).toEqual([
       'start',
       'waypoint-2',
+      'waypoint-1',
+      'destination',
+    ]);
+  });
+
+  it('reorders a waypoint to a waypoint index between start and destination', () => {
+    const stops = [
+      createStop('start', 'start', -26.2041, 28.0473),
+      createStop('waypoint-1', 'waypoint', -26.1, 28.1),
+      createStop('waypoint-2', 'waypoint', -26.0, 28.2),
+      createStop('waypoint-3', 'waypoint', -25.9, 28.3),
+      createStop('destination', 'destination', -25.7479, 28.2293),
+    ];
+
+    expect(reorderWaypointStopToIndex(stops, 'waypoint-3', 0).map((stop) => stop.id)).toEqual([
+      'start',
+      'waypoint-3',
+      'waypoint-1',
+      'waypoint-2',
+      'destination',
+    ]);
+
+    expect(reorderWaypointStopToIndex(stops, 'waypoint-1', 2).map((stop) => stop.id)).toEqual([
+      'start',
+      'waypoint-2',
+      'waypoint-3',
       'waypoint-1',
       'destination',
     ]);

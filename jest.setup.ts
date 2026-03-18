@@ -233,7 +233,26 @@ jest.mock('@maplibre/maplibre-react-native', () => {
         },
         children
       ),
-    Camera: React.forwardRef(() => React.createElement(Text, null, 'mock-map-camera')),
+    Camera: React.forwardRef(
+      (
+        {
+          defaultSettings,
+        }: {
+          defaultSettings?: { centerCoordinate?: [number, number] };
+        },
+        _ref: unknown
+      ) =>
+        React.createElement(
+          React.Fragment,
+          null,
+          React.createElement(Text, null, 'mock-map-camera'),
+          React.createElement(
+            Text,
+            { testID: 'mock-map-camera-center' },
+            defaultSettings?.centerCoordinate?.join(',') ?? 'no-center'
+          )
+        )
+    ),
     ShapeSource: ({ children }: { children?: React.ReactNode }) =>
       React.createElement(MockComponent, { label: 'mock-shape-source' }, children),
     LineLayer: () => React.createElement(Text, null, 'mock-line-layer'),

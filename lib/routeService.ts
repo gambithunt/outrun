@@ -86,7 +86,7 @@ export async function fetchRoadRouteFromStops(
 export function createRouteClient(database: Database): RouteClient {
   return {
     writeRoute: async (runId, route) => {
-      await set(child(ref(database), `runs/${runId}/route`), route);
+      await set(child(ref(database), `runs/${runId}/route`), sanitizeRouteData(route));
     },
     writeStatus: async (runId, status) => {
       await set(child(ref(database), `runs/${runId}/status`), status);
@@ -95,6 +95,30 @@ export function createRouteClient(database: Database): RouteClient {
       await set(child(ref(database), `runs/${runId}/startedAt`), startedAt);
     },
   };
+}
+
+export function sanitizeRouteData(route: RouteData): RouteData {
+  return removeUndefinedDeep(route) as RouteData;
+}
+
+function removeUndefinedDeep<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((item) => removeUndefinedDeep(item)) as T;
+  }
+
+  if (value && typeof value === 'object') {
+    const cleanedEntries = Object.entries(value).flatMap(([key, entryValue]) => {
+      if (typeof entryValue === 'undefined') {
+        return [];
+      }
+
+      return [[key, removeUndefinedDeep(entryValue)]];
+    });
+
+    return Object.fromEntries(cleanedEntries) as T;
+  }
+
+  return value;
 }
 
 export async function saveRouteToRun(

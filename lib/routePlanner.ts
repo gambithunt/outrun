@@ -137,6 +137,33 @@ export function reorderWaypointStopToEnd(stops: RouteStopDraft[], draggedStopId:
   return next;
 }
 
+export function reorderWaypointStopToIndex(
+  stops: RouteStopDraft[],
+  draggedStopId: string,
+  targetWaypointIndex: number
+) {
+  const waypointStops = stops.filter((stop) => stop.kind === 'waypoint');
+  const draggedWaypointIndex = waypointStops.findIndex((stop) => stop.id === draggedStopId);
+
+  if (draggedWaypointIndex < 0 || !Number.isInteger(targetWaypointIndex)) {
+    return stops;
+  }
+
+  const clampedTargetIndex = Math.max(0, Math.min(targetWaypointIndex, waypointStops.length - 1));
+  if (clampedTargetIndex === draggedWaypointIndex) {
+    return stops;
+  }
+
+  const nextWaypointStops = [...waypointStops];
+  const [draggedStop] = nextWaypointStops.splice(draggedWaypointIndex, 1);
+  nextWaypointStops.splice(clampedTargetIndex, 0, draggedStop);
+
+  const start = stops.find((stop) => stop.kind === 'start');
+  const destination = stops.find((stop) => stop.kind === 'destination');
+
+  return [start, ...nextWaypointStops, destination].filter(Boolean) as RouteStopDraft[];
+}
+
 export function swapStartAndDestinationStops(stops: RouteStopDraft[]) {
   const start = stops.find((stop) => stop.kind === 'start');
   const destination = stops.find((stop) => stop.kind === 'destination');

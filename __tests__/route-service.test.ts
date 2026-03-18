@@ -2,6 +2,7 @@ import {
   buildOsrmRouteUrl,
   fetchRoadRoute,
   saveRouteDraftToRun,
+  sanitizeRouteData,
   startRunWithSavedRoute,
   validateWaypoints,
 } from '@/lib/routeService';
@@ -80,6 +81,48 @@ describe('routeService', () => {
     );
     expect(client.writeStartedAt).not.toHaveBeenCalled();
     expect(client.writeStatus).not.toHaveBeenCalled();
+  });
+
+  it('removes undefined properties before persisting route data', async () => {
+    const cleaned = sanitizeRouteData({
+      points: [
+        [-26.2041, 28.0473],
+        [-25.7479, 28.2293],
+      ],
+      distanceMetres: 54000,
+      durationSeconds: undefined,
+      source: 'drawn',
+      stops: [
+        {
+          id: 'start',
+          kind: 'start',
+          label: 'Your location',
+          lat: -26.2041,
+          lng: 28.0473,
+          source: 'current_location',
+          placeId: undefined,
+        },
+      ],
+    });
+
+    expect(cleaned).toEqual({
+      points: [
+        [-26.2041, 28.0473],
+        [-25.7479, 28.2293],
+      ],
+      distanceMetres: 54000,
+      source: 'drawn',
+      stops: [
+        {
+          id: 'start',
+          kind: 'start',
+          label: 'Your location',
+          lat: -26.2041,
+          lng: 28.0473,
+          source: 'current_location',
+        },
+      ],
+    });
   });
 
   it('starts a run from a saved route', async () => {
