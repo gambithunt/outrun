@@ -1,4 +1,12 @@
-import { connectAuthEmulator, getAuth, signInAnonymously, type Auth } from 'firebase/auth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
+import {
+  connectAuthEmulator,
+  getAuth,
+  initializeAuth,
+  signInAnonymously,
+  type Auth,
+} from 'firebase/auth';
 
 import { getFirebaseApp, hasFirebaseConfig } from '@/lib/firebase';
 
@@ -13,15 +21,44 @@ type SignInResult = {
   user: AuthUser | null;
 };
 type SignInFn = (auth: AuthLike) => Promise<SignInResult>;
+type ReactNativeAuthModule = {
+  getReactNativePersistence?: (storage: typeof AsyncStorage) => unknown;
+};
 
 let didConnectAuthEmulator = false;
 let pendingAuthentication: Promise<AuthUser | null> | null = null;
+let cachedAuth: Auth | null = null;
 const runtimeEnv: EnvMap =
   (globalThis as { process?: { env?: EnvMap } }).process?.env ?? {};
 
+function getReactNativePersistenceCompat() {
+  const authModule = require('@firebase/auth') as ReactNativeAuthModule;
+  return authModule.getReactNativePersistence?.(AsyncStorage);
+}
+
 export function getFirebaseAuth(env: EnvMap = runtimeEnv) {
   const app = getFirebaseApp(env);
-  const auth = getAuth(app);
+  if (!cachedAuth) {
+    if (Platform.OS === 'web') {
+      cachedAuth = getAuth(app);
+    } else {
+      try {
+        const persistence = getReactNativePersistenceCompat();
+        cachedAuth = initializeAuth(
+          app,
+          persistence
+            ? {
+                persistence: persistence as never,
+              }
+            : undefined
+        );
+      } catch {
+        cachedAuth = getAuth(app);
+      }
+    }
+  }
+
+  const auth = cachedAuth;
 
   if (env.EXPO_PUBLIC_USE_FIREBASE_EMULATOR === 'true' && !didConnectAuthEmulator) {
     const host = env.EXPO_PUBLIC_FIREBASE_AUTH_EMULATOR_HOST ?? '127.0.0.1';

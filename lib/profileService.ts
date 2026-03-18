@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { child, ref, runTransaction, type Database } from 'firebase/database';
+import { child, get, ref, runTransaction, type Database } from 'firebase/database';
 
 import { requireAuthenticatedUserIdWithFirebase } from '@/lib/auth';
 import { getFirebaseDatabase } from '@/lib/firebase';
@@ -25,11 +25,13 @@ type DriverProfileInput = {
 
 type JoinClaimResult = {
   joined: boolean;
-  reason?: 'full' | 'ended' | 'missing';
+  reason?: 'full' | 'ended' | 'missing' | 'exists';
 };
 
 type DriverClient = {
+  readRun: (runId: string) => Promise<Run | null>;
   claimDriverSlot: (runId: string, driverId: string, driver: DriverRecord) => Promise<JoinClaimResult>;
+  inspectRunForJoin?: (runId: string) => Promise<'exists' | 'missing' | 'ended' | 'forbidden'>;
 };
 
 type StorageLike = {
@@ -140,50 +142,64 @@ export async function saveDriverProfileDraft(
 
 export function createDriverClient(database: Database): DriverClient {
   return {
+    readRun: async (runId) => {
+      const snapshot = await get(child(ref(database), `runs/${runId}`));
+      return snapshot.exists() ? (snapshot.val() as Run) : null;
+    },
     claimDriverSlot: async (runId, driverId, driver) => {
-      let failureReason: JoinClaimResult['reason'];
+      try {
+        const result = await runTransaction(
+          child(ref(database), `runs/${runId}/drivers/${driverId}`),
+          (currentDriver) => {
+            if (currentDriver) {
+              return currentDriver;
+            }
 
-      const result = await runTransaction(child(ref(database), `runs/${runId}`), (currentRun) => {
-        if (!currentRun || typeof currentRun !== 'object') {
-          failureReason = 'missing';
-          return;
-        }
+            return driver;
+          }
+        );
 
-        const run = currentRun as Run;
-        if (run.status === 'ended') {
-          failureReason = 'ended';
-          return;
-        }
-
-        const drivers = run.drivers ?? {};
-        if (drivers[driverId]) {
-          return currentRun;
-        }
-
-        if (Object.keys(drivers).length >= run.maxDrivers) {
-          failureReason = 'full';
-          return;
+        if (result.committed) {
+          return {
+            joined: true,
+          };
         }
 
         return {
-          ...run,
-          drivers: {
-            ...drivers,
-            [driverId]: driver,
-          },
+          joined: false,
+          reason: 'exists',
         };
-      });
+      } catch (error) {
+        if (isPermissionDeniedError(error)) {
+          return {
+            joined: false,
+            reason: 'missing',
+          };
+        }
 
-      if (result.committed) {
-        return {
-          joined: true,
-        };
+        throw error;
       }
+    },
+    inspectRunForJoin: async (runId) => {
+      try {
+        const snapshot = await get(child(ref(database), `runs/${runId}`));
+        if (!snapshot.exists()) {
+          return 'missing';
+        }
 
-      return {
-        joined: false,
-        reason: failureReason ?? 'full',
-      };
+        const run = snapshot.val() as Partial<Run>;
+        if (run.status === 'ended') {
+          return 'ended';
+        }
+
+        return 'exists';
+      } catch (error) {
+        if (isPermissionDeniedError(error)) {
+          return 'forbidden';
+        }
+
+        throw error;
+      }
     },
   };
 }
@@ -212,10 +228,47 @@ export async function saveDriverProfile(
     leftAt: null,
     stats: {},
   };
+  const run = await client.readRun(runId);
+
+  if (!run) {
+    throw new Error('This run is no longer available.');
+  }
+
+  if (run.status === 'ended') {
+    throw new Error('This run has already ended.');
+  }
+
+  const currentDrivers = run.drivers ?? {};
+  if (!currentDrivers[driverId] && Object.keys(currentDrivers).length >= run.maxDrivers) {
+    throw new Error('This run is full.');
+  }
 
   const joinResult = await client.claimDriverSlot(runId, driverId, driver);
   if (!joinResult.joined) {
+    if (joinResult.reason === 'exists') {
+      return {
+        driverId,
+        profile,
+        driver,
+      };
+    }
+
     if (joinResult.reason === 'missing') {
+      const runState = await client.inspectRunForJoin?.(runId);
+      if (runState === 'ended') {
+        throw new Error('This run has already ended.');
+      }
+
+      if (runState === 'forbidden') {
+        throw new Error(
+          'Join permissions are blocked. Deploy the latest Firebase Realtime Database rules and try again.'
+        );
+      }
+
+      if (runState === 'exists') {
+        throw new Error('Unable to join this run right now. Refresh and try again.');
+      }
+
       throw new Error('This run is no longer available.');
     }
 
@@ -231,6 +284,15 @@ export async function saveDriverProfile(
     profile,
     driver,
   };
+}
+
+function isPermissionDeniedError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const message = error.message.toLowerCase();
+  return message.includes('permission_denied') || message.includes('permission denied');
 }
 
 export async function saveDriverProfileWithFirebase(runId: string, input: DriverProfileInput) {

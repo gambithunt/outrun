@@ -99,7 +99,9 @@ const mockFirebaseAuth = {
 
 jest.mock('firebase/auth', () => ({
   connectAuthEmulator: jest.fn(),
+  getReactNativePersistence: jest.fn(() => ({ type: 'LOCAL' })),
   getAuth: jest.fn(() => mockFirebaseAuth),
+  initializeAuth: jest.fn(() => mockFirebaseAuth),
   signInAnonymously: jest.fn(async () => {
     mockFirebaseAuth.currentUser = {
       uid: 'mock-auth-user',

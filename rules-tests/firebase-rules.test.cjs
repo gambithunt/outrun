@@ -216,6 +216,141 @@ describe('Realtime Database rules', () => {
     );
   });
 
+  it('allows an authenticated pre-join driver to read a draft run for the join transaction', async () => {
+    await seed({
+      runs: {
+        run_1: {
+          name: 'Sunrise Run',
+          joinCode: '123456',
+          adminId: 'admin_1',
+          status: 'draft',
+          createdAt: 1,
+          startedAt: null,
+          endedAt: null,
+          maxDrivers: 2,
+        },
+      },
+    });
+
+    await assertSucceeds(driverDb('driver_1').ref('runs/run_1').get());
+  });
+
+  it('allows a pre-join driver transaction to add their driver record to an active run with a route', async () => {
+    await seed({
+      runs: {
+        run_1: {
+          name: 'Sunrise Run',
+          joinCode: '123456',
+          adminId: 'admin_1',
+          status: 'active',
+          createdAt: 1,
+          startedAt: 2,
+          endedAt: null,
+          maxDrivers: 3,
+          route: {
+            points: [
+              [-26.2041, 28.0473],
+              [-25.7479, 28.2293],
+            ],
+            distanceMetres: 12000,
+            source: 'drawn',
+          },
+        },
+      },
+    });
+
+    await assertSucceeds(
+      driverDb('driver_1').ref('runs/run_1').transaction((currentRun) => {
+        if (!currentRun || typeof currentRun !== 'object') {
+          return currentRun;
+        }
+
+        const drivers = currentRun.drivers || {};
+        return {
+          ...currentRun,
+          drivers: {
+            ...drivers,
+            driver_1: {
+              profile: {
+                name: 'Jamie',
+                carMake: 'BMW',
+                carModel: 'M2',
+                fuelType: 'petrol',
+              },
+              joinedAt: 10,
+              leftAt: null,
+              stats: {},
+            },
+          },
+        };
+      })
+    );
+  });
+
+  it('allows a pre-join driver transaction when an admin driver node already exists', async () => {
+    await seed({
+      runs: {
+        run_1: {
+          name: 'Sunrise Run',
+          joinCode: '123456',
+          adminId: 'admin_1',
+          status: 'active',
+          createdAt: 1,
+          startedAt: 2,
+          endedAt: null,
+          maxDrivers: 3,
+          route: {
+            points: [
+              [-26.2041, 28.0473],
+              [-25.7479, 28.2293],
+            ],
+            distanceMetres: 12000,
+            source: 'drawn',
+          },
+          drivers: {
+            admin_1: {
+              location: {
+                lat: -26.2041,
+                lng: 28.0473,
+                heading: 0,
+                speed: 0,
+                accuracy: 5,
+                timestamp: 1000,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    await assertSucceeds(
+      driverDb('driver_1').ref('runs/run_1').transaction((currentRun) => {
+        if (!currentRun || typeof currentRun !== 'object') {
+          return currentRun;
+        }
+
+        const drivers = currentRun.drivers || {};
+        return {
+          ...currentRun,
+          drivers: {
+            ...drivers,
+            driver_1: {
+              profile: {
+                name: 'Jamie',
+                carMake: 'BMW',
+                carModel: 'M2',
+                fuelType: 'petrol',
+              },
+              joinedAt: 10,
+              leftAt: null,
+              stats: {},
+            },
+          },
+        };
+      })
+    );
+  });
+
   it('allows only admins to write status and summary', async () => {
     await seed({
       runs: {

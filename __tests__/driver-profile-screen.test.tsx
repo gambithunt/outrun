@@ -125,4 +125,28 @@ describe('DriverProfileScreen', () => {
 
     await waitFor(() => expect(screen.getByText('This run has already ended.')).toBeTruthy());
   });
+
+  it('shows a rules-focused error when Firebase blocks the join transaction', async () => {
+    (loadDriverProfileDraft as jest.Mock).mockResolvedValue(null);
+    (saveDriverProfileWithFirebase as jest.Mock).mockRejectedValue(
+      new Error(
+        'Join permissions are blocked. Deploy the latest Firebase Realtime Database rules and try again.'
+      )
+    );
+
+    const screen = renderWithProviders(<DriverProfileScreen />);
+
+    fireEvent.changeText(screen.getByTestId('input-driver-name'), 'Jamie');
+    fireEvent.changeText(screen.getByTestId('input-car-make'), 'Toyota');
+    fireEvent.changeText(screen.getByTestId('input-car-model'), 'GR Yaris');
+    fireEvent.press(screen.getByTestId('button-save-profile'));
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          'Join permissions are blocked. Deploy the latest Firebase Realtime Database rules and try again.'
+        )
+      ).toBeTruthy()
+    );
+  });
 });
