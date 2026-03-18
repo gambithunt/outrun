@@ -154,6 +154,25 @@ describe('RoutePlanningScreen', () => {
     expect(screen.queryByTestId('button-swap-start-destination')).toBeNull();
   });
 
+  it('shows a route composer once the endpoints are set and inserts a new stop into the flow', async () => {
+    const screen = renderWithProviders(<RoutePlanningScreen />);
+
+    fireEvent.press(screen.getByTestId('button-use-current-location'));
+    await waitFor(() => expect(screen.getByTestId('route-summary-chip')).toBeTruthy());
+    fireEvent.press(screen.getByTestId('route-summary-chip'));
+    fireEvent.changeText(screen.getByTestId('input-stop-search'), '-25.7479, 28.2293');
+
+    await waitFor(() => expect(screen.getByTestId('route-flow-composer')).toBeTruthy());
+    expect(screen.getByTestId('route-flow-stop-start')).toBeTruthy();
+    expect(screen.getByTestId('route-flow-stop-destination')).toBeTruthy();
+    expect(screen.getByTestId('button-add-stop-inline')).toBeTruthy();
+
+    fireEvent.press(screen.getByTestId('button-add-stop-inline'));
+
+    expect(screen.getByTestId('text-selected-stop-label')).toHaveTextContent('Stop 1');
+    expect(screen.getByTestId('route-stop-row-waypoint-1')).toBeTruthy();
+  });
+
   it('swaps start and destination, opens reorder mode from a stop handle, and can return to the main sheet', async () => {
     const screen = renderWithProviders(<RoutePlanningScreen />);
 

@@ -1221,11 +1221,157 @@ export default function RoutePlanningScreen() {
               </View>
             </View>
 
-            {error ? <Text style={{ color: theme.colors.danger }}>{error}</Text> : null}
+            {error ? (
+              <View
+                style={{
+                  borderRadius: 18,
+                  borderWidth: 1,
+                  borderColor: `${theme.colors.danger}33`,
+                  backgroundColor: `${theme.colors.danger}12`,
+                  paddingHorizontal: 14,
+                  paddingVertical: 12,
+                }}
+              >
+                <Text style={{ color: theme.colors.danger, lineHeight: 20 }}>{error}</Text>
+              </View>
+            ) : null}
             {statusMessage ? (
-              <Text style={{ color: theme.colors.success }}>{statusMessage}</Text>
+              <View
+                style={{
+                  borderRadius: 18,
+                  borderWidth: 1,
+                  borderColor: `${theme.colors.success}33`,
+                  backgroundColor: `${theme.colors.success}10`,
+                  paddingHorizontal: 14,
+                  paddingVertical: 12,
+                }}
+              >
+                <Text style={{ color: theme.colors.textPrimary, lineHeight: 20 }}>
+                  {statusMessage}
+                </Text>
+              </View>
             ) : null}
             {isResolving || isPreviewing || isSaving || isStarting ? <LoadingSpinner /> : null}
+
+            {plannerStage === 'stops' || waypointStops.length > 0 ? (
+              <View
+                style={{
+                  borderRadius: 24,
+                  borderWidth: 1,
+                  borderColor: theme.colors.border,
+                  backgroundColor: theme.colors.surface,
+                  padding: 16,
+                  gap: 12,
+                }}
+                testID="route-flow-composer"
+              >
+                <View style={{ gap: 4 }}>
+                  <Text style={{ color: theme.colors.textPrimary, fontSize: 17, fontWeight: '800' }}>
+                    Shape the drive
+                  </Text>
+                  <Text style={{ color: theme.colors.textSecondary, lineHeight: 20 }}>
+                    Add a waypoint into the route flow, then fine-tune it below.
+                  </Text>
+                </View>
+
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ alignItems: 'center', gap: 10, paddingRight: 8 }}
+                >
+                  {stops.map((stop, index) => {
+                    const waypointIndex =
+                      stop.kind === 'waypoint'
+                        ? waypointStops.findIndex((item) => item.id === stop.id) + 1
+                        : -1;
+                    const flowTestId =
+                      stop.kind === 'waypoint'
+                        ? `route-flow-stop-waypoint-${waypointIndex}`
+                        : `route-flow-stop-${stop.kind}`;
+                    const flowLabel =
+                      stop.kind === 'start'
+                        ? 'Start'
+                        : stop.kind === 'destination'
+                          ? 'Destination'
+                          : `Stop ${waypointIndex}`;
+                    const isSelected = selectedStopId === stop.id;
+
+                    return (
+                      <View
+                        key={`flow-${stop.id}`}
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}
+                      >
+                        <Pressable
+                          accessibilityRole="button"
+                          onPress={() => focusStop(stop.id)}
+                          style={{
+                            borderRadius: 18,
+                            paddingHorizontal: 14,
+                            paddingVertical: 12,
+                            borderWidth: 1,
+                            borderColor: isSelected ? theme.colors.accent : theme.colors.border,
+                            backgroundColor: isSelected
+                              ? theme.colors.accentMuted
+                              : theme.colors.surfaceElevated,
+                            minWidth: 98,
+                            gap: 2,
+                          }}
+                          testID={flowTestId}
+                        >
+                          <Text
+                            style={{ color: theme.colors.textSecondary, fontSize: 11, fontWeight: '700' }}
+                          >
+                            {stop.kind === 'start'
+                              ? 'START'
+                              : stop.kind === 'destination'
+                                ? 'FINISH'
+                                : `STOP ${waypointIndex}`}
+                          </Text>
+                          <Text style={{ color: theme.colors.textPrimary, fontWeight: '800' }}>
+                            {flowLabel}
+                          </Text>
+                        </Pressable>
+
+                        {index < stops.length - 1 ? (
+                          <>
+                            <Text style={{ color: theme.colors.textSecondary, fontSize: 18 }}>→</Text>
+                            {stops[index + 1]?.kind === 'destination' ? (
+                              <>
+                                <Pressable
+                                  accessibilityRole="button"
+                                  onPress={handleAddStop}
+                                  style={{
+                                    borderRadius: 18,
+                                    paddingHorizontal: 14,
+                                    paddingVertical: 12,
+                                    borderWidth: 1,
+                                    borderColor: theme.colors.border,
+                                    borderStyle: 'dashed',
+                                    backgroundColor: theme.colors.surface,
+                                    minWidth: 110,
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                  }}
+                                  testID="button-add-stop-inline"
+                                >
+                                  <Text style={{ color: theme.colors.textPrimary, fontWeight: '700' }}>
+                                    + Add Stop
+                                  </Text>
+                                </Pressable>
+                                <Text style={{ color: theme.colors.textSecondary, fontSize: 18 }}>→</Text>
+                              </>
+                            ) : null}
+                            {stops[index + 1]?.kind !== 'destination' ? (
+                              <Text style={{ color: theme.colors.textSecondary, fontSize: 18 }}>→</Text>
+                            ) : null}
+                          </>
+                        ) : null}
+                      </View>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            ) : null}
 
             <View
               style={{
@@ -1276,16 +1422,13 @@ export default function RoutePlanningScreen() {
                     accessibilityRole="button"
                     onPress={handleSwapStartAndDestination}
                     style={{
-                      borderRadius: 16,
-                      paddingHorizontal: 14,
-                      paddingVertical: 10,
-                      borderWidth: 1,
-                      borderColor: theme.colors.border,
-                      backgroundColor: theme.colors.surfaceElevated,
+                      borderRadius: 14,
+                      paddingHorizontal: 10,
+                      paddingVertical: 8,
                     }}
                     testID="button-swap-start-destination"
                   >
-                    <Text style={{ color: theme.colors.textPrimary, fontWeight: '700' }}>
+                    <Text style={{ color: theme.colors.textSecondary, fontWeight: '700' }}>
                       Swap
                     </Text>
                   </Pressable>
