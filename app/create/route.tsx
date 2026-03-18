@@ -1,6 +1,7 @@
+import { MaterialIcons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PanResponder, Pressable, SafeAreaView, ScrollView, Text, View } from 'react-native';
 
 import { ClubRunMap } from '@/components/map/ClubRunMap';
@@ -44,6 +45,7 @@ const SHEET_EXPANDED_BOTTOM = 468;
 const SHEET_MINIMIZED_BOTTOM = 112;
 
 type VisibleSheetState = Exclude<RoutePlannerSheetState, 'hidden'>;
+type ThemeColors = ReturnType<typeof useAppTheme>['theme']['colors'];
 type ReorderDragState = {
   stopId: string;
   initialIndex: number;
@@ -83,6 +85,9 @@ export default function RoutePlanningScreen() {
   const [hasHydratedDraft, setHasHydratedDraft] = useState(false);
   const hasAutoCentered = useRef(false);
   const previousVisibleSheetStateRef = useRef<VisibleSheetState>('main');
+  const stopsRef = useRef(stops);
+  const waypointStopsRef = useRef<RouteStopDraft[]>([]);
+  const reorderDragStateRef = useRef<ReorderDragState | null>(null);
 
   const selectedStop = useMemo(
     () => stops.find((stop) => stop.id === selectedStopId) ?? stops[0],
@@ -127,6 +132,18 @@ export default function RoutePlanningScreen() {
     !parseCoordinateInput(searchInput) &&
     !isSearchingPlaces &&
     placeResults.length === 0;
+
+  useEffect(() => {
+    stopsRef.current = stops;
+  }, [stops]);
+
+  useEffect(() => {
+    waypointStopsRef.current = waypointStops;
+  }, [waypointStops]);
+
+  useEffect(() => {
+    reorderDragStateRef.current = reorderDragState;
+  }, [reorderDragState]);
 
   useEffect(() => {
     void bootstrapLocation();
@@ -323,7 +340,7 @@ export default function RoutePlanningScreen() {
     setSheetState(previousVisibleSheetStateRef.current);
   }
 
-  function focusStop(stopId: string, nextStops: RouteStopDraft[] = stops) {
+  const focusStop = useCallback((stopId: string, nextStops: RouteStopDraft[] = stopsRef.current) => {
     const stop = nextStops.find((item) => item.id === stopId);
     if (!stop) {
       return;
@@ -339,7 +356,7 @@ export default function RoutePlanningScreen() {
       setFocusPoint(point);
       setMapCenterPoint(point);
     }
-  }
+  }, []);
 
   function updateStop(stopId: string, patch: Partial<RouteStopDraft>) {
     const nextStops = stops.map((stop) => (stop.id === stopId ? { ...stop, ...patch } : stop));
@@ -481,13 +498,14 @@ export default function RoutePlanningScreen() {
     focusStop(waypoint.id, nextStops);
   }
 
-  function handleRemoveWaypoint(stopId: string) {
-    const nextStops = removeWaypointStop(stops, stopId);
+  const handleRemoveWaypoint = useCallback((stopId: string) => {
+    const nextStops = removeWaypointStop(stopsRef.current, stopId);
     setStops(nextStops);
     setIsRouteSaved(false);
+    setReorderDragState((currentState) => (currentState?.stopId === stopId ? null : currentState));
     focusStop('destination', nextStops);
     setStatusMessage('Stop removed.');
-  }
+  }, [focusStop]);
 
   function handleSwapStartAndDestination() {
     const nextStops = swapStartAndDestinationStops(stops);
@@ -542,13 +560,15 @@ export default function RoutePlanningScreen() {
     setStatusMessage('Back to route editing.');
   }
 
-  function handleStartDraggingStop(stopId: string, dy = 0) {
-    const stop = stops.find((item) => item.id === stopId);
+  const handleStartDraggingStop = useCallback((stopId: string, dy = 0) => {
+    const currentStops = stopsRef.current;
+    const currentWaypointStops = waypointStopsRef.current;
+    const stop = currentStops.find((item) => item.id === stopId);
     if (stop?.kind !== 'waypoint') {
       return;
     }
 
-    const waypointIndex = waypointStops.findIndex((item) => item.id === stopId);
+    const waypointIndex = currentWaypointStops.findIndex((item) => item.id === stopId);
     if (waypointIndex < 0) {
       return;
     }
@@ -560,9 +580,9 @@ export default function RoutePlanningScreen() {
       targetIndex: waypointIndex,
       dy,
     });
-  }
+  }, []);
 
-  function handleUpdateDraggedStop(dy: number) {
+  const handleUpdateDraggedStop = useCallback((dy: number) => {
     setReorderDragState((currentState) => {
       if (!currentState) {
         return currentState;
@@ -572,7 +592,7 @@ export default function RoutePlanningScreen() {
         0,
         Math.min(
           currentState.initialIndex + Math.round(dy / REORDER_ROW_HEIGHT),
-          Math.max(waypointStops.length - 1, 0)
+          Math.max(waypointStopsRef.current.length - 1, 0)
         )
       );
 
@@ -582,35 +602,43 @@ export default function RoutePlanningScreen() {
         targetIndex: nextTargetIndex,
       };
     });
-  }
+  }, []);
 
-  function handleFinishDraggingStop() {
-    if (!reorderDragState) {
+  const handleFinishDraggingStop = useCallback(() => {
+    const currentDragState = reorderDragStateRef.current;
+    const currentStops = stopsRef.current;
+    const currentWaypointStops = waypointStopsRef.current;
+
+    if (!currentDragState) {
       return;
     }
 
     const nextStops =
-      reorderDragState.targetIndex === waypointStops.length - 1
-        ? reorderWaypointStopToEnd(stops, reorderDragState.stopId)
-        : reorderWaypointStopToIndex(stops, reorderDragState.stopId, reorderDragState.targetIndex);
+      currentDragState.targetIndex === currentWaypointStops.length - 1
+        ? reorderWaypointStopToEnd(currentStops, currentDragState.stopId)
+        : reorderWaypointStopToIndex(
+            currentStops,
+            currentDragState.stopId,
+            currentDragState.targetIndex
+          );
 
     setReorderDragState(null);
 
-    if (nextStops === stops) {
+    if (nextStops === currentStops) {
       setStatusMessage('Stop order unchanged.');
       return;
     }
 
     setStops(nextStops);
     setIsRouteSaved(false);
-    focusStop(reorderDragState.stopId, nextStops);
+    focusStop(currentDragState.stopId, nextStops);
     setStatusMessage('Stop order updated.');
-  }
+  }, [focusStop]);
 
-  function handleCancelDraggingStop() {
+  const handleCancelDraggingStop = useCallback(() => {
     setReorderDragState(null);
     setStatusMessage('Drag cancelled.');
-  }
+  }, []);
 
   function handleEnterPickMode() {
     previousVisibleSheetStateRef.current = isMinimizedSheet ? 'main' : sheetState;
@@ -1006,109 +1034,22 @@ export default function RoutePlanningScreen() {
                   typeof waypointIndex === 'number' &&
                   waypointIndex >= 0 &&
                   reorderDragState?.targetIndex === waypointIndex;
-                const panHandlers = isWaypoint
-                  ? PanResponder.create({
-                      onStartShouldSetPanResponder: () => true,
-                      onStartShouldSetPanResponderCapture: () => true,
-                      onMoveShouldSetPanResponder: () => true,
-                      onMoveShouldSetPanResponderCapture: () => true,
-                      onPanResponderGrant: () => handleStartDraggingStop(stop.id),
-                      onPanResponderMove: (_event, gestureState) =>
-                        handleUpdateDraggedStop(gestureState.dy),
-                      onPanResponderRelease: () => handleFinishDraggingStop(),
-                      onPanResponderTerminate: () => handleCancelDraggingStop(),
-                      onPanResponderTerminationRequest: () => false,
-                      onShouldBlockNativeResponder: () => true,
-                    }).panHandlers
-                  : undefined;
 
                 return (
-                  <View
+                  <ReorderStopRow
                     key={stop.id}
-                    style={[
-                      {
-                        minHeight: REORDER_ROW_HEIGHT,
-                        borderRadius: 20,
-                        paddingHorizontal: 14,
-                        paddingVertical: 12,
-                        backgroundColor: isDragging
-                          ? theme.colors.accentMuted
-                          : isDragTarget
-                            ? `${theme.colors.accentMuted}DD`
-                            : theme.colors.surfaceElevated,
-                        borderWidth: 1,
-                        borderColor:
-                          isDragging || isDragTarget ? theme.colors.accent : theme.colors.border,
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 12,
-                      },
-                      isDragging ? { transform: [{ translateY: reorderDragState?.dy ?? 0 }] } : null,
-                    ]}
-                    testID={
-                      isWaypoint
-                        ? `route-reorder-row-waypoint-${waypointIndex + 1}`
-                        : `route-reorder-row-${stop.kind}`
-                    }
-                  >
-                    <View
-                      style={{
-                        width: 28,
-                        height: 28,
-                        borderRadius: 14,
-                        borderWidth: 1,
-                        borderColor: theme.colors.border,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        backgroundColor: '#FFFFFF',
-                      }}
-                    >
-                      <Text style={{ color: theme.colors.textPrimary, fontWeight: '800' }}>
-                        {stop.kind === 'start'
-                          ? 'S'
-                          : stop.kind === 'destination'
-                            ? 'E'
-                            : waypointIndex + 1}
-                      </Text>
-                    </View>
-
-                    <View style={{ flex: 1, gap: 4 }}>
-                      <Text style={{ color: theme.colors.textPrimary, fontWeight: '800' }}>
-                        {stop.label}
-                      </Text>
-                      <Text style={{ color: theme.colors.textSecondary }} numberOfLines={1}>
-                        {typeof stop.lat === 'number' && typeof stop.lng === 'number'
-                          ? formatStopCoordinateLabel(stop.lat, stop.lng)
-                          : 'Location still needed'}
-                      </Text>
-                    </View>
-
-                    {isWaypoint ? (
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                        <Pressable
-                          accessibilityRole="button"
-                          onPress={() => handleRemoveWaypoint(stop.id)}
-                          style={miniActionButtonStyle(theme.colors.border)}
-                          testID={`button-remove-waypoint-reorder-${waypointIndex + 1}`}
-                        >
-                          <Text style={{ color: theme.colors.textPrimary, fontSize: 18 }}>🗑</Text>
-                        </Pressable>
-                        <View
-                          {...panHandlers}
-                          style={miniActionButtonStyle(theme.colors.border)}
-                          testID={`reorder-handle-waypoint-${waypointIndex + 1}`}
-                        >
-                          <Text style={{ color: theme.colors.textPrimary, fontWeight: '800' }}>
-                            ≡
-                          </Text>
-                        </View>
-                      </View>
-                    ) : (
-                      <Text style={{ color: theme.colors.textSecondary, fontWeight: '700' }}>
-                        Locked
-                      </Text>
-                    )}
-                  </View>
+                    colors={theme.colors}
+                    dragOffset={isDragging ? reorderDragState?.dy ?? 0 : 0}
+                    isDragTarget={isDragTarget}
+                    isDragging={isDragging}
+                    onCancelDrag={handleCancelDraggingStop}
+                    onFinishDrag={handleFinishDraggingStop}
+                    onRemoveWaypoint={handleRemoveWaypoint}
+                    onStartDrag={handleStartDraggingStop}
+                    onUpdateDrag={handleUpdateDraggedStop}
+                    stop={stop}
+                    waypointIndex={waypointIndex}
+                  />
                 );
               })}
             </ScrollView>
@@ -1451,6 +1392,137 @@ export default function RoutePlanningScreen() {
         )}
       </View>
     </SafeAreaView>
+  );
+}
+
+type ReorderStopRowProps = {
+  colors: ThemeColors;
+  dragOffset: number;
+  isDragTarget: boolean;
+  isDragging: boolean;
+  onCancelDrag: () => void;
+  onFinishDrag: () => void;
+  onRemoveWaypoint: (stopId: string) => void;
+  onStartDrag: (stopId: string, dy?: number) => void;
+  onUpdateDrag: (dy: number) => void;
+  stop: RouteStopDraft;
+  waypointIndex: number;
+};
+
+function ReorderStopRow({
+  colors,
+  dragOffset,
+  isDragTarget,
+  isDragging,
+  onCancelDrag,
+  onFinishDrag,
+  onRemoveWaypoint,
+  onStartDrag,
+  onUpdateDrag,
+  stop,
+  waypointIndex,
+}: ReorderStopRowProps) {
+  const isWaypoint = stop.kind === 'waypoint';
+  const panResponder = useMemo(
+    () =>
+      isWaypoint
+        ? PanResponder.create({
+            onStartShouldSetPanResponder: () => true,
+            onStartShouldSetPanResponderCapture: () => true,
+            onMoveShouldSetPanResponder: () => true,
+            onMoveShouldSetPanResponderCapture: () => true,
+            onPanResponderGrant: () => onStartDrag(stop.id),
+            onPanResponderMove: (_event, gestureState) => onUpdateDrag(gestureState.dy),
+            onPanResponderRelease: () => onFinishDrag(),
+            onPanResponderTerminate: () => onCancelDrag(),
+            onPanResponderTerminationRequest: () => false,
+            onShouldBlockNativeResponder: () => true,
+          })
+        : null,
+    [isWaypoint, onCancelDrag, onFinishDrag, onStartDrag, onUpdateDrag, stop.id]
+  );
+
+  return (
+    <View
+      style={[
+        {
+          minHeight: REORDER_ROW_HEIGHT,
+          borderRadius: 20,
+          paddingHorizontal: 14,
+          paddingVertical: 12,
+          backgroundColor: isDragging
+            ? colors.accentMuted
+            : isDragTarget
+              ? `${colors.accentMuted}DD`
+              : colors.surfaceElevated,
+          borderWidth: 1,
+          borderColor: isDragging || isDragTarget ? colors.accent : colors.border,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 12,
+          zIndex: isDragging ? 2 : 0,
+          elevation: isDragging ? 6 : 0,
+        },
+        isDragging ? { transform: [{ translateY: dragOffset }] } : null,
+      ]}
+      testID={
+        isWaypoint
+          ? `route-reorder-row-waypoint-${waypointIndex + 1}`
+          : `route-reorder-row-${stop.kind}`
+      }
+    >
+      <View
+        style={{
+          width: 28,
+          height: 28,
+          borderRadius: 14,
+          borderWidth: 1,
+          borderColor: colors.border,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: '#FFFFFF',
+        }}
+      >
+        <Text style={{ color: colors.textPrimary, fontWeight: '800' }}>
+          {stop.kind === 'start'
+            ? 'S'
+            : stop.kind === 'destination'
+              ? 'E'
+              : waypointIndex + 1}
+        </Text>
+      </View>
+
+      <View style={{ flex: 1, gap: 4 }}>
+        <Text style={{ color: colors.textPrimary, fontWeight: '800' }}>{stop.label}</Text>
+        <Text style={{ color: colors.textSecondary }} numberOfLines={1}>
+          {typeof stop.lat === 'number' && typeof stop.lng === 'number'
+            ? formatStopCoordinateLabel(stop.lat, stop.lng)
+            : 'Location still needed'}
+        </Text>
+      </View>
+
+      {isWaypoint ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => onRemoveWaypoint(stop.id)}
+            style={miniActionButtonStyle(colors.border)}
+            testID={`button-remove-waypoint-reorder-${waypointIndex + 1}`}
+          >
+            <MaterialIcons color={colors.textPrimary} name="delete-outline" size={20} />
+          </Pressable>
+          <View
+            {...(panResponder?.panHandlers ?? {})}
+            style={miniActionButtonStyle(colors.border)}
+            testID={`reorder-handle-waypoint-${waypointIndex + 1}`}
+          >
+            <Text style={{ color: colors.textPrimary, fontWeight: '800' }}>≡</Text>
+          </View>
+        </View>
+      ) : (
+        <Text style={{ color: colors.textSecondary, fontWeight: '700' }}>Locked</Text>
+      )}
+    </View>
   );
 }
 

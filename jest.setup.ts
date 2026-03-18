@@ -13,6 +13,8 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 
 jest.mock('expo-font', () => ({
   useFonts: () => [true, null],
+  isLoaded: () => true,
+  loadAsync: jest.fn(async () => undefined),
 }));
 
 jest.mock('expo-location', () => ({
@@ -209,6 +211,11 @@ jest.mock('@maplibre/maplibre-react-native', () => {
   }
 
   return {
+    UserTrackingMode: {
+      Follow: 'normal',
+      FollowWithHeading: 'compass',
+      FollowWithCourse: 'course',
+    },
     MapView: ({
       children,
       onPress,

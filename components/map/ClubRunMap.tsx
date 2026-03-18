@@ -7,6 +7,7 @@ import {
   PointAnnotation,
   ShapeSource,
   UserLocation,
+  UserTrackingMode,
   type CameraRef,
 } from '@maplibre/maplibre-react-native';
 
@@ -431,7 +432,7 @@ export function ClubRunMap({
           <Camera
             ref={cameraRef}
             followUserLocation={isFollowing}
-            followUserMode="course"
+            followUserMode={UserTrackingMode.FollowWithCourse}
             followZoomLevel={16}
             followPitch={45}
             animationMode="flyTo"
