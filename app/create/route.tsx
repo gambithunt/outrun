@@ -44,6 +44,7 @@ const FALLBACK_POINT: RoutePoint = [-26.2041, 28.0473];
 const REORDER_ROW_HEIGHT = 88;
 const SHEET_EXPANDED_BOTTOM = 468;
 const SHEET_MINIMIZED_BOTTOM = 112;
+const SHEET_MINIMIZE_DRAG_THRESHOLD = 28;
 
 type VisibleSheetState = Exclude<RoutePlannerSheetState, 'hidden'>;
 type ThemeColors = ReturnType<typeof useAppTheme>['theme']['colors'];
@@ -345,6 +346,24 @@ export default function RoutePlanningScreen() {
   function restoreSheetFromSummary() {
     setSheetState(previousVisibleSheetStateRef.current);
   }
+
+  const sheetHandlePanResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => false,
+        onStartShouldSetPanResponderCapture: () => false,
+        onMoveShouldSetPanResponder: (_event, gestureState) =>
+          Math.abs(gestureState.dy) > 6 && Math.abs(gestureState.dy) > Math.abs(gestureState.dx),
+        onMoveShouldSetPanResponderCapture: (_event, gestureState) =>
+          Math.abs(gestureState.dy) > 6 && Math.abs(gestureState.dy) > Math.abs(gestureState.dx),
+        onPanResponderRelease: (_event, gestureState) => {
+          if (gestureState.dy > SHEET_MINIMIZE_DRAG_THRESHOLD) {
+            minimizeSheet();
+          }
+        },
+      }),
+    [sheetState]
+  );
 
   const focusStop = useCallback((stopId: string, nextStops: RouteStopDraft[] = stopsRef.current) => {
     const stop = nextStops.find((item) => item.id === stopId);
@@ -1006,12 +1025,13 @@ export default function RoutePlanningScreen() {
             <Pressable
               accessibilityRole="button"
               onPress={minimizeSheet}
-              style={{ gap: 10 }}
+              hitSlop={12}
+              style={{ paddingVertical: 8, alignItems: 'center', justifyContent: 'center' }}
               testID="button-minimize-route-sheet"
+              {...sheetHandlePanResponder.panHandlers}
             >
               <View
                 style={{
-                  alignSelf: 'center',
                   width: 48,
                   height: 5,
                   borderRadius: 999,
@@ -1524,7 +1544,7 @@ export default function RoutePlanningScreen() {
             )}
 
             {!isDriveComposerReorderMode ? (
-              <>
+              routePreview ? (
                 <View
                   style={{
                     borderRadius: 24,
@@ -1535,194 +1555,31 @@ export default function RoutePlanningScreen() {
                     gap: 12,
                   }}
                 >
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: 12,
-                    }}
-                  >
-                    <View style={{ flex: 1, gap: 4 }}>
-                      <Text style={{ color: theme.colors.textPrimary, fontSize: 17, fontWeight: '800' }}>
-                        Route outline
-                      </Text>
-                      <Text style={{ color: theme.colors.textSecondary, lineHeight: 20 }}>
-                        Start and finish stay locked. Stops can be dragged around the drive.
-                      </Text>
-                    </View>
-                    {plannerStage === 'stops' ? (
-                      <Pressable
-                        accessibilityRole="button"
-                        onPress={handleAddStop}
-                        style={{
-                          borderRadius: 16,
-                          paddingHorizontal: 14,
-                          paddingVertical: 10,
-                          borderWidth: 1,
-                          borderColor: theme.colors.border,
-                          backgroundColor: theme.colors.surfaceElevated,
-                        }}
-                        testID="button-add-stop"
-                      >
-                        <Text style={{ color: theme.colors.textPrimary, fontWeight: '700' }}>
-                          Add Stop
-                        </Text>
-                      </Pressable>
-                    ) : null}
-                  </View>
-
-                  <ScrollView
-                    showsVerticalScrollIndicator={false}
-                    style={{ maxHeight: 196 }}
-                    contentContainerStyle={{ gap: 8 }}
-                  >
-                    {stops.map((stop) => {
-                      const waypointIndex = waypointStops.findIndex((item) => item.id === stop.id) + 1;
-                      const isWaypoint = stop.kind === 'waypoint';
-                      const isSelected = selectedStopId === stop.id;
-                      const rowTestId =
-                        stop.kind === 'waypoint'
-                          ? `route-stop-row-waypoint-${waypointIndex}`
-                          : `route-stop-row-${stop.kind}`;
-
-                      return (
-                        <Pressable
-                          key={stop.id}
-                          accessibilityRole="button"
-                          onPress={() => focusStop(stop.id)}
-                          style={{
-                            borderRadius: 18,
-                            padding: 14,
-                            backgroundColor: isSelected
-                              ? theme.colors.surfaceElevated
-                              : `${theme.colors.surfaceElevated}AA`,
-                            borderWidth: 1,
-                            borderColor: isSelected ? theme.colors.accent : theme.colors.border,
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            gap: 12,
-                          }}
-                          testID={rowTestId}
-                        >
-                          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12 }}>
-                            <View
-                              style={{
-                                width: 30,
-                                height: 30,
-                                borderRadius: 15,
-                                borderWidth: 1,
-                                borderColor: theme.colors.border,
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                backgroundColor: theme.colors.surface,
-                              }}
-                            >
-                              <Text style={{ color: theme.colors.textPrimary, fontWeight: '800' }}>
-                                {stop.kind === 'start'
-                                  ? 'S'
-                                  : stop.kind === 'destination'
-                                    ? 'E'
-                                    : waypointIndex}
-                              </Text>
-                            </View>
-                            <View style={{ flex: 1, gap: 4 }}>
-                              <Text
-                                style={{
-                                  color: theme.colors.textSecondary,
-                                  fontSize: 12,
-                                  fontWeight: '700',
-                                }}
-                              >
-                                {stop.kind === 'start'
-                                  ? 'START'
-                                  : stop.kind === 'destination'
-                                    ? 'DESTINATION'
-                                    : `STOP ${waypointIndex}`}
-                              </Text>
-                              <Text style={{ color: theme.colors.textPrimary, fontWeight: '800' }}>
-                                {stop.label}
-                              </Text>
-                              <Text style={{ color: theme.colors.textSecondary }} numberOfLines={1}>
-                                {typeof stop.lat === 'number' && typeof stop.lng === 'number'
-                                  ? formatStopCoordinateLabel(stop.lat, stop.lng)
-                                  : stop.kind === 'start'
-                                    ? 'Search, use current location, or pick on map'
-                                    : 'Search or pick on map'}
-                              </Text>
-                            </View>
-                          </View>
-
-                          {isWaypoint ? (
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                              <Pressable
-                                accessibilityRole="button"
-                                onPress={() => handleRemoveWaypoint(stop.id)}
-                                style={miniActionButtonStyle(theme.colors.border)}
-                                testID={`button-remove-waypoint-${waypointIndex}`}
-                              >
-                                <MaterialIcons color={theme.colors.textPrimary} name="delete-outline" size={20} />
-                              </Pressable>
-                              <Pressable
-                                accessibilityRole="button"
-                                onPress={() => handleEnterReorderMode(stop.id)}
-                                style={miniActionButtonStyle(theme.colors.border)}
-                                testID={`drag-handle-waypoint-${waypointIndex}`}
-                              >
-                                <Text style={{ color: theme.colors.textPrimary, fontWeight: '800' }}>
-                                  ≡
-                                </Text>
-                              </Pressable>
-                            </View>
-                          ) : (
-                            <Text style={{ color: theme.colors.textSecondary, fontWeight: '700' }}>
-                              Locked
-                            </Text>
-                          )}
-                        </Pressable>
-                      );
-                    })}
-                  </ScrollView>
-                </View>
-
-                {routePreview ? (
-                  <View
-                    style={{
-                      borderRadius: 24,
-                      borderWidth: 1,
-                      borderColor: theme.colors.border,
-                      backgroundColor: theme.colors.surface,
-                      padding: 16,
-                      gap: 12,
-                    }}
-                  >
-                    <Text style={{ color: theme.colors.textSecondary, lineHeight: 20 }}>
-                      The route is ready to save now. Save the draft to come back later, or start the
-                      run once everything looks right on the map.
-                    </Text>
-                    <View style={{ flexDirection: 'row', gap: 10 }}>
-                      <AppButton
-                        disabled={!routePreview}
-                        label="Save Route"
-                        onPress={handleSaveRoute}
-                        testID="button-save-route"
-                      />
-                      <AppButton
-                        disabled={!routePreview || !isRouteSaved}
-                        label="Start Run"
-                        onPress={handleStartRun}
-                        testID="button-start-run"
-                        variant="secondary"
-                      />
-                    </View>
-                  </View>
-                ) : (
                   <Text style={{ color: theme.colors.textSecondary, lineHeight: 20 }}>
-                    Choose a start and destination to unlock the live route preview and save actions.
+                    The route is ready to save now. Save the draft to come back later, or start the
+                    run once everything looks right on the map.
                   </Text>
-                )}
-              </>
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <AppButton
+                      disabled={!routePreview}
+                      label="Save Route"
+                      onPress={handleSaveRoute}
+                      testID="button-save-route"
+                    />
+                    <AppButton
+                      disabled={!routePreview || !isRouteSaved}
+                      label="Start Run"
+                      onPress={handleStartRun}
+                      testID="button-start-run"
+                      variant="secondary"
+                    />
+                  </View>
+                </View>
+              ) : (
+                <Text style={{ color: theme.colors.textSecondary, lineHeight: 20 }}>
+                  Choose a start and destination to unlock the live route preview and save actions.
+                </Text>
+              )
             ) : null}
             </ScrollView>
           </View>

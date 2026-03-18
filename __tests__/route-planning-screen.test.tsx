@@ -110,8 +110,8 @@ describe('RoutePlanningScreen', () => {
     expect(screen.getByTestId('button-start-run')).toBeEnabled();
     expect(screen.getByTestId('text-route-save-state')).toHaveTextContent('Ready to start');
 
-    fireEvent.press(screen.getByTestId('button-add-stop'));
-    expect(screen.getByTestId('route-stop-row-waypoint-1')).toBeTruthy();
+    fireEvent.press(screen.getByTestId('button-add-stop-inline'));
+    expect(screen.getByTestId('route-flow-stop-waypoint-1')).toBeTruthy();
     expect(screen.getByTestId('button-start-run')).toBeDisabled();
     expect(screen.getByTestId('text-route-save-state')).toHaveTextContent('Draft changed');
 
@@ -150,7 +150,7 @@ describe('RoutePlanningScreen', () => {
     await waitFor(() => expect(screen.getByTestId('button-save-route')).toBeTruthy());
     expect(screen.getByTestId('button-swap-start-destination')).toBeTruthy();
 
-    fireEvent.press(screen.getByTestId('button-add-stop'));
+    fireEvent.press(screen.getByTestId('button-add-stop-inline'));
     expect(screen.queryByTestId('button-swap-start-destination')).toBeNull();
   });
 
@@ -170,7 +170,7 @@ describe('RoutePlanningScreen', () => {
     fireEvent.press(screen.getByTestId('button-add-stop-inline'));
 
     expect(screen.getByTestId('text-selected-stop-label')).toHaveTextContent('Stop 1');
-    expect(screen.getByTestId('route-stop-row-waypoint-1')).toBeTruthy();
+    expect(screen.getByTestId('route-flow-stop-waypoint-1')).toBeTruthy();
     expect(screen.getByTestId('text-waypoint-placement-helper')).toHaveTextContent(
       'Search for a place or drop this stop directly on the map.'
     );
@@ -186,20 +186,20 @@ describe('RoutePlanningScreen', () => {
     fireEvent.press(screen.getByTestId('route-summary-chip'));
     fireEvent.changeText(screen.getByTestId('input-stop-search'), '-25.7479, 28.2293');
 
-    await waitFor(() => expect(screen.getByTestId('button-add-stop')).toBeTruthy());
-    fireEvent.press(screen.getByTestId('button-add-stop'));
+    await waitFor(() => expect(screen.getByTestId('button-add-stop-inline')).toBeTruthy());
+    fireEvent.press(screen.getByTestId('button-add-stop-inline'));
     fireEvent.changeText(screen.getByTestId('input-stop-search'), '-26.1000, 28.1000');
     await waitFor(() =>
       expect(screen.getAllByText('-26.1000, 28.1000').length).toBeGreaterThan(0)
     );
 
-    fireEvent.press(screen.getByTestId('button-add-stop'));
+    fireEvent.press(screen.getByTestId('button-add-stop-inline'));
     fireEvent.changeText(screen.getByTestId('input-stop-search'), '-26.0000, 28.2000');
     await waitFor(() =>
       expect(screen.getAllByText('-26.0000, 28.2000').length).toBeGreaterThan(0)
     );
 
-    fireEvent.press(screen.getByTestId('route-stop-row-start'));
+    fireEvent.press(screen.getByTestId('route-flow-stop-start'));
     fireEvent.press(screen.getByTestId('button-swap-start-destination'));
     expect(screen.getByTestId('text-selected-stop-label')).toHaveTextContent('Start');
 
@@ -214,7 +214,7 @@ describe('RoutePlanningScreen', () => {
     fireEvent.press(screen.getByTestId('button-exit-drive-reorder-mode'));
 
     expect(screen.getByTestId('route-flow-composer')).toBeTruthy();
-    expect(screen.getAllByTestId(/route-stop-row-waypoint-/)).toHaveLength(2);
+    expect(screen.getAllByTestId(/route-flow-stop-waypoint-/)).toHaveLength(2);
   });
 
   it('lets leaders remove a waypoint directly from in-card reorder mode', async () => {
@@ -225,8 +225,8 @@ describe('RoutePlanningScreen', () => {
     fireEvent.press(screen.getByTestId('route-summary-chip'));
     fireEvent.changeText(screen.getByTestId('input-stop-search'), '-25.7479, 28.2293');
 
-    await waitFor(() => expect(screen.getByTestId('button-add-stop')).toBeTruthy());
-    fireEvent.press(screen.getByTestId('button-add-stop'));
+    await waitFor(() => expect(screen.getByTestId('button-add-stop-inline')).toBeTruthy());
+    fireEvent.press(screen.getByTestId('button-add-stop-inline'));
     fireEvent.changeText(screen.getByTestId('input-stop-search'), '-26.1000, 28.1000');
     await waitFor(() =>
       expect(screen.getAllByText('-26.1000, 28.1000').length).toBeGreaterThan(0)
@@ -237,7 +237,7 @@ describe('RoutePlanningScreen', () => {
     expect(screen.getByTestId('route-flow-reorder-list')).toBeTruthy();
     fireEvent.press(screen.getByTestId('button-remove-waypoint-reorder-1'));
 
-    expect(screen.queryByTestId('route-stop-row-waypoint-1')).toBeNull();
+    expect(screen.queryByTestId('route-flow-stop-waypoint-1')).toBeNull();
     expect(screen.queryByTestId('button-exit-drive-reorder-mode')).toBeNull();
   });
 
@@ -261,9 +261,9 @@ describe('RoutePlanningScreen', () => {
 
     fireEvent.press(screen.getByTestId('place-result-place-jhb'));
 
-    await waitFor(() =>
-      expect(screen.getByText('Johannesburg, Gauteng, South Africa')).toBeTruthy()
-    );
+    await waitFor(() => expect(screen.getByTestId('text-guided-step')).toHaveTextContent('Choose destination'));
+    expect(screen.getByTestId('text-selected-stop-label')).toHaveTextContent('Destination');
+    expect(screen.getByTestId('mock-map-camera-center')).toHaveTextContent('28.0473,-26.2041');
   });
 
   it('uses hidden map-pick mode with explicit confirmation before applying the point', async () => {
@@ -300,7 +300,7 @@ describe('RoutePlanningScreen', () => {
       expect(firstScreen.getByTestId('text-route-distance')).toHaveTextContent('54.0 km')
     );
 
-    fireEvent.press(firstScreen.getByTestId('button-add-stop'));
+    fireEvent.press(firstScreen.getByTestId('button-add-stop-inline'));
     fireEvent.changeText(firstScreen.getByTestId('input-stop-search'), '-26.1000, 28.1000');
 
     await waitFor(() =>
@@ -312,7 +312,7 @@ describe('RoutePlanningScreen', () => {
     const reopenedScreen = renderWithProviders(<RoutePlanningScreen />);
 
     await waitFor(() =>
-      expect(reopenedScreen.getByTestId('route-stop-row-waypoint-1')).toBeTruthy()
+      expect(reopenedScreen.getByTestId('route-flow-stop-waypoint-1')).toBeTruthy()
     );
     expect(reopenedScreen.getByTestId('text-sheet-state')).toHaveTextContent('Main');
     expect(reopenedScreen.getByTestId('text-selected-stop-label')).toHaveTextContent('Stop 1');
