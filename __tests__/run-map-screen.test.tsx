@@ -302,8 +302,49 @@ describe('RunMapScreen', () => {
         globalThis as {
           __mockExpoRouter?: { replace: jest.Mock };
         }
-      ).__mockExpoRouter?.replace
+    ).__mockExpoRouter?.replace
     ).toHaveBeenCalledWith('/create/route?runId=run_900&joinCode=123456');
+  });
+
+  it('does not offer edit route after the drive has already been launched', async () => {
+    useRunSessionStore.getState().setSession({
+      runId: 'run_900',
+      driverId: 'driver_admin',
+      driverName: 'You',
+      joinCode: '123456',
+      role: 'admin',
+      status: 'ready',
+    });
+    (subscribeToRunWithFirebase as jest.Mock).mockImplementation((_id, onData) => {
+      onData({
+        name: 'Sunrise Run',
+        status: 'ready',
+        driveStartedAt: Date.now(),
+        route: {
+          points: [
+            [-26.2041, 28.0473],
+            [-25.7479, 28.2293],
+          ],
+          distanceMetres: 54000,
+          source: 'drawn',
+        },
+      });
+
+      return jest.fn();
+    });
+    (subscribeToDriversWithFirebase as jest.Mock).mockImplementation((_id, onData) => {
+      onData([]);
+      return jest.fn();
+    });
+    (subscribeToHazardsWithFirebase as jest.Mock).mockImplementation((_id, onData) => {
+      onData([]);
+      return jest.fn();
+    });
+
+    const screen = renderWithProviders(<RunMapScreen />);
+
+    await waitFor(() => expect(screen.getByTestId('text-run-name')).toHaveTextContent('Sunrise Run'));
+    expect(screen.queryByTestId('button-edit-route')).toBeNull();
   });
 
   it('reports a hazard from the current driver location', async () => {

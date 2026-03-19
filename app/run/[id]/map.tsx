@@ -842,6 +842,12 @@ export default function RunMapScreen() {
       return;
     }
 
+    if (session.role !== 'admin' || currentRun?.status !== 'ready' || typeof currentRun?.driveStartedAt === 'number') {
+      setIsConfirmingRouteEdit(false);
+      setError('Route editing is only available before the drive has started.');
+      return;
+    }
+
     setError(null);
     setIsReopeningRoute(true);
 
@@ -933,6 +939,8 @@ export default function RunMapScreen() {
   // ── Derived values ────────────────────────────────────────────────────────
   const driversWithGps = displayDrivers.filter((d) => d.location).length;
   const canStartDrive = session.role === 'admin' && driversWithGps >= 1;
+  const hasDriveStarted = typeof currentRun?.driveStartedAt === 'number';
+  const canEditRoute = session.role === 'admin' && currentRun?.status === 'ready' && !hasDriveStarted;
   const showTrackingPrompt =
     trackingMode === 'idle' || trackingMode === 'starting' || trackingMode === 'denied';
   const connectivityOffline = session.connectivityStatus !== 'online';
@@ -1132,22 +1140,27 @@ export default function RunMapScreen() {
                   </Text>
                   <MaterialIcons color="#FFFFFF" name="navigation" size={18} />
                 </TouchableOpacity>
-                <Pressable
-                  accessibilityRole="button"
-                  disabled={isReopeningRoute}
-                  onPress={() => setIsConfirmingRouteEdit(true)}
-                  style={({ pressed }) => [
-                    styles.editRouteSecondaryButton,
-                    pressed && styles.editRouteSecondaryButtonPressed,
-                  ]}
-                  testID="button-edit-route"
-                >
-                  <Text style={styles.editRouteSecondaryText}>
-                    {isReopeningRoute ? 'Opening…' : 'Edit Route'}
-                  </Text>
-                </Pressable>
+                {canEditRoute ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    disabled={isReopeningRoute}
+                    onPress={() => setIsConfirmingRouteEdit(true)}
+                    style={({ pressed }) => [
+                      styles.editRouteSecondaryButton,
+                      pressed && styles.editRouteSecondaryButtonPressed,
+                    ]}
+                    testID="button-edit-route"
+                  >
+                    <Text style={styles.editRouteSecondaryText}>
+                      {isReopeningRoute ? 'Opening…' : 'Edit Route'}
+                    </Text>
+                  </Pressable>
+                ) : null}
                 {!canStartDrive ? (
                   <Text style={styles.startDriveHint}>Waiting for at least 1 driver with GPS</Text>
+                ) : null}
+                {hasDriveStarted ? (
+                  <Text style={styles.startDriveHint}>Route editing is unavailable after launch.</Text>
                 ) : null}
               </>
             ) : (
