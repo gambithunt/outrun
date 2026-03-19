@@ -92,6 +92,20 @@ describe('create and join screens', () => {
     );
   });
 
+  it('shows a floating back button on the create screen', () => {
+    const screen = renderWithProviders(<CreateRunScreen />);
+
+    fireEvent.press(screen.getByTestId('button-back-create-run'));
+
+    expect(
+      (
+        globalThis as {
+          __mockExpoRouter?: { back: jest.Mock };
+        }
+      ).__mockExpoRouter?.back
+    ).toHaveBeenCalledTimes(1);
+  });
+
   it('shows an error for an unresolved join code', async () => {
     (resolveJoinCodeWithFirebase as jest.Mock).mockResolvedValue(null);
     const screen = renderWithProviders(<JoinRunScreen />);

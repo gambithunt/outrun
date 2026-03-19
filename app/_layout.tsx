@@ -58,7 +58,7 @@ function RootNavigator() {
       <Stack>
         <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="settings" options={{ title: 'Settings' }} />
-        <Stack.Screen name="create/index" options={{ title: 'Create a Run' }} />
+        <Stack.Screen name="create/index" options={{ headerShown: false }} />
         <Stack.Screen name="create/route" options={{ headerShown: false }} />
         <Stack.Screen name="join/index" options={{ title: 'Join a Run' }} />
         <Stack.Screen name="join/[code]" options={{ title: 'Join ClubRun' }} />
