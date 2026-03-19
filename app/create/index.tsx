@@ -140,20 +140,6 @@ export default function CreateRunScreen() {
         }}
       >
         <View style={{ gap: 10 }}>
-          <Text style={{ color: theme.colors.textPrimary, fontSize: 22, fontWeight: '800' }}>
-            Run setup
-          </Text>
-          <Text
-            style={{
-              color: theme.colors.textSecondary,
-              fontSize: 13,
-              fontWeight: '700',
-              letterSpacing: 0.6,
-              textTransform: 'uppercase',
-            }}
-          >
-            Club Run Setup
-          </Text>
           <Text
             style={{
               color: theme.colors.textPrimary,
