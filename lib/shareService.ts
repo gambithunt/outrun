@@ -4,8 +4,12 @@ import { RefObject } from 'react';
 import { View } from 'react-native';
 import { captureRef } from 'react-native-view-shot';
 
-import { getRouteBounds, type RoutePoint } from '@/lib/geo';
-import { Run } from '@/types/domain';
+import { type RoutePoint } from '@/lib/geo';
+import {
+  projectRoutePreviewLayout,
+  ROUTE_PREVIEW_COLORS,
+} from '@/lib/routePreview';
+import { Run, SummaryRoutePreview } from '@/types/domain';
 
 export type SummaryShareData = {
   title: string;
@@ -17,6 +21,7 @@ export type SummaryShareData = {
   fuelLines: string[];
   driverHighlights: string[];
   hazardBreakdown: string[];
+  routePreview: SummaryRoutePreview | null;
   routeThumbnailUri: string | null;
 };
 
@@ -52,7 +57,7 @@ function normalizeFileUri(uri: string) {
 function buildDriverHighlights(run: Run) {
   return Object.values(run.summary?.driverStats ?? {}).map((driver) => {
     const topSpeed = driver.topSpeedKmh?.toFixed(1) ?? 'N/A';
-    return `${driver.name} • ${driver.carMake} ${driver.carModel} • Top speed ${topSpeed} km/h`;
+    return `${driver.name} • ${driver.carMake} ${driver.carModel} • Peak speed ${topSpeed} km/h`;
   });
 }
 
@@ -76,49 +81,71 @@ function buildFuelLines(run: Run) {
   ];
 }
 
-export function buildRouteThumbnailDataUri(points: RoutePoint[]) {
+function buildFallbackRoutePreview(points: RoutePoint[]): SummaryRoutePreview | null {
   if (points.length < 2) {
     return null;
   }
 
-  const bounds = getRouteBounds(points);
-  if (!bounds) {
-    return null;
+  return {
+    points,
+    speedBuckets: points.slice(1).map(() => 1),
+  };
+}
+
+function buildSummaryRoutePreview(run: Run): SummaryRoutePreview | null {
+  const summaryPreview = run.summary?.routePreview;
+  if (summaryPreview && summaryPreview.points.length >= 2) {
+    return {
+      points: summaryPreview.points,
+      speedBuckets:
+        summaryPreview.speedBuckets.length === summaryPreview.points.length - 1
+          ? summaryPreview.speedBuckets
+          : summaryPreview.points.slice(1).map(() => 1),
+    };
   }
 
+  return buildFallbackRoutePreview(run.route?.points ?? []);
+}
+
+export function buildRouteThumbnailDataUri(routePreview: SummaryRoutePreview | null) {
   const width = 640;
   const height = 360;
   const padding = 32;
-  const usableWidth = width - padding * 2;
-  const usableHeight = height - padding * 2;
-  const lngSpan = Math.max(bounds.maxLng - bounds.minLng, 0.0001);
-  const latSpan = Math.max(bounds.maxLat - bounds.minLat, 0.0001);
-  const xScale = usableWidth / lngSpan;
-  const yScale = usableHeight / latSpan;
-  const scale = Math.min(xScale, yScale);
-  const offsetX = (width - lngSpan * scale) / 2;
-  const offsetY = (height - latSpan * scale) / 2;
-
-  const path = points
-    .map(([lat, lng], index) => {
-      const x = offsetX + (lng - bounds.minLng) * scale;
-      const y = height - (offsetY + (lat - bounds.minLat) * scale);
-      return `${index === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`;
-    })
+  const layout = projectRoutePreviewLayout(routePreview, width, height, padding);
+  if (!layout) {
+    return null;
+  }
+  const routeBasePath = layout.projectedPoints
+    .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`)
     .join(' ');
+  const contextPaths = layout.contextPaths
+    .map(
+      (path) =>
+        `<path d="${path
+          .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`)
+          .join(' ')}" fill="none" stroke="#FFFFFF" stroke-opacity="0.72" stroke-width="6" stroke-linecap="round" />`
+    )
+    .join('');
+  const routeRuns = layout.colorRuns
+    .map((run) => {
+      const stroke = ROUTE_PREVIEW_COLORS[run.bucket];
+      return `<path d="${run.points
+        .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`)
+        .join(' ')}" fill="none" stroke="${stroke}" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" />`;
+    })
+    .join('');
+  const startPoint = layout.projectedPoints[0];
+  const endPoint = layout.projectedPoints[layout.projectedPoints.length - 1];
 
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
-      <defs>
-        <linearGradient id="clubrun-bg" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stop-color="#0f172a" />
-          <stop offset="100%" stop-color="#1d4ed8" />
-        </linearGradient>
-      </defs>
-      <rect width="${width}" height="${height}" rx="36" fill="url(#clubrun-bg)" />
-      <path d="${path}" fill="none" stroke="#f8fafc" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" />
-      <circle cx="${offsetX + (points[0][1] - bounds.minLng) * scale}" cy="${height - (offsetY + (points[0][0] - bounds.minLat) * scale)}" r="12" fill="#22c55e" />
-      <circle cx="${offsetX + (points[points.length - 1][1] - bounds.minLng) * scale}" cy="${height - (offsetY + (points[points.length - 1][0] - bounds.minLat) * scale)}" r="12" fill="#f97316" />
+      <rect width="${width}" height="${height}" rx="36" fill="#EEF3F8" />
+      <rect x="20" y="20" width="${width - 40}" height="${height - 40}" rx="28" fill="#E7EEF6" />
+      ${contextPaths}
+      <path d="${routeBasePath}" fill="none" stroke="#D2DCE8" stroke-width="16" stroke-linecap="round" stroke-linejoin="round" />
+      ${routeRuns}
+      <circle cx="${startPoint.x.toFixed(2)}" cy="${startPoint.y.toFixed(2)}" r="8" fill="#FFFFFF" stroke="#6E90B2" stroke-width="3" />
+      <circle cx="${endPoint.x.toFixed(2)}" cy="${endPoint.y.toFixed(2)}" r="8" fill="#FFFFFF" stroke="#0F172A" stroke-width="3" />
     </svg>
   `;
 
@@ -130,34 +157,58 @@ export function buildSummaryShareData(run: Run): SummaryShareData {
     throw new Error('Summary data is required before sharing.');
   }
 
+  const routePreview = buildSummaryRoutePreview(run);
+
   return {
     title: run.name,
-    subtitle: 'ClubRun convoy recap',
+    subtitle: 'ClubRun run recap',
     generatedDate: formatDateLabel(run.summary.generatedAt),
     distanceLabel: `${run.summary.totalDistanceKm.toFixed(1)} km`,
-    durationLabel: `${run.summary.totalDriveTimeMinutes} minutes`,
-    hazardsLabel: `${run.summary.hazardSummary.total} hazards reported`,
+    durationLabel: `${run.summary.totalDriveTimeMinutes} min`,
+    hazardsLabel: `${run.summary.hazardSummary.total} logged`,
     fuelLines: buildFuelLines(run),
     driverHighlights: buildDriverHighlights(run),
     hazardBreakdown: buildHazardBreakdown(run),
-    routeThumbnailUri: buildRouteThumbnailDataUri(run.route?.points ?? []),
+    routePreview,
+    routeThumbnailUri: buildRouteThumbnailDataUri(routePreview),
   };
 }
 
 export function buildSummaryPrintHtml(data: SummaryShareData) {
   const routeSection = data.routeThumbnailUri
     ? `<img src="${data.routeThumbnailUri}" alt="Route preview" style="width:100%;border-radius:24px;display:block;" />`
-    : `<div style="padding:24px;border:1px solid #cbd5e1;border-radius:24px;background:#f8fafc;color:#475569;">Route preview unavailable for this run.</div>`;
-  const statCard = (label: string, value: string) => `
-    <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:18px;padding:16px;">
-      <div style="font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:#1d4ed8;">${escapeHtml(label)}</div>
-      <div style="margin-top:8px;font-size:24px;font-weight:700;color:#0f172a;">${escapeHtml(value)}</div>
-    </div>
+    : `<div class="section empty-route">Route replay unavailable for this run.</div>`;
+  const hazardChips = data.hazardBreakdown.length
+    ? data.hazardBreakdown
+        .slice(0, 4)
+        .map(
+          (item) =>
+            `<span style="display:inline-flex;padding:8px 12px;border-radius:999px;background:#fde8ea;color:#0f172a;font-weight:700;">${escapeHtml(item)}</span>`
+        )
+        .join('')
+    : `<div style="color:#64748b;">No hazards were called out.</div>`;
+  const standoutLine = data.driverHighlights[0] ?? 'No convoy spotlight • • No driver spotlight was captured for this run.';
+  const [standoutName, standoutVehicle, standoutDetail] = standoutLine.split(' • ');
+  const standoutBody = `
+    <div class="standout-name">${escapeHtml(standoutName ?? standoutLine)}</div>
+    ${standoutVehicle ? `<div class="standout-vehicle">${escapeHtml(standoutVehicle)}</div>` : ''}
+    <div class="standout-detail">${escapeHtml(standoutDetail ?? 'No driver spotlight was captured for this run.')}</div>
   `;
-  const listItems = (items: string[], emptyLabel: string) =>
-    items.length > 0
-      ? items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')
-      : `<li>${escapeHtml(emptyLabel)}</li>`;
+  const fuelRows = (data.fuelLines.length > 0 ? data.fuelLines : ['No fuel story recorded.'])
+    .map((line) => {
+      const separatorIndex = line.indexOf(':');
+      if (separatorIndex === -1) {
+        return `<div class="metric-row"><div class="metric-label">${escapeHtml(line)}</div></div>`;
+      }
+
+      return `
+        <div class="metric-row">
+          <div class="metric-label">${escapeHtml(line.slice(0, separatorIndex))}</div>
+          <div class="metric-value">${escapeHtml(line.slice(separatorIndex + 1).trim())}</div>
+        </div>
+      `;
+    })
+    .join('');
 
   return `
     <html>
@@ -166,12 +217,23 @@ export function buildSummaryPrintHtml(data: SummaryShareData) {
         <style>
           @page { margin: 24px; }
           body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #0f172a; background: #ffffff; }
-          .page { display: flex; flex-direction: column; gap: 24px; }
-          .hero { background: linear-gradient(135deg, #0f172a, #1d4ed8); color: #f8fafc; border-radius: 28px; padding: 28px; }
+          .page { display: flex; flex-direction: column; gap: 18px; }
+          .hero { background: #e63946; color: #fff7f8; border-radius: 28px; padding: 28px; }
           .subtitle { opacity: 0.82; margin-top: 6px; }
           .meta { margin-top: 16px; font-size: 14px; opacity: 0.78; }
-          .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-          .panel { border: 1px solid #e2e8f0; border-radius: 24px; padding: 20px; background: #ffffff; }
+          .section { border: 1px solid #e2e8f0; border-radius: 24px; padding: 20px; background: #f8fafc; }
+          .empty-route { min-height: 180px; display:flex; align-items:center; justify-content:center; color:#475569; background:#f8fafc; }
+          .eyebrow { font-size:12px; letter-spacing:0.08em; text-transform:uppercase; color:#64748b; font-weight:700; }
+          .distance-label { margin-top: 6px; font-size:14px; color:#0f172a; font-weight:700; }
+          .distance-value { margin-top: 8px; font-size:44px; line-height:48px; font-weight:800; color:#0f172a; }
+          .divider { height:1px; background:#e2e8f0; margin:16px 0; }
+          .metric-row { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; }
+          .metric-label { color:#64748b; font-size:17px; }
+          .metric-value { color:#0f172a; font-size:20px; line-height:24px; font-weight:700; text-align:right; }
+          .standout-name { margin-top: 4px; font-size:28px; line-height:32px; font-weight:800; color:#0f172a; }
+          .standout-vehicle { margin-top: 4px; font-size:18px; font-weight:600; color:#0f172a; }
+          .standout-detail { margin-top: 6px; font-size:16px; line-height:22px; color:#64748b; }
+          .chips { display: flex; flex-wrap: wrap; gap: 10px; }
           h2 { margin: 0 0 12px; font-size: 18px; }
           ul { margin: 0; padding-left: 18px; color: #334155; }
           li { margin-bottom: 8px; }
@@ -185,22 +247,34 @@ export function buildSummaryPrintHtml(data: SummaryShareData) {
             <div class="meta">Generated ${escapeHtml(data.generatedDate)}</div>
           </div>
           ${routeSection}
-          <div class="stats">
-            ${statCard('Distance', data.distanceLabel)}
-            ${statCard('Drive Time', data.durationLabel)}
-            ${statCard('Hazards', data.hazardsLabel)}
+          <div class="section">
+            <div class="eyebrow">Run recap</div>
+            <div class="distance-label">Distance</div>
+            <div class="distance-value">${escapeHtml(data.distanceLabel)}</div>
+            <div class="divider"></div>
+            <div class="metric-row">
+              <div class="metric-label">Drive time</div>
+              <div class="metric-value">${escapeHtml(data.durationLabel)}</div>
+            </div>
+            <div class="divider"></div>
+            <div class="metric-row">
+              <div class="metric-label">Hazards called out</div>
+              <div class="metric-value">${escapeHtml(data.hazardsLabel)}</div>
+            </div>
           </div>
-          <div class="panel">
-            <h2>Fuel totals</h2>
-            <ul>${listItems(data.fuelLines, 'No fuel data recorded.')}</ul>
+          <div class="section">
+            <div class="eyebrow">Convoy spotlight</div>
+            ${standoutBody}
           </div>
-          <div class="panel">
-            <h2>Driver highlights</h2>
-            <ul>${listItems(data.driverHighlights, 'No driver summary data available.')}</ul>
+          <div class="section">
+            <div class="eyebrow">Fuel story</div>
+            <div style="display:flex; flex-direction:column; gap:12px; margin-top:10px;">
+              ${fuelRows}
+            </div>
           </div>
-          <div class="panel">
-            <h2>Hazard breakdown</h2>
-            <ul>${listItems(data.hazardBreakdown, 'No hazards were reported.')}</ul>
+          <div class="section">
+            <div class="eyebrow" style="margin-bottom:12px;">Hazards called out</div>
+            <div class="chips">${hazardChips}</div>
           </div>
         </div>
       </body>

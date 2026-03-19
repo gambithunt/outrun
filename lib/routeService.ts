@@ -1,4 +1,4 @@
-import { child, ref, set, type Database } from 'firebase/database';
+import { child, get, ref, set, type Database } from 'firebase/database';
 
 import { getFirebaseDatabase } from '@/lib/firebase';
 import { buildRouteWaypointsFromStops } from '@/lib/routePlanner';
@@ -6,8 +6,9 @@ import { calculateRouteDistanceMeters, isValidRoutePoint, RoutePoint } from '@/l
 import { RouteData, RouteStopDraft } from '@/types/domain';
 
 type RouteClient = {
+  readStartedAt: (runId: string) => Promise<number | null>;
   writeRoute: (runId: string, route: RouteData) => Promise<void>;
-  writeStatus: (runId: string, status: 'ready' | 'active') => Promise<void>;
+  writeStatus: (runId: string, status: 'draft' | 'ready' | 'active') => Promise<void>;
   writeStartedAt: (runId: string, startedAt: number) => Promise<void>;
 };
 
@@ -85,6 +86,10 @@ export async function fetchRoadRouteFromStops(
 
 export function createRouteClient(database: Database): RouteClient {
   return {
+    readStartedAt: async (runId) => {
+      const snapshot = await get(child(ref(database), `runs/${runId}/startedAt`));
+      return snapshot.exists() ? (snapshot.val() as number) : null;
+    },
     writeRoute: async (runId, route) => {
       await set(child(ref(database), `runs/${runId}/route`), sanitizeRouteData(route));
     },
@@ -158,8 +163,19 @@ export async function startRunWithSavedRoute(
     throw new Error('Run id is required before starting a run.');
   }
 
-  await client.writeStartedAt(runId, now);
+  const startedAt = await client.readStartedAt(runId);
+  if (startedAt === null) {
+    await client.writeStartedAt(runId, now);
+  }
   await client.writeStatus(runId, 'ready');
+}
+
+export async function reopenRoutePlannerFromLobby(client: RouteClient, runId: string) {
+  if (!runId) {
+    throw new Error('Run id is required before reopening route planning.');
+  }
+
+  await client.writeStatus(runId, 'draft');
 }
 
 export async function saveRouteToRunWithFirebase(runId: string, route: RouteData) {
@@ -175,4 +191,9 @@ export async function saveRouteDraftToRunWithFirebase(runId: string, route: Rout
 export async function startRunWithSavedRouteWithFirebase(runId: string) {
   const database = getFirebaseDatabase();
   return startRunWithSavedRoute(createRouteClient(database), runId);
+}
+
+export async function reopenRoutePlannerFromLobbyWithFirebase(runId: string) {
+  const database = getFirebaseDatabase();
+  return reopenRoutePlannerFromLobby(createRouteClient(database), runId);
 }

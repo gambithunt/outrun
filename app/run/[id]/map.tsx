@@ -1,11 +1,12 @@
+import { MaterialIcons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Linking,
-  Modal,
   PanResponder,
   Platform,
+  Pressable,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -13,7 +14,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ClubRunMap } from '@/components/map/ClubRunMap';
 import { AppButton } from '@/components/ui/AppButton';
@@ -21,6 +22,7 @@ import {
   startBackgroundTrackingWithExpo,
   stopBackgroundTrackingWithExpo,
 } from '@/lib/backgroundTracking';
+import { updateAdminRunStatusInHistory } from '@/lib/adminRunHistory';
 import { subscribeToConnectivityWithFirebase } from '@/lib/connectivity';
 import { removeDriverWithFirebase } from '@/lib/driverManagementService';
 import { useAppTheme } from '@/contexts/ThemeContext';
@@ -39,6 +41,7 @@ import {
   isVisibleHazard,
   reportHazardWithFirebase,
 } from '@/lib/hazardService';
+import { reopenRoutePlannerFromLobbyWithFirebase } from '@/lib/routeService';
 import { startDriveWithFirebase } from '@/lib/runService';
 import { subscribeToRunWithFirebase } from '@/lib/runRealtime';
 import { endRunWithFirebase } from '@/lib/summaryService';
@@ -47,14 +50,36 @@ import { HazardType, Run } from '@/types/domain';
 
 type TrackingMode = 'idle' | 'starting' | 'foreground' | 'background' | 'denied';
 
-const HAZARD_EMOJI: Record<HazardType, string> = {
-  pothole: '🕳️',
-  roadworks: '🚧',
-  police: '🚓',
-  debris: '⚠️',
-  animal: '🐄',
-  broken_down_car: '🚗',
+const HAZARD_EMOJI: Record<HazardType, keyof typeof MaterialIcons.glyphMap> = {
+  pothole: 'trip-origin',
+  roadworks: 'construction',
+  police: 'local-police',
+  debris: 'warning-amber',
+  animal: 'pets',
+  broken_down_car: 'car-crash',
 };
+
+const LIVE_MAP_TINT = '#0A84FF';
+const LIVE_MAP_ROUTE = '#FF3B30';
+const ANIMATIONS_ENABLED = !process.env.JEST_WORKER_ID;
+
+function getPresenceMeta(driver: LiveDriver) {
+  const status = getDriverPresenceStatus(driver);
+  if (status === 'active') {
+    return { color: '#16A34A', label: 'active' };
+  }
+  if (status === 'stale') {
+    return { color: '#D97706', label: 'checking in' };
+  }
+  if (status === 'lost_signal') {
+    return { color: '#DC2626', label: 'lost signal' };
+  }
+  return { color: '#64748B', label: 'waiting for GPS' };
+}
+
+function getSelfDriverLabel(name: string) {
+  return name.trim().toLowerCase() === 'you' ? 'You' : `${name} (you)`;
+}
 
 // ─── Incoming hazard alert (Waze-style slide from top) ───────────────────────
 
@@ -62,6 +87,11 @@ function HazardAlert({ message, onDismiss }: { message: string; onDismiss: () =>
   const translateY = useRef(new Animated.Value(-120)).current;
 
   useEffect(() => {
+    if (!ANIMATIONS_ENABLED) {
+      translateY.setValue(0);
+      return;
+    }
+
     const slideIn = Animated.timing(translateY, {
       toValue: 0,
       duration: 320,
@@ -73,12 +103,20 @@ function HazardAlert({ message, onDismiss }: { message: string; onDismiss: () =>
       useNativeDriver: true,
     });
 
+    let dismissTimer: ReturnType<typeof setTimeout> | null = null;
     slideIn.start(() => {
-      const timer = setTimeout(() => {
+      dismissTimer = setTimeout(() => {
         slideOut.start(() => onDismiss());
       }, 4500);
-      return () => clearTimeout(timer);
     });
+
+    return () => {
+      slideIn.stop();
+      slideOut.stop();
+      if (dismissTimer) {
+        clearTimeout(dismissTimer);
+      }
+    };
   }, [onDismiss, translateY]);
 
   return (
@@ -102,6 +140,7 @@ function DriverPanel({
   hazards,
   isAdmin,
   isEndingRun,
+  onExpandedChange,
   onDismissHazard,
   onEndRun,
   onRemoveDriver,
@@ -112,13 +151,19 @@ function DriverPanel({
   hazards: LiveHazard[];
   isAdmin: boolean;
   isEndingRun: boolean;
+  onExpandedChange?: (expanded: boolean) => void;
   onDismissHazard: (hazard: LiveHazard) => void;
   onEndRun: () => void;
   onRemoveDriver: (id: string) => void;
   accentColor: string;
 }) {
-  const [expanded, setExpanded] = useState(isAdmin);
+  const [expanded, setExpanded] = useState(false);
+  const [confirmingEndRun, setConfirmingEndRun] = useState(false);
   const insets = useSafeAreaInsets();
+
+  useEffect(() => {
+    onExpandedChange?.(expanded);
+  }, [expanded, onExpandedChange]);
 
   const panY = useRef(new Animated.Value(0)).current;
   const panResponder = useRef(
@@ -132,6 +177,11 @@ function DriverPanel({
       onPanResponderRelease: (_, gestureState) => {
         if (gestureState.dy > 60) {
           setExpanded(false);
+          setConfirmingEndRun(false);
+        }
+        if (!ANIMATIONS_ENABLED) {
+          panY.setValue(0);
+          return;
         }
         Animated.spring(panY, { toValue: 0, useNativeDriver: true }).start();
       },
@@ -145,35 +195,52 @@ function DriverPanel({
     return a.name.localeCompare(b.name);
   });
 
-  function presenceLabel(driver: LiveDriver) {
-    const s = getDriverPresenceStatus(driver);
-    if (s === 'active') return '🟢';
-    if (s === 'stale') return '🟡';
-    if (s === 'lost_signal') return '🔴';
-    return '⬜';
-  }
-
   function speedLabel(driver: LiveDriver) {
     if (!driver.location?.speed || driver.location.speed < 0.5) return '';
     const kmh = Math.round(driver.location.speed * 3.6);
     return ` · ${kmh} km/h`;
   }
 
+  function toggleExpanded() {
+    setExpanded((current) => {
+      const nextExpanded = !current;
+      if (current) {
+        setConfirmingEndRun(false);
+      }
+      return nextExpanded;
+    });
+  }
+
   return (
     <Animated.View
       style={[
         styles.driverPanel,
-        { paddingBottom: insets.bottom + 4, transform: [{ translateY: panY }] },
+        {
+          paddingBottom: insets.bottom + 6,
+          transform: [{ translateY: panY }],
+        },
       ]}
     >
-      {/* Drag handle */}
-      <TouchableOpacity onPress={() => setExpanded(!expanded)} style={styles.driverPanelHandle}>
+      <TouchableOpacity
+        onPress={toggleExpanded}
+        style={styles.driverPanelHandle}
+      >
         <View style={styles.driverPanelHandleBar} />
       </TouchableOpacity>
 
-      {/* Collapsed: avatar strip */}
       {!expanded ? (
-        <TouchableOpacity onPress={() => setExpanded(true)} activeOpacity={0.8}>
+        <TouchableOpacity onPress={toggleExpanded} activeOpacity={0.88} testID="button-driver-panel-toggle">
+          <View style={styles.driverStripHeader}>
+            <View>
+              <Text style={styles.driverStripTitle}>Drivers</Text>
+              <Text style={styles.driverStripSubtitle}>
+                {drivers.filter((driver) => getDriverPresenceStatus(driver) === 'active').length} live
+                {' · '}
+                {drivers.length} in convoy
+              </Text>
+            </View>
+            <MaterialIcons color="#475569" name="keyboard-arrow-up" size={22} />
+          </View>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -190,13 +257,18 @@ function DriverPanel({
                     style={[
                       styles.driverStripAvatar,
                       {
-                        backgroundColor: isSelf ? accentColor : '#374151',
-                        borderColor: isSelf ? '#FFFFFF' : 'transparent',
-                        borderWidth: isSelf ? 2 : 0,
+                        backgroundColor: isSelf ? accentColor : '#CBD5E1',
+                        borderColor: isSelf ? '#DBEAFE' : '#FFFFFF',
+                        borderWidth: 2,
                       },
                     ]}
                   >
-                    <Text style={styles.driverStripInitials}>
+                    <Text
+                      style={[
+                        styles.driverStripInitials,
+                        { color: isSelf ? '#FFFFFF' : '#0F172A' },
+                      ]}
+                    >
                       {driver.name
                         .split(' ')
                         .map((p) => p[0]?.toUpperCase() ?? '')
@@ -214,26 +286,48 @@ function DriverPanel({
           </ScrollView>
         </TouchableOpacity>
       ) : (
-        /* Expanded: full driver list */
         <Animated.View {...panResponder.panHandlers}>
+          <View style={styles.driverListHeader}>
+            <View>
+              <Text style={styles.driverListTitle}>Convoy</Text>
+              <Text style={styles.driverListSubtitle}>
+                {drivers.filter((driver) => getDriverPresenceStatus(driver) === 'active').length} live
+                {' · '}
+                {drivers.length} total
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={toggleExpanded}
+              activeOpacity={0.8}
+              testID="button-driver-panel-toggle"
+            >
+              <MaterialIcons color="#64748B" name="keyboard-arrow-down" size={22} />
+            </TouchableOpacity>
+          </View>
           <ScrollView style={styles.driverList} showsVerticalScrollIndicator={false}>
             {sortedDrivers.map((driver) => {
               const isSelf = driver.id === currentDriverId;
+              const presence = getPresenceMeta(driver);
               return (
                 <View
                   key={driver.id}
                   style={[
                     styles.driverRow,
-                    isSelf && { backgroundColor: 'rgba(255,255,255,0.07)' },
+                    isSelf && { backgroundColor: 'rgba(10,132,255,0.12)' },
                   ]}
                 >
                   <View
                     style={[
                       styles.driverRowAvatar,
-                      { backgroundColor: isSelf ? accentColor : '#374151' },
+                      { backgroundColor: isSelf ? accentColor : '#CBD5E1' },
                     ]}
                   >
-                    <Text style={styles.driverRowInitials}>
+                    <Text
+                      style={[
+                        styles.driverRowInitials,
+                        { color: isSelf ? '#FFFFFF' : '#0F172A' },
+                      ]}
+                    >
                       {driver.name
                         .split(' ')
                         .map((p) => p[0]?.toUpperCase() ?? '')
@@ -243,13 +337,10 @@ function DriverPanel({
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.driverRowName}>
-                      {driver.name}
-                      {isSelf ? ' (you)' : ''}
+                      {isSelf ? getSelfDriverLabel(driver.name) : driver.name}
                     </Text>
-                    <Text style={styles.driverRowStatus}>
-                      {presenceLabel(driver)}
-                      {' '}
-                      {getDriverPresenceStatus(driver).replace('_', ' ')}
+                    <Text style={[styles.driverRowStatus, { color: presence.color }]}>
+                      {presence.label}
                       {speedLabel(driver)}
                     </Text>
                   </View>
@@ -268,12 +359,29 @@ function DriverPanel({
 
             {isAdmin && hazards.length > 0 ? (
               <View style={{ paddingTop: 8 }}>
-                <Text style={{ color: '#9CA3AF', fontSize: 12, marginBottom: 6 }}>Active hazards</Text>
+                <Text style={{ color: '#64748B', fontSize: 12, fontWeight: '700', marginBottom: 6 }}>
+                  Active hazards
+                </Text>
                 {hazards.map((hazard) => (
-                  <View key={hazard.id} style={[styles.driverRow, { justifyContent: 'space-between' }]}>
-                    <Text style={{ color: '#FFFFFF', fontSize: 13 }}>
-                      {HAZARD_EMOJI[hazard.type as HazardType] ?? '⚠️'} {hazard.reporterName} · ×{hazard.reportCount}
-                    </Text>
+                  <View key={hazard.id} style={[styles.driverRow, styles.activeHazardRow]}>
+                    <View style={styles.activeHazardMeta}>
+                      <View style={styles.activeHazardIcon}>
+                        <MaterialIcons
+                          color="#0F172A"
+                          name={HAZARD_EMOJI[hazard.type as HazardType] ?? 'warning-amber'}
+                          size={18}
+                        />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.activeHazardTitle}>
+                          {HAZARD_LABELS[hazard.type as HazardType] ?? 'Hazard'}
+                        </Text>
+                        <Text style={styles.activeHazardDetail}>
+                          {hazard.reporterName} · {hazard.reportCount} report
+                          {hazard.reportCount === 1 ? '' : 's'}
+                        </Text>
+                      </View>
+                    </View>
                     <TouchableOpacity
                       onPress={() => onDismissHazard(hazard)}
                       style={styles.removeBtn}
@@ -288,11 +396,44 @@ function DriverPanel({
 
             {isAdmin ? (
               <View style={styles.endRunRow}>
-                <AppButton
-                  label={isEndingRun ? 'Ending Run…' : 'End Run'}
-                  onPress={onEndRun}
-                  testID="button-end-run"
-                />
+                {confirmingEndRun ? (
+                  <View style={styles.endRunConfirmCard}>
+                    <Text style={styles.endRunConfirmTitle}>End this run for everyone?</Text>
+                    <Text style={styles.endRunConfirmBody}>
+                      This moves the convoy to the summary screen and stops the live drive.
+                    </Text>
+                    <View style={styles.endRunConfirmActions}>
+                      <TouchableOpacity
+                        onPress={() => setConfirmingEndRun(false)}
+                        style={styles.endRunCancelButton}
+                        activeOpacity={0.82}
+                        testID="button-cancel-end-run"
+                      >
+                        <Text style={styles.endRunCancelText}>Cancel</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={onEndRun}
+                        style={styles.endRunConfirmButton}
+                        activeOpacity={0.82}
+                        testID="button-confirm-end-run"
+                      >
+                        <Text style={styles.endRunConfirmButtonText}>
+                          {isEndingRun ? 'Ending…' : 'Confirm End'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    onPress={() => setConfirmingEndRun(true)}
+                    style={styles.endRunSubtleButton}
+                    activeOpacity={0.82}
+                    testID="button-end-run"
+                  >
+                    <MaterialIcons color="#DC2626" name="stop-circle" size={18} />
+                    <Text style={styles.endRunSubtleText}>End Run</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             ) : null}
           </ScrollView>
@@ -346,6 +487,121 @@ function TrackingModal({
   );
 }
 
+function HazardActionRail({
+  bottom,
+  disabled,
+  onSelectHazard,
+}: {
+  bottom: number;
+  disabled: boolean;
+  onSelectHazard: (type: HazardType) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const progress = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (!ANIMATIONS_ENABLED) {
+      progress.setValue(expanded ? 1 : 0);
+      return;
+    }
+
+    Animated.spring(progress, {
+      toValue: expanded ? 1 : 0,
+      useNativeDriver: false,
+      bounciness: 8,
+      speed: 16,
+    }).start();
+  }, [expanded, progress]);
+
+  const railWidth = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 206],
+  });
+  const railOpacity = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 1],
+  });
+  const railTranslate = progress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [18, 0],
+  });
+
+  function handleSelect(type: HazardType) {
+    onSelectHazard(type);
+    setExpanded(false);
+  }
+
+  return (
+    <View style={[styles.actionRailWrapper, { bottom }]} pointerEvents="box-none">
+      <Animated.View
+        style={[
+          styles.actionRailPanel,
+          {
+            width: railWidth,
+            opacity: railOpacity,
+            transform: [{ translateX: railTranslate }],
+          },
+        ]}
+        pointerEvents={expanded ? 'auto' : 'none'}
+      >
+        <View style={styles.actionRailGrid}>
+          {(
+            [
+              'pothole',
+              'roadworks',
+              'police',
+              'debris',
+              'animal',
+              'broken_down_car',
+            ] as HazardType[]
+          ).map((type) => (
+            <Pressable
+              key={type}
+              accessibilityRole="button"
+              disabled={disabled}
+              onPress={() => handleSelect(type)}
+              style={({ pressed }) => [
+                styles.actionRailButton,
+                disabled && styles.actionRailButtonDisabled,
+                pressed && !disabled && styles.actionRailButtonPressed,
+              ]}
+              testID={`button-hazard-${type}`}
+            >
+              <MaterialIcons
+                color="#0F172A"
+                name={HAZARD_EMOJI[type]}
+                size={18}
+              />
+              <Text style={styles.actionRailLabel} numberOfLines={1}>
+                {type === 'broken_down_car'
+                  ? 'Breakdown'
+                  : HAZARD_LABELS[type]}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      </Animated.View>
+
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => setExpanded((current) => !current)}
+        style={({ pressed }) => [
+          styles.actionRailToggle,
+          expanded && styles.actionRailToggleActive,
+          pressed && styles.actionRailTogglePressed,
+        ]}
+        testID="button-open-hazard-actions"
+      >
+        <MaterialIcons
+          color={expanded ? '#FFFFFF' : '#0F172A'}
+          name={expanded ? 'close' : 'report-problem'}
+          size={24}
+        />
+      </Pressable>
+    </View>
+  );
+}
+
 function formatTrackingMode(mode: TrackingMode) {
   if (mode === 'background') return 'background enabled';
   if (mode === 'foreground') return 'foreground only';
@@ -372,8 +628,11 @@ export default function RunMapScreen() {
   const [trackingDetail, setTrackingDetail] = useState<string | null>(null);
   const [hazardAlert, setHazardAlert] = useState<string | null>(null);
   const [currentRun, setCurrentRun] = useState<Run | null>(null);
+  const [isConfirmingRouteEdit, setIsConfirmingRouteEdit] = useState(false);
   const [isEndingRun, setIsEndingRun] = useState(false);
+  const [isReopeningRoute, setIsReopeningRoute] = useState(false);
   const [isStartingDrive, setIsStartingDrive] = useState(false);
+  const [isDriverPanelExpanded, setIsDriverPanelExpanded] = useState(false);
   const [userPanned, setUserPanned] = useState(false);
   const [recenterToken, setRecenterToken] = useState(0);
 
@@ -381,9 +640,23 @@ export default function RunMapScreen() {
   const stopForegroundTrackingRef = useRef<(() => void) | null>(null);
 
   const mapMode = session.status === 'active' ? 'navigation' : 'lobby';
+  const displayDrivers = useMemo(
+    () =>
+      drivers.map((driver) =>
+        driver.id === session.driverId &&
+        driver.name === 'Unknown driver' &&
+        session.driverName
+          ? {
+              ...driver,
+              name: session.driverName,
+            }
+          : driver
+      ),
+    [drivers, session.driverId, session.driverName]
+  );
 
   // Derive current driver location for distance calculations
-  const currentDriver = drivers.find((d) => d.id === session.driverId);
+  const currentDriver = displayDrivers.find((d) => d.id === session.driverId);
 
   // ── Run subscription ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -414,8 +687,16 @@ export default function RunMapScreen() {
   // ── Switch to navigation mode instantly when active ───────────────────────
   useEffect(() => {
     if (session.status === 'active') {
+      setIsDriverPanelExpanded(false);
+      setIsConfirmingRouteEdit(false);
       setUserPanned(false);
       setRecenterToken((t) => t + 1);
+    }
+  }, [session.status]);
+
+  useEffect(() => {
+    if (session.status !== 'ready') {
+      setIsConfirmingRouteEdit(false);
     }
   }, [session.status]);
 
@@ -556,6 +837,36 @@ export default function RunMapScreen() {
     }
   }
 
+  async function handleConfirmEditRoute() {
+    if (!id) {
+      return;
+    }
+
+    setError(null);
+    setIsReopeningRoute(true);
+
+    try {
+      await reopenRoutePlannerFromLobbyWithFirebase(id);
+      void updateAdminRunStatusInHistory(id, 'draft');
+      setRunSnapshot({
+        name: currentRun?.name ?? session.runName ?? undefined,
+        route: currentRun?.route ?? session.route ?? null,
+        status: 'draft',
+      });
+      setIsConfirmingRouteEdit(false);
+      const routePlannerHref = (
+        session.joinCode
+          ? `/create/route?runId=${encodeURIComponent(id)}&joinCode=${encodeURIComponent(session.joinCode)}`
+          : `/create/route?runId=${encodeURIComponent(id)}`
+      ) as `/create/route?${string}`;
+      router.replace(routePlannerHref);
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : 'Unable to reopen the route planner.');
+    } finally {
+      setIsReopeningRoute(false);
+    }
+  }
+
   async function handleEndRun() {
     if (!id || !currentRun) {
       setError('Run data is still loading.');
@@ -620,15 +931,21 @@ export default function RunMapScreen() {
   }
 
   // ── Derived values ────────────────────────────────────────────────────────
-  const driversWithGps = drivers.filter((d) => d.location).length;
+  const driversWithGps = displayDrivers.filter((d) => d.location).length;
   const canStartDrive = session.role === 'admin' && driversWithGps >= 1;
   const showTrackingPrompt =
     trackingMode === 'idle' || trackingMode === 'starting' || trackingMode === 'denied';
   const connectivityOffline = session.connectivityStatus !== 'online';
 
   const adminName = currentRun
-    ? drivers.find((d) => d.id === currentRun.adminId)?.name ?? 'the organiser'
+    ? displayDrivers.find((d) => d.id === currentRun.adminId)?.name ?? 'the organiser'
     : 'the organiser';
+  const runSubtitle =
+    mapMode === 'lobby'
+      ? session.role === 'admin'
+        ? `${driversWithGps}/${displayDrivers.length} ready to start`
+        : `Waiting for ${adminName}`
+      : `${driversWithGps}/${displayDrivers.length} live · ${hazards.length} hazards`;
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -636,19 +953,21 @@ export default function RunMapScreen() {
       <StatusBar
         translucent
         backgroundColor="transparent"
-        barStyle="light-content"
+        barStyle="dark-content"
       />
 
       {/* ── Full-screen map ── */}
       {session.isRunLoaded ? (
         <ClubRunMap
+          accentColorOverride={LIVE_MAP_TINT}
           currentDriverId={session.driverId}
-          drivers={drivers}
+          drivers={displayDrivers}
           edgeToEdge
           hazards={hazards}
           mapMode={mapMode}
           onUserPanned={() => setUserPanned(true)}
           recenterToken={recenterToken}
+          routeColorOverride={LIVE_MAP_ROUTE}
           routePoints={session.route?.points ?? []}
           testID="live-run-map"
         />
@@ -658,34 +977,45 @@ export default function RunMapScreen() {
         </View>
       )}
 
-      {/* ── Top overlay: status banner + error + connectivity ── */}
+      {/* ── Top overlay: compact chrome + status banners ── */}
       <View style={[styles.topOverlay, { paddingTop: insets.top + 8 }]} pointerEvents="box-none">
-        {/* Run name pill */}
-        <View style={styles.runNamePill} pointerEvents="none">
-          <Text style={styles.runNameText} numberOfLines={1} testID="text-run-name">
-            {session.runName ?? 'Live Run'}
-          </Text>
-        </View>
+        <View style={styles.topBar}>
+          <TouchableOpacity
+            accessibilityRole="button"
+            onPress={() => router.back()}
+            style={styles.topIconButton}
+            activeOpacity={0.86}
+            testID="button-back-live-map"
+          >
+            <MaterialIcons color="#0F172A" name="arrow-back-ios-new" size={22} />
+          </TouchableOpacity>
 
-        {/* Lobby waiting banner */}
-        {mapMode === 'lobby' ? (
-          <View style={styles.lobbyBanner} pointerEvents="none">
-            <Text style={styles.lobbyBannerTitle}>
-              {session.role === 'admin'
-                ? '🏁 Ready to start'
-                : `⏳ Waiting for ${adminName} to start the run…`}
-            </Text>
-            <Text style={styles.lobbyBannerSubtitle}>
-              {driversWithGps} / {drivers.length} drivers with GPS active
-            </Text>
+          <View style={styles.runHeaderCard}>
+            <View style={styles.runHeaderCopy}>
+              <Text style={styles.runHeaderTitle} numberOfLines={1} testID="text-run-name">
+                {session.runName ?? 'Live Run'}
+              </Text>
+              <Text style={styles.runHeaderSubtitle} numberOfLines={1}>
+                {runSubtitle}
+              </Text>
+            </View>
           </View>
-        ) : null}
+        </View>
 
         {/* Connectivity warning */}
         {connectivityOffline ? (
-          <View style={[styles.connectivityBanner, {
-            backgroundColor: session.connectivityStatus === 'offline' ? '#7C2D12' : '#78350F',
-          }]} pointerEvents="none">
+          <View
+            style={[
+              styles.connectivityBanner,
+              {
+                backgroundColor:
+                  session.connectivityStatus === 'offline'
+                    ? 'rgba(153, 27, 27, 0.94)'
+                    : 'rgba(185, 28, 28, 0.88)',
+              },
+            ]}
+            pointerEvents="none"
+          >
             <Text style={styles.connectivityText} testID="text-connectivity-banner">
               {session.connectivityStatus === 'offline'
                 ? 'Offline. Live updates are paused until your connection returns.'
@@ -709,13 +1039,13 @@ export default function RunMapScreen() {
         <View style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }} accessible={false}>
           <Text testID="text-run-status">{session.status ?? 'Unknown'}</Text>
           <Text testID="text-run-route-points">{`Route points: ${session.route?.points.length ?? 0}`}</Text>
-          <Text testID="text-driver-count">{`Drivers: ${drivers.length}`}</Text>
+          <Text testID="text-driver-count">{`Drivers: ${displayDrivers.length}`}</Text>
           <Text testID="text-hazard-count">{`Hazards: ${hazards.length}`}</Text>
           <Text testID="text-tracking-state">{`Tracking: ${formatTrackingMode(trackingMode)}`}</Text>
           {trackingDetail ? (
             <Text testID="text-tracking-detail">{trackingDetail}</Text>
           ) : null}
-          {drivers.map((driver) => (
+          {displayDrivers.map((driver) => (
             <Text key={driver.id} testID={`text-driver-presence-${driver.id}`}>
               {`${driver.name} • ${getDriverPresenceStatus(driver).replace('_', ' ')}`}
             </Text>
@@ -725,7 +1055,7 @@ export default function RunMapScreen() {
 
       {/* ── Incoming hazard alert ── */}
       {hazardAlert ? (
-        <View style={[styles.hazardAlertWrapper, { top: insets.top + 80 }]} pointerEvents="box-none">
+        <View style={[styles.hazardAlertWrapper, { top: insets.top + 62 }]} pointerEvents="box-none">
           <HazardAlert message={hazardAlert} onDismiss={() => setHazardAlert(null)} />
         </View>
       ) : null}
@@ -733,57 +1063,40 @@ export default function RunMapScreen() {
       {/* ── Navigation: recenter button ── */}
       {mapMode === 'navigation' && userPanned ? (
         <TouchableOpacity
-          style={[styles.recenterButton, { bottom: insets.bottom + 180 }]}
+          style={[styles.recenterButton, { bottom: insets.bottom + 182 }]}
           onPress={handleRecenter}
           activeOpacity={0.85}
+          testID="button-recenter-map"
         >
-          <Text style={styles.recenterText}>⊕ Recenter</Text>
+          <MaterialIcons color={LIVE_MAP_TINT} name="my-location" size={17} />
+          <Text style={styles.recenterText}>Recenter</Text>
         </TouchableOpacity>
       ) : null}
 
-      {/* ── Navigation: hazard quick-report buttons (bottom-right) ── */}
-      {mapMode === 'navigation' ? (
-        <View
-          style={[styles.hazardButtons, { bottom: insets.bottom + 170 }]}
-          pointerEvents="box-none"
-        >
-          {(
-            [
-              'pothole',
-              'roadworks',
-              'police',
-              'debris',
-              'animal',
-              'broken_down_car',
-            ] as HazardType[]
-          ).map((type) => (
-            <TouchableOpacity
-              key={type}
-              style={styles.hazardButton}
-              onPress={() => {
-                void handleReportHazard(type);
-              }}
-              activeOpacity={0.8}
-              testID={`button-hazard-${type}`}
-            >
-              <Text style={styles.hazardButtonEmoji}>{HAZARD_EMOJI[type]}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+      {/* ── Navigation: expandable quick actions ── */}
+      {mapMode === 'navigation' && !isDriverPanelExpanded ? (
+        <HazardActionRail
+          bottom={insets.bottom + 144}
+          disabled={!currentDriver?.location}
+          onSelectHazard={(type) => {
+            void handleReportHazard(type);
+          }}
+        />
       ) : null}
 
       {/* ── Navigation: driver awareness panel (bottom sheet) ── */}
       {mapMode === 'navigation' && session.isRunLoaded ? (
         <DriverPanel
-          drivers={drivers}
+          drivers={displayDrivers}
           currentDriverId={session.driverId}
           hazards={hazards}
           isAdmin={session.role === 'admin'}
           isEndingRun={isEndingRun}
+          onExpandedChange={setIsDriverPanelExpanded}
           onDismissHazard={(hazard) => { void handleDismissHazard(hazard); }}
           onEndRun={() => { void handleEndRun(); }}
           onRemoveDriver={(driverId) => { void handleRemoveDriver(driverId); }}
-          accentColor={theme.colors.accent}
+          accentColor={LIVE_MAP_TINT}
         />
       ) : null}
 
@@ -793,32 +1106,110 @@ export default function RunMapScreen() {
           style={[styles.lobbyBottom, { paddingBottom: insets.bottom + 16 }]}
           pointerEvents="box-none"
         >
-          {session.role === 'admin' ? (
-            <TouchableOpacity
-              style={[
-                styles.startDriveButton,
-                !canStartDrive && styles.startDriveButtonDisabled,
-              ]}
-              onPress={() => { void handleStartDrive(); }}
-              disabled={!canStartDrive || isStartingDrive}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.startDriveText}>
-                {isStartingDrive ? '🚀 Starting…' : '🚀 Start Drive'}
-              </Text>
-              {!canStartDrive ? (
-                <Text style={styles.startDriveHint}>
-                  Waiting for at least 1 driver with GPS
+          <View style={styles.lobbyCard}>
+            {session.role === 'admin' ? (
+              <>
+                <Text style={styles.lobbyCardEyebrow}>Lobby</Text>
+                <Text style={styles.lobbyCardTitle}>Ready to roll when the convoy is ready</Text>
+                <Text style={styles.lobbyCardBody}>
+                  {canStartDrive
+                    ? `${driversWithGps} driver${driversWithGps === 1 ? '' : 's'} with GPS are ready.`
+                    : 'Ask one driver to enable location so the live drive can begin cleanly.'}
                 </Text>
-              ) : null}
-            </TouchableOpacity>
-          ) : (
-            <View style={styles.lobbyWaitCard} pointerEvents="none">
-              <Text style={styles.lobbyWaitText}>
-                🗺️ Explore the route while you wait. The drive will begin automatically.
-              </Text>
+                <TouchableOpacity
+                  style={[
+                    styles.startDriveButton,
+                    (!canStartDrive || isStartingDrive) && styles.startDriveButtonDisabled,
+                  ]}
+                  onPress={() => {
+                    void handleStartDrive();
+                  }}
+                  disabled={!canStartDrive || isStartingDrive}
+                  activeOpacity={0.86}
+                >
+                  <Text style={styles.startDriveText}>
+                    {isStartingDrive ? 'Starting…' : 'Start Drive'}
+                  </Text>
+                  <MaterialIcons color="#FFFFFF" name="navigation" size={18} />
+                </TouchableOpacity>
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={isReopeningRoute}
+                  onPress={() => setIsConfirmingRouteEdit(true)}
+                  style={({ pressed }) => [
+                    styles.editRouteSecondaryButton,
+                    pressed && styles.editRouteSecondaryButtonPressed,
+                  ]}
+                  testID="button-edit-route"
+                >
+                  <Text style={styles.editRouteSecondaryText}>
+                    {isReopeningRoute ? 'Opening…' : 'Edit Route'}
+                  </Text>
+                </Pressable>
+                {!canStartDrive ? (
+                  <Text style={styles.startDriveHint}>Waiting for at least 1 driver with GPS</Text>
+                ) : null}
+              </>
+            ) : (
+              <>
+                <Text style={styles.lobbyCardEyebrow}>Live Lobby</Text>
+                <Text style={styles.lobbyCardTitle}>Take in the route while everyone joins</Text>
+                <Text style={styles.lobbyCardBody}>
+                  The organiser will start the drive once the convoy is ready.
+                </Text>
+              </>
+            )}
+          </View>
+        </View>
+      ) : null}
+
+      {isConfirmingRouteEdit ? (
+        <View style={styles.routeEditConfirmOverlay}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setIsConfirmingRouteEdit(false)}
+            style={styles.routeEditConfirmBackdrop}
+            testID="button-cancel-edit-route-backdrop"
+          />
+          <View style={[styles.routeEditConfirmSheet, { paddingBottom: insets.bottom + 16 }]}>
+            <Text style={styles.routeEditConfirmEyebrow}>Edit Route</Text>
+            <Text style={styles.routeEditConfirmTitle}>Return to the route planner?</Text>
+            <Text style={styles.routeEditConfirmBody}>
+              You&apos;ll leave the lobby and reopen the planner. Drivers stay joined and you can
+              open the lobby again when your edits are done.
+            </Text>
+            <View style={styles.routeEditConfirmActions}>
+              <Pressable
+                accessibilityRole="button"
+                disabled={isReopeningRoute}
+                onPress={() => setIsConfirmingRouteEdit(false)}
+                style={({ pressed }) => [
+                  styles.routeEditCancelButton,
+                  pressed && styles.routeEditCancelButtonPressed,
+                ]}
+                testID="button-cancel-edit-route"
+              >
+                <Text style={styles.routeEditCancelText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                disabled={isReopeningRoute}
+                onPress={() => {
+                  void handleConfirmEditRoute();
+                }}
+                style={({ pressed }) => [
+                  styles.routeEditConfirmButton,
+                  pressed && styles.routeEditConfirmButtonPressed,
+                  isReopeningRoute && styles.routeEditConfirmButtonDisabled,
+                ]}
+                testID="button-confirm-edit-route"
+              >
+                <Text style={styles.routeEditConfirmText}>
+                  {isReopeningRoute ? 'Opening…' : 'Edit Route'}
+                </Text>
+              </Pressable>
             </View>
-          )}
+          </View>
         </View>
       ) : null}
 
@@ -851,59 +1242,85 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    gap: 6,
-    paddingHorizontal: 16,
+    gap: 10,
+    paddingHorizontal: 14,
     zIndex: 10,
   },
-  runNamePill: {
-    alignSelf: 'center',
-    backgroundColor: 'rgba(0,0,0,0.72)',
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    alignSelf: 'flex-start',
+  },
+  topIconButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.88)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.68)',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#0F172A',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.1,
+        shadowRadius: 16,
+      },
+      android: { elevation: 5 },
+    }),
+  },
+  runHeaderCard: {
+    maxWidth: 248,
+    minWidth: 164,
     borderRadius: 20,
     paddingHorizontal: 16,
-    paddingVertical: 6,
-  },
-  runNameText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '700',
-    letterSpacing: 0.2,
-  },
-  lobbyBanner: {
-    backgroundColor: 'rgba(0,0,0,0.78)',
-    borderRadius: 14,
-    paddingHorizontal: 16,
     paddingVertical: 10,
-    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.84)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.7)',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#0F172A',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.1,
+        shadowRadius: 16,
+      },
+      android: { elevation: 5 },
+    }),
+  },
+  runHeaderCopy: {
     gap: 2,
   },
-  lobbyBannerTitle: {
-    color: '#FFFFFF',
-    fontSize: 15,
+  runHeaderTitle: {
+    color: '#0F172A',
+    fontSize: 18,
     fontWeight: '700',
-    textAlign: 'center',
+    letterSpacing: -0.3,
   },
-  lobbyBannerSubtitle: {
-    color: '#D1D5DB',
-    fontSize: 12,
-    fontWeight: '500',
-    textAlign: 'center',
+  runHeaderSubtitle: {
+    color: '#64748B',
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: 2,
   },
   connectivityBanner: {
-    borderRadius: 10,
+    borderRadius: 14,
     paddingHorizontal: 14,
-    paddingVertical: 7,
+    paddingVertical: 9,
   },
   connectivityText: {
-    color: '#FDE68A',
+    color: '#FFF7ED',
     fontSize: 13,
     fontWeight: '600',
     textAlign: 'center',
   },
   errorBanner: {
-    backgroundColor: 'rgba(185,28,28,0.92)',
-    borderRadius: 10,
+    backgroundColor: 'rgba(220,38,38,0.94)',
+    borderRadius: 14,
     paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingVertical: 10,
   },
   errorText: {
     color: '#FFFFFF',
@@ -949,54 +1366,107 @@ const styles = StyleSheet.create({
   recenterButton: {
     position: 'absolute',
     right: 16,
-    backgroundColor: '#FFFFFF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(255,255,255,0.96)',
     borderRadius: 22,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
     zIndex: 15,
     ...Platform.select({
       ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.22,
-        shadowRadius: 4,
+        shadowColor: '#0F172A',
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.14,
+        shadowRadius: 18,
       },
-      android: { elevation: 4 },
+      android: { elevation: 5 },
     }),
   },
   recenterText: {
-    color: '#111827',
-    fontSize: 14,
+    color: '#0F172A',
+    fontSize: 13,
     fontWeight: '700',
   },
 
-  // Hazard quick-report buttons (navigation)
-  hazardButtons: {
+  // Expandable action rail
+  actionRailWrapper: {
     position: 'absolute',
-    right: 12,
-    flexDirection: 'column',
-    gap: 8,
+    right: 16,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
     zIndex: 15,
   },
-  hazardButton: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
+  actionRailPanel: {
+    overflow: 'hidden',
+    borderRadius: 22,
+    marginRight: 10,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.74)',
     ...Platform.select({
       ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
-        shadowRadius: 3,
+        shadowColor: '#0F172A',
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.12,
+        shadowRadius: 18,
       },
-      android: { elevation: 3 },
+      android: { elevation: 5 },
     }),
   },
-  hazardButtonEmoji: {
-    fontSize: 22,
+  actionRailGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    width: 200,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+  },
+  actionRailButton: {
+    width: 54,
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: '#F8FAFC',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+  },
+  actionRailButtonDisabled: {
+    opacity: 0.42,
+  },
+  actionRailButtonPressed: {
+    opacity: 0.86,
+  },
+  actionRailLabel: {
+    color: '#334155',
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  actionRailToggle: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    backgroundColor: 'rgba(255,255,255,0.94)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.78)',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#0F172A',
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.14,
+        shadowRadius: 18,
+      },
+      android: { elevation: 5 },
+    }),
+  },
+  actionRailToggleActive: {
+    backgroundColor: LIVE_MAP_TINT,
+  },
+  actionRailTogglePressed: {
+    opacity: 0.86,
   },
 
   // Driver panel (bottom sheet)
@@ -1005,35 +1475,56 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: 'rgba(17,24,39,0.96)',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
     zIndex: 15,
+    borderTopWidth: 1,
+    borderColor: 'rgba(255,255,255,0.76)',
     ...Platform.select({
       ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: -3 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
+        shadowColor: '#0F172A',
+        shadowOffset: { width: 0, height: -12 },
+        shadowOpacity: 0.12,
+        shadowRadius: 24,
       },
       android: { elevation: 8 },
     }),
   },
   driverPanelHandle: {
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingTop: 10,
+    paddingBottom: 6,
   },
   driverPanelHandleBar: {
-    width: 36,
+    width: 40,
     height: 4,
     borderRadius: 2,
-    backgroundColor: '#4B5563',
+    backgroundColor: '#CBD5E1',
+  },
+  driverStripHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingBottom: 6,
+  },
+  driverStripTitle: {
+    color: '#0F172A',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  driverStripSubtitle: {
+    color: '#64748B',
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 2,
   },
 
   // Driver strip (collapsed)
   driverStrip: {
     paddingHorizontal: 16,
-    paddingBottom: 12,
+    paddingBottom: 14,
     gap: 14,
     flexDirection: 'row',
   },
@@ -1062,10 +1553,10 @@ const styles = StyleSheet.create({
     height: 12,
     borderRadius: 6,
     borderWidth: 2,
-    borderColor: 'rgba(17,24,39,0.96)',
+    borderColor: '#FFFFFF',
   },
   driverStripName: {
-    color: '#D1D5DB',
+    color: '#334155',
     fontSize: 10,
     fontWeight: '600',
     maxWidth: 46,
@@ -1073,18 +1564,37 @@ const styles = StyleSheet.create({
   },
 
   // Driver list (expanded)
+  driverListHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingBottom: 10,
+  },
+  driverListTitle: {
+    color: '#0F172A',
+    fontSize: 17,
+    fontWeight: '700',
+  },
+  driverListSubtitle: {
+    color: '#64748B',
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 2,
+  },
   driverList: {
-    maxHeight: 320,
+    maxHeight: 360,
     paddingHorizontal: 16,
   },
   driverRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 10,
-    paddingHorizontal: 8,
-    borderRadius: 10,
+    paddingHorizontal: 12,
+    borderRadius: 16,
     gap: 12,
-    marginBottom: 4,
+    marginBottom: 8,
+    backgroundColor: '#F8FAFC',
   },
   driverRowAvatar: {
     width: 40,
@@ -1099,20 +1609,48 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   driverRowName: {
-    color: '#FFFFFF',
+    color: '#0F172A',
     fontSize: 14,
     fontWeight: '600',
   },
   driverRowStatus: {
-    color: '#9CA3AF',
+    color: '#64748B',
     fontSize: 12,
     marginTop: 1,
+    textTransform: 'capitalize',
+  },
+  activeHazardRow: {
+    justifyContent: 'space-between',
+  },
+  activeHazardMeta: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  activeHazardIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#E2E8F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  activeHazardTitle: {
+    color: '#0F172A',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  activeHazardDetail: {
+    color: '#64748B',
+    fontSize: 12,
+    marginTop: 2,
   },
   removeBtn: {
-    backgroundColor: 'rgba(239,68,68,0.15)',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    backgroundColor: 'rgba(239,68,68,0.1)',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
   removeBtnText: {
     color: '#EF4444',
@@ -1122,6 +1660,69 @@ const styles = StyleSheet.create({
   endRunRow: {
     paddingVertical: 12,
   },
+  endRunSubtleButton: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: 999,
+    backgroundColor: 'rgba(220,38,38,0.08)',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  endRunSubtleText: {
+    color: '#DC2626',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  endRunConfirmCard: {
+    borderRadius: 18,
+    backgroundColor: '#FFF7F7',
+    borderWidth: 1,
+    borderColor: 'rgba(220,38,38,0.18)',
+    padding: 14,
+    gap: 12,
+  },
+  endRunConfirmTitle: {
+    color: '#7F1D1D',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  endRunConfirmBody: {
+    color: '#7F1D1D',
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  endRunConfirmActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  endRunCancelButton: {
+    flex: 1,
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  endRunCancelText: {
+    color: '#334155',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  endRunConfirmButton: {
+    flex: 1,
+    borderRadius: 14,
+    backgroundColor: '#DC2626',
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  endRunConfirmButtonText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
 
   // Lobby bottom
   lobbyBottom: {
@@ -1130,51 +1731,173 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     paddingHorizontal: 20,
-    gap: 10,
     zIndex: 15,
   },
-  startDriveButton: {
-    backgroundColor: '#22C55E',
-    borderRadius: 18,
-    paddingVertical: 18,
-    alignItems: 'center',
-    gap: 4,
+  lobbyCard: {
+    backgroundColor: 'rgba(255,255,255,0.94)',
+    borderRadius: 22,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.76)',
     ...Platform.select({
       ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
+        shadowColor: '#0F172A',
+        shadowOffset: { width: 0, height: -10 },
+        shadowOpacity: 0.12,
+        shadowRadius: 24,
       },
-      android: { elevation: 6 },
+      android: { elevation: 8 },
     }),
   },
+  lobbyCardEyebrow: {
+    color: '#64748B',
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+    textTransform: 'uppercase',
+  },
+  lobbyCardTitle: {
+    color: '#0F172A',
+    fontSize: 18,
+    fontWeight: '700',
+    letterSpacing: -0.3,
+    marginTop: 4,
+  },
+  lobbyCardBody: {
+    color: '#475569',
+    fontSize: 13,
+    lineHeight: 20,
+    marginTop: 6,
+    marginBottom: 12,
+  },
+  startDriveButton: {
+    backgroundColor: LIVE_MAP_TINT,
+    borderRadius: 18,
+    minHeight: 52,
+    paddingHorizontal: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
   startDriveButtonDisabled: {
-    backgroundColor: '#374151',
+    backgroundColor: 'rgba(148,163,184,0.94)',
   },
   startDriveText: {
     color: '#FFFFFF',
-    fontSize: 20,
-    fontWeight: '800',
-    letterSpacing: 0.3,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  editRouteSecondaryButton: {
+    alignSelf: 'center',
+    marginTop: 10,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+  },
+  editRouteSecondaryButtonPressed: {
+    opacity: 0.7,
+  },
+  editRouteSecondaryText: {
+    color: LIVE_MAP_TINT,
+    fontSize: 13,
+    fontWeight: '700',
   },
   startDriveHint: {
-    color: '#9CA3AF',
+    color: '#64748B',
     fontSize: 12,
-    fontWeight: '500',
-  },
-  lobbyWaitCard: {
-    backgroundColor: 'rgba(0,0,0,0.72)',
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  lobbyWaitText: {
-    color: '#D1D5DB',
-    fontSize: 13,
-    fontWeight: '500',
+    fontWeight: '600',
+    marginTop: 10,
     textAlign: 'center',
-    lineHeight: 20,
+  },
+
+  // Route edit confirmation
+  routeEditConfirmOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 24,
+    justifyContent: 'flex-end',
+  },
+  routeEditConfirmBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(15, 23, 42, 0.18)',
+  },
+  routeEditConfirmSheet: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    borderRadius: 26,
+    backgroundColor: 'rgba(255,255,255,0.97)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.82)',
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#0F172A',
+        shadowOffset: { width: 0, height: 16 },
+        shadowOpacity: 0.16,
+        shadowRadius: 24,
+      },
+      android: { elevation: 10 },
+    }),
+  },
+  routeEditConfirmEyebrow: {
+    color: '#64748B',
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+    textTransform: 'uppercase',
+  },
+  routeEditConfirmTitle: {
+    color: '#0F172A',
+    fontSize: 20,
+    fontWeight: '800',
+    marginTop: 6,
+  },
+  routeEditConfirmBody: {
+    color: '#475569',
+    fontSize: 14,
+    lineHeight: 21,
+    marginTop: 8,
+  },
+  routeEditConfirmActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 18,
+  },
+  routeEditCancelButton: {
+    flex: 1,
+    minHeight: 52,
+    borderRadius: 16,
+    backgroundColor: '#F8FAFC',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  routeEditCancelButtonPressed: {
+    opacity: 0.78,
+  },
+  routeEditCancelText: {
+    color: '#334155',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  routeEditConfirmButton: {
+    flex: 1,
+    minHeight: 52,
+    borderRadius: 16,
+    backgroundColor: LIVE_MAP_TINT,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  routeEditConfirmButtonPressed: {
+    opacity: 0.86,
+  },
+  routeEditConfirmButtonDisabled: {
+    opacity: 0.6,
+  },
+  routeEditConfirmText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
   },
 
   // Tracking modal
@@ -1186,34 +1909,36 @@ const styles = StyleSheet.create({
     zIndex: 20,
   },
   trackingModal: {
-    backgroundColor: 'rgba(17,24,39,0.97)',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.97)',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
     paddingHorizontal: 24,
     paddingTop: 24,
     gap: 12,
+    borderTopWidth: 1,
+    borderColor: 'rgba(255,255,255,0.78)',
     ...Platform.select({
       ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: -4 },
-        shadowOpacity: 0.35,
-        shadowRadius: 10,
+        shadowColor: '#0F172A',
+        shadowOffset: { width: 0, height: -12 },
+        shadowOpacity: 0.12,
+        shadowRadius: 24,
       },
       android: { elevation: 10 },
     }),
   },
   trackingModalTitle: {
-    color: '#FFFFFF',
+    color: '#0F172A',
     fontSize: 20,
     fontWeight: '800',
   },
   trackingModalBody: {
-    color: '#9CA3AF',
+    color: '#64748B',
     fontSize: 14,
     lineHeight: 22,
   },
   trackingModalDetail: {
-    color: '#6B7280',
+    color: '#94A3B8',
     fontSize: 12,
     lineHeight: 18,
   },

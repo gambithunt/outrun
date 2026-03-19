@@ -6,6 +6,10 @@ jest.mock('@/lib/routeService', () => ({
   startRunWithSavedRouteWithFirebase: jest.fn(),
 }));
 
+jest.mock('@/lib/driverRealtime', () => ({
+  subscribeToDriversWithFirebase: jest.fn(),
+}));
+
 jest.mock('@/lib/placeSearchService', () => ({
   searchPlacesWithProvider: jest.fn(),
 }));
@@ -13,6 +17,7 @@ jest.mock('@/lib/placeSearchService', () => ({
 import { fireEvent, waitFor } from '@testing-library/react-native';
 
 import RoutePlanningScreen from '@/app/create/route';
+import { subscribeToDriversWithFirebase } from '@/lib/driverRealtime';
 import { searchPlacesWithProvider } from '@/lib/placeSearchService';
 import {
   fetchRoadRouteFromStops,
@@ -59,6 +64,10 @@ describe('RoutePlanningScreen', () => {
       stops: [],
     });
     (searchPlacesWithProvider as jest.Mock).mockResolvedValue([]);
+    (subscribeToDriversWithFirebase as jest.Mock).mockImplementation((_runId, onData) => {
+      onData([]);
+      return jest.fn();
+    });
   });
 
   it('centers on the user without auto-filling start, then hides the sheet after using current for start', async () => {
@@ -85,11 +94,39 @@ describe('RoutePlanningScreen', () => {
     expect(screen.getByTestId('text-selected-stop-label')).toHaveTextContent('Destination');
   });
 
-  it('adds a waypoint, saves the route draft, marks later edits dirty, then starts the run after re-saving', async () => {
+  it('shows live readiness in the top card, saves the route draft, marks later edits dirty, then opens the lobby after re-saving', async () => {
     (saveRouteDraftToRunWithFirebase as jest.Mock).mockResolvedValue(undefined);
     (startRunWithSavedRouteWithFirebase as jest.Mock).mockResolvedValue(undefined);
+    (subscribeToDriversWithFirebase as jest.Mock).mockImplementation((_runId, onData) => {
+      onData([
+        {
+          id: 'driver_1',
+          name: 'Jamie',
+          location: {
+            lat: -26.2041,
+            lng: 28.0473,
+            heading: 0,
+            speed: 0,
+            accuracy: 5,
+            timestamp: Date.now(),
+          },
+        },
+        {
+          id: 'driver_2',
+          name: 'Ava',
+          location: null,
+        },
+        {
+          id: 'driver_3',
+          name: 'Mia',
+          location: null,
+        },
+      ]);
+      return jest.fn();
+    });
 
     const screen = renderWithProviders(<RoutePlanningScreen />);
+    expect(screen.getByTestId('text-driver-ready-count')).toHaveTextContent('1/3 ready');
 
     fireEvent.press(screen.getByTestId('button-use-current-location'));
     await waitFor(() => expect(screen.getByTestId('route-summary-chip')).toBeTruthy());
@@ -107,19 +144,22 @@ describe('RoutePlanningScreen', () => {
       )
     );
 
-    expect(screen.getByTestId('button-start-run')).toBeEnabled();
-    expect(screen.getByTestId('text-route-save-state')).toHaveTextContent('Ready to start');
+    expect(screen.getByTestId('button-open-lobby')).toBeEnabled();
+    expect(screen.getByTestId('button-open-lobby')).toHaveTextContent('Open Lobby');
+    expect(screen.getByTestId('text-route-save-state')).toHaveTextContent('Saved');
 
     fireEvent.press(screen.getByTestId('button-add-stop-inline'));
     expect(screen.getByTestId('route-flow-stop-waypoint-1')).toBeTruthy();
-    expect(screen.getByTestId('button-start-run')).toBeDisabled();
-    expect(screen.getByTestId('text-route-save-state')).toHaveTextContent('Draft changed');
+    expect(screen.getByTestId('button-open-lobby')).toHaveTextContent('Save + Open Lobby');
+    expect(screen.getByTestId('text-route-save-state')).toHaveTextContent('Unsaved changes');
 
     fireEvent.press(screen.getByTestId('button-save-route'));
 
-    await waitFor(() => expect(screen.getByTestId('button-start-run')).toBeEnabled());
+    await waitFor(() =>
+      expect(screen.getByTestId('button-open-lobby')).toHaveTextContent('Open Lobby')
+    );
 
-    fireEvent.press(screen.getByTestId('button-start-run'));
+    fireEvent.press(screen.getByTestId('button-open-lobby'));
 
     await waitFor(() =>
       expect(startRunWithSavedRouteWithFirebase).toHaveBeenCalledWith('run_500')
@@ -134,8 +174,8 @@ describe('RoutePlanningScreen', () => {
   it('keeps route actions contextual until a valid route exists', async () => {
     const screen = renderWithProviders(<RoutePlanningScreen />);
 
+    expect(screen.getByTestId('button-open-lobby')).toBeDisabled();
     expect(screen.queryByTestId('button-save-route')).toBeNull();
-    expect(screen.queryByTestId('button-start-run')).toBeNull();
     expect(screen.queryByTestId('button-swap-start-destination')).toBeNull();
 
     fireEvent.press(screen.getByTestId('button-use-current-location'));
@@ -144,11 +184,13 @@ describe('RoutePlanningScreen', () => {
 
     expect(screen.queryByTestId('button-save-route')).toBeNull();
     expect(screen.queryByTestId('button-swap-start-destination')).toBeNull();
+    expect(screen.getByTestId('button-open-lobby')).toBeDisabled();
 
     fireEvent.changeText(screen.getByTestId('input-stop-search'), '-25.7479, 28.2293');
 
     await waitFor(() => expect(screen.getByTestId('button-save-route')).toBeTruthy());
     expect(screen.getByTestId('button-swap-start-destination')).toBeTruthy();
+    expect(screen.getByTestId('button-open-lobby')).toHaveTextContent('Save + Open Lobby');
 
     fireEvent.press(screen.getByTestId('button-add-stop-inline'));
     expect(screen.queryByTestId('button-swap-start-destination')).toBeNull();
@@ -317,6 +359,34 @@ describe('RoutePlanningScreen', () => {
     expect(reopenedScreen.getByTestId('text-sheet-state')).toHaveTextContent('Main');
     expect(reopenedScreen.getByTestId('text-selected-stop-label')).toHaveTextContent('Stop 1');
     expect(reopenedScreen.getByTestId('text-guided-step')).toHaveTextContent('Add stops or save route');
+  });
+
+  it('auto-saves before opening the lobby when the route has unsaved changes', async () => {
+    (saveRouteDraftToRunWithFirebase as jest.Mock).mockResolvedValue(undefined);
+    (startRunWithSavedRouteWithFirebase as jest.Mock).mockResolvedValue(undefined);
+
+    const screen = renderWithProviders(<RoutePlanningScreen />);
+
+    fireEvent.press(screen.getByTestId('button-use-current-location'));
+    await waitFor(() => expect(screen.getByTestId('route-summary-chip')).toBeTruthy());
+    fireEvent.press(screen.getByTestId('route-summary-chip'));
+    fireEvent.changeText(screen.getByTestId('input-stop-search'), '-25.7479, 28.2293');
+
+    await waitFor(() =>
+      expect(screen.getByTestId('button-open-lobby')).toHaveTextContent('Save + Open Lobby')
+    );
+
+    fireEvent.press(screen.getByTestId('button-open-lobby'));
+
+    await waitFor(() =>
+      expect(saveRouteDraftToRunWithFirebase).toHaveBeenCalledWith(
+        'run_500',
+        expect.objectContaining({ distanceMetres: 54000 })
+      )
+    );
+    await waitFor(() =>
+      expect(startRunWithSavedRouteWithFirebase).toHaveBeenCalledWith('run_500')
+    );
   });
 
   it('can minimize to a compact route summary and expand back into the editor', async () => {

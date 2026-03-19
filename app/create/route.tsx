@@ -9,6 +9,7 @@ import { AppButton } from '@/components/ui/AppButton';
 import { AppTextInput } from '@/components/ui/AppTextInput';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { useAppTheme } from '@/contexts/ThemeContext';
+import { LiveDriver, subscribeToDriversWithFirebase } from '@/lib/driverRealtime';
 import { RoutePoint } from '@/lib/geo';
 import { PlaceSearchResult, searchPlacesWithProvider } from '@/lib/placeSearchService';
 import { updateAdminRunStatusInHistory } from '@/lib/adminRunHistory';
@@ -58,7 +59,7 @@ type ReorderDragState = {
 
 export default function RoutePlanningScreen() {
   const router = useRouter();
-  const { runId, joinCode } = useLocalSearchParams<{ runId?: string; joinCode?: string }>();
+  const { runId } = useLocalSearchParams<{ runId?: string }>();
   const { theme } = useAppTheme();
   const setRunSnapshot = useRunSessionStore((state) => state.setRunSnapshot);
   const savedRoute = useRunSessionStore((state) => state.route);
@@ -87,6 +88,7 @@ export default function RoutePlanningScreen() {
   const [isSearchingPlaces, setIsSearchingPlaces] = useState(false);
   const [hasHydratedDraft, setHasHydratedDraft] = useState(false);
   const [driveComposerMode, setDriveComposerMode] = useState<DriveComposerMode>('summary');
+  const [drivers, setDrivers] = useState<LiveDriver[]>([]);
   const hasAutoCentered = useRef(false);
   const previousVisibleSheetStateRef = useRef<VisibleSheetState>('main');
   const mainSheetScrollRef = useRef<ScrollView | null>(null);
@@ -116,10 +118,18 @@ export default function RoutePlanningScreen() {
     [stops, waypointStops.length]
   );
   const routeSaveStateLabel = isRouteSaved
-    ? 'Ready to start'
+    ? 'Saved'
     : hasMeaningfulDraft
-      ? 'Draft changed'
+      ? 'Unsaved changes'
       : 'Draft in progress';
+  const driversJoinedCount = drivers.length;
+  const driversReadyCount = drivers.filter((driver) => driver.location).length;
+  const driverReadinessLabel = `${driversReadyCount}/${driversJoinedCount} ready`;
+  const lobbyActionLabel = routePreview
+    ? isRouteSaved
+      ? 'Open Lobby'
+      : 'Save + Open Lobby'
+    : 'Open Lobby';
   const sheetPrompt =
     plannerStage === 'start'
       ? 'Choose start'
@@ -212,6 +222,23 @@ export default function RoutePlanningScreen() {
     setFocusPoint(currentLocation);
     setMapCenterPoint(currentLocation);
   }, [currentLocation]);
+
+  useEffect(() => {
+    if (!runId) {
+      setDrivers([]);
+      return;
+    }
+
+    return subscribeToDriversWithFirebase(
+      runId,
+      (nextDrivers) => {
+        setDrivers(nextDrivers);
+      },
+      (nextError) => {
+        setError(nextError.message);
+      }
+    );
+  }, [runId]);
 
   useEffect(() => {
     if (completeWaypoints.length < 2) {
@@ -704,6 +731,15 @@ export default function RoutePlanningScreen() {
     setStatusMessage('Map pick cancelled.');
   }
 
+  async function saveCurrentRouteDraft(nextRoute: RouteData) {
+    await saveRouteDraftToRunWithFirebase(runId ?? '', nextRoute);
+    setRunSnapshot({
+      route: nextRoute,
+      status: 'draft',
+    });
+    setIsRouteSaved(true);
+  }
+
   async function handleSaveRoute() {
     if (!routePreview) {
       setError('Add at least a start and destination before saving.');
@@ -715,13 +751,8 @@ export default function RoutePlanningScreen() {
     setIsSaving(true);
 
     try {
-      await saveRouteDraftToRunWithFirebase(runId ?? '', routePreview);
-      setRunSnapshot({
-        route: routePreview,
-        status: 'draft',
-      });
-      setIsRouteSaved(true);
-      setStatusMessage('Route draft saved. You can come back later or start the run when ready.');
+      await saveCurrentRouteDraft(routePreview);
+      setStatusMessage('Route saved. You can return later or open the lobby when you are ready.');
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : 'Unable to save route draft.');
     } finally {
@@ -729,9 +760,11 @@ export default function RoutePlanningScreen() {
     }
   }
 
-  async function handleStartRun() {
+  async function handleOpenLobby() {
     if (!routePreview || !isRouteSaved) {
-      return;
+      if (!routePreview) {
+        return;
+      }
     }
 
     setError(null);
@@ -739,6 +772,10 @@ export default function RoutePlanningScreen() {
     setIsStarting(true);
 
     try {
+      if (!isRouteSaved) {
+        await saveCurrentRouteDraft(routePreview);
+      }
+
       await startRunWithSavedRouteWithFirebase(runId ?? '');
       await clearRoutePlannerDraft(runId ?? '');
       void updateAdminRunStatusInHistory(runId ?? '', 'ready');
@@ -748,7 +785,7 @@ export default function RoutePlanningScreen() {
       });
       router.push(`/run/${runId}/map`);
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : 'Unable to start this run.');
+      setError(nextError instanceof Error ? nextError.message : 'Unable to open the lobby.');
     } finally {
       setIsStarting(false);
     }
@@ -798,28 +835,37 @@ export default function RoutePlanningScreen() {
           <View
             style={{
               borderRadius: 24,
-              paddingHorizontal: 18,
-              paddingVertical: 12,
+              padding: 10,
               backgroundColor: 'rgba(255,255,255,0.94)',
               borderWidth: 1,
               borderColor: theme.colors.border,
-              minWidth: 196,
-              alignItems: 'center',
+              minWidth: 182,
+              gap: 8,
               shadowColor: '#000000',
               shadowOpacity: 0.08,
               shadowRadius: 12,
               shadowOffset: { width: 0, height: 4 },
               elevation: 4,
             }}
+            testID="route-planner-lobby-card"
           >
-            <Text style={{ color: theme.colors.textPrimary, fontSize: 16, fontWeight: '800' }}>
-              Route Draft {joinCode ? `• ${joinCode}` : ''}
-            </Text>
-            <Text
-              style={{ color: theme.colors.textSecondary, marginTop: 3, fontSize: 13, fontWeight: '600' }}
-            >
-              {routeSaveStateLabel}
-            </Text>
+            <AppButton
+              disabled={!routePreview || isResolving || isPreviewing || isSaving || isStarting}
+              label={isStarting ? 'Opening Lobby…' : lobbyActionLabel}
+              onPress={handleOpenLobby}
+              testID="button-open-lobby"
+            />
+            <View style={{ alignItems: 'center', gap: 2 }}>
+              <Text
+                style={{ color: theme.colors.textPrimary, fontSize: 14, fontWeight: '700' }}
+                testID="text-driver-ready-count"
+              >
+                {driverReadinessLabel}
+              </Text>
+              <Text style={{ color: theme.colors.textSecondary, fontSize: 12, fontWeight: '600' }}>
+                Drivers with GPS
+              </Text>
+            </View>
           </View>
         </View>
 
@@ -1556,24 +1602,15 @@ export default function RoutePlanningScreen() {
                   }}
                 >
                   <Text style={{ color: theme.colors.textSecondary, lineHeight: 20 }}>
-                    The route is ready to save now. Save the draft to come back later, or start the
-                    run once everything looks right on the map.
+                    Save the route if you want to come back later. The lobby action stays pinned at
+                    the top-right and will save automatically first when needed.
                   </Text>
-                  <View style={{ flexDirection: 'row', gap: 10 }}>
-                    <AppButton
-                      disabled={!routePreview}
-                      label="Save Route"
-                      onPress={handleSaveRoute}
-                      testID="button-save-route"
-                    />
-                    <AppButton
-                      disabled={!routePreview || !isRouteSaved}
-                      label="Start Run"
-                      onPress={handleStartRun}
-                      testID="button-start-run"
-                      variant="secondary"
-                    />
-                  </View>
+                  <AppButton
+                    disabled={!routePreview}
+                    label="Save Route"
+                    onPress={handleSaveRoute}
+                    testID="button-save-route"
+                  />
                 </View>
               ) : (
                 <Text style={{ color: theme.colors.textSecondary, lineHeight: 20 }}>

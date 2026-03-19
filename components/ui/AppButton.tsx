@@ -1,4 +1,4 @@
-import { Pressable, Text } from 'react-native';
+import { Pressable, StyleProp, Text, TextStyle } from 'react-native';
 
 import { useAppTheme } from '@/contexts/ThemeContext';
 
@@ -7,6 +7,7 @@ type AppButtonProps = {
   onPress: () => void;
   variant?: 'primary' | 'secondary' | 'ghost';
   disabled?: boolean;
+  labelStyle?: StyleProp<TextStyle>;
   testID?: string;
 };
 
@@ -15,6 +16,7 @@ export function AppButton({
   onPress,
   variant = 'primary',
   disabled = false,
+  labelStyle,
   testID,
 }: AppButtonProps) {
   const { theme } = useAppTheme();
@@ -47,7 +49,7 @@ export function AppButton({
       })}
       testID={testID}
     >
-      <Text style={{ color: textColor, fontWeight: '700', fontSize: 16 }}>{label}</Text>
+      <Text style={[{ color: textColor, fontWeight: '700', fontSize: 16 }, labelStyle]}>{label}</Text>
     </Pressable>
   );
 }

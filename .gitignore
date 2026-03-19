@@ -9,6 +9,7 @@ dist/
 web-build/
 expo-env.d.ts
 app-shell/
+docs/
 
 # Native
 *.orig.*
@@ -42,3 +43,4 @@ database-debug.log
 
 # typescript
 *.tsbuildinfo
+docs

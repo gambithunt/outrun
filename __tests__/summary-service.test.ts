@@ -83,13 +83,26 @@ describe('summaryService', () => {
   });
 
   it('builds a run summary', () => {
-    const summary = buildRunSummary(run, 3_660_000);
+    const summary = buildRunSummary(
+      run,
+      3_660_000,
+      undefined,
+      {
+        points: [
+          [-26.2041, 28.0473],
+          [-26.0, 28.12],
+          [-25.7479, 28.2293],
+        ],
+        speedBuckets: [1, 3],
+      }
+    );
 
     expect(summary.totalDistanceKm).toBe(54);
     expect(summary.totalDriveTimeMinutes).toBe(60);
     expect(summary.driverStats.driver_1.name).toBe('Jamie');
     expect(summary.collectiveFuel.petrolLitres).toBeGreaterThan(0);
     expect(summary.collectiveFuel.electricKwh).toBeGreaterThan(0);
+    expect(summary.routePreview?.speedBuckets).toEqual([1, 3]);
   });
 
   it('ends the run and persists summary data', async () => {

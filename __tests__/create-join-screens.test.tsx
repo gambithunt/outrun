@@ -56,6 +56,7 @@ describe('create and join screens', () => {
       expect.objectContaining({
         runId: 'run_42',
         driverId: 'driver_admin',
+        driverName: 'You',
         role: 'admin',
       })
     );

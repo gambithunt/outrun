@@ -41,8 +41,16 @@ jest.mock('@/lib/runService', () => ({
   startDriveWithFirebase: jest.fn(),
 }));
 
+jest.mock('@/lib/routeService', () => ({
+  reopenRoutePlannerFromLobbyWithFirebase: jest.fn(),
+}));
+
 jest.mock('@/lib/connectivity', () => ({
   subscribeToConnectivityWithFirebase: jest.fn(),
+}));
+
+jest.mock('@/lib/adminRunHistory', () => ({
+  updateAdminRunStatusInHistory: jest.fn(),
 }));
 
 import { act, fireEvent, waitFor } from '@testing-library/react-native';
@@ -59,6 +67,7 @@ import { subscribeToDriversWithFirebase } from '@/lib/driverRealtime';
 import { startForegroundTrackingWithExpo } from '@/lib/foregroundTracking';
 import { subscribeToHazardsWithFirebase } from '@/lib/hazardRealtime';
 import { dismissHazardWithFirebase, reportHazardWithFirebase } from '@/lib/hazardService';
+import { reopenRoutePlannerFromLobbyWithFirebase } from '@/lib/routeService';
 import { subscribeToRunWithFirebase } from '@/lib/runRealtime';
 import { endRunWithFirebase } from '@/lib/summaryService';
 import { useRunSessionStore } from '@/stores/runSessionStore';
@@ -238,6 +247,65 @@ describe('RunMapScreen', () => {
     expect(startBackgroundTrackingWithExpo).not.toHaveBeenCalled();
   });
 
+  it('lets admins reopen the route planner from the lobby only after confirmation', async () => {
+    useRunSessionStore.getState().setSession({
+      runId: 'run_900',
+      driverId: 'driver_admin',
+      driverName: 'Admin',
+      joinCode: '123456',
+      role: 'admin',
+      status: 'ready',
+    });
+    (subscribeToRunWithFirebase as jest.Mock).mockImplementation((_id, onData) => {
+      onData({
+        name: 'Sunrise Run',
+        status: 'ready',
+        route: {
+          points: [
+            [-26.2041, 28.0473],
+            [-25.7479, 28.2293],
+          ],
+          distanceMetres: 54000,
+          source: 'drawn',
+        },
+      });
+
+      return jest.fn();
+    });
+    (subscribeToDriversWithFirebase as jest.Mock).mockImplementation((_id, onData) => {
+      onData([]);
+      return jest.fn();
+    });
+    (subscribeToHazardsWithFirebase as jest.Mock).mockImplementation((_id, onData) => {
+      onData([]);
+      return jest.fn();
+    });
+    (reopenRoutePlannerFromLobbyWithFirebase as jest.Mock).mockResolvedValue(undefined);
+
+    const screen = renderWithProviders(<RunMapScreen />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId('button-edit-route')).toBeTruthy()
+    );
+
+    fireEvent.press(screen.getByTestId('button-edit-route'));
+    await waitFor(() =>
+      expect(screen.getByTestId('button-confirm-edit-route')).toBeTruthy()
+    );
+    fireEvent.press(screen.getByTestId('button-confirm-edit-route'));
+
+    await waitFor(() =>
+      expect(reopenRoutePlannerFromLobbyWithFirebase).toHaveBeenCalledWith('run_900')
+    );
+    expect(
+      (
+        globalThis as {
+          __mockExpoRouter?: { replace: jest.Mock };
+        }
+      ).__mockExpoRouter?.replace
+    ).toHaveBeenCalledWith('/create/route?runId=run_900&joinCode=123456');
+  });
+
   it('reports a hazard from the current driver location', async () => {
     (subscribeToRunWithFirebase as jest.Mock).mockImplementation((_id, onData) => {
       onData({
@@ -289,6 +357,7 @@ describe('RunMapScreen', () => {
 
     await waitFor(() => screen.getByTestId('text-driver-count'));
     await enableTracking(screen);
+    fireEvent.press(screen.getByTestId('button-open-hazard-actions'));
     fireEvent.press(screen.getByTestId('button-hazard-pothole'));
 
     await waitFor(() =>
@@ -343,9 +412,11 @@ describe('RunMapScreen', () => {
 
     const screen = renderWithProviders(<RunMapScreen />);
 
-    await waitFor(() => expect(screen.getByTestId('button-end-run')).toBeTruthy());
     await enableTracking(screen);
+    fireEvent.press(screen.getByTestId('button-driver-panel-toggle'));
+    await waitFor(() => expect(screen.getByTestId('button-end-run')).toBeTruthy());
     fireEvent.press(screen.getByTestId('button-end-run'));
+    fireEvent.press(screen.getByTestId('button-confirm-end-run'));
 
     await waitFor(() =>
       expect(endRunWithFirebase).toHaveBeenCalledWith(
@@ -627,8 +698,9 @@ describe('RunMapScreen', () => {
 
     const screen = renderWithProviders(<RunMapScreen />);
 
-    await waitFor(() => expect(screen.getByTestId('button-dismiss-hazard-hazard_9')).toBeTruthy());
     await enableTracking(screen);
+    fireEvent.press(screen.getByTestId('button-driver-panel-toggle'));
+    await waitFor(() => expect(screen.getByTestId('button-dismiss-hazard-hazard_9')).toBeTruthy());
     fireEvent.press(screen.getByTestId('button-dismiss-hazard-hazard_9'));
 
     await waitFor(() =>
@@ -646,7 +718,7 @@ describe('RunMapScreen', () => {
     useRunSessionStore.getState().setSession({
       runId: 'run_900',
       driverId: 'driver_admin',
-      driverName: 'Admin',
+      driverName: 'You',
       joinCode: '123456',
       role: 'admin',
       status: 'active',
@@ -662,7 +734,7 @@ describe('RunMapScreen', () => {
       onData([
         {
           id: 'driver_admin',
-          name: 'Admin',
+          name: 'You',
           location: {
             lat: -26.2041,
             lng: 28.0473,
@@ -704,6 +776,9 @@ describe('RunMapScreen', () => {
       expect(screen.getByTestId('text-driver-presence-driver_2')).toHaveTextContent('Ava • stale')
     );
     await enableTracking(screen);
+    fireEvent.press(screen.getByTestId('button-driver-panel-toggle'));
+    await waitFor(() => expect(screen.getAllByText('You').length).toBeGreaterThan(0));
+    expect(screen.queryByText('You (you)')).toBeNull();
 
     fireEvent.press(screen.getByTestId('button-remove-driver-driver_2'));
 

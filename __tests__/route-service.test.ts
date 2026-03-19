@@ -1,6 +1,7 @@
 import {
   buildOsrmRouteUrl,
   fetchRoadRoute,
+  reopenRoutePlannerFromLobby,
   saveRouteDraftToRun,
   sanitizeRouteData,
   startRunWithSavedRoute,
@@ -54,6 +55,7 @@ describe('routeService', () => {
 
   it('persists a route draft without activating the run', async () => {
     const client = {
+      readStartedAt: jest.fn(),
       writeRoute: jest.fn(),
       writeStatus: jest.fn(),
       writeStartedAt: jest.fn(),
@@ -127,6 +129,7 @@ describe('routeService', () => {
 
   it('starts a run from a saved route by setting status to ready', async () => {
     const client = {
+      readStartedAt: jest.fn().mockResolvedValue(null),
       writeRoute: jest.fn(),
       writeStatus: jest.fn(),
       writeStartedAt: jest.fn(),
@@ -137,5 +140,36 @@ describe('routeService', () => {
     expect(client.writeStartedAt).toHaveBeenCalledWith('run_123', 1234);
     expect(client.writeStatus).toHaveBeenCalledWith('run_123', 'ready');
     expect(client.writeRoute).not.toHaveBeenCalled();
+  });
+
+  it('reopens the lobby without rewriting startedAt when the run was already opened before', async () => {
+    const client = {
+      readStartedAt: jest.fn().mockResolvedValue(1111),
+      writeRoute: jest.fn(),
+      writeStatus: jest.fn(),
+      writeStartedAt: jest.fn(),
+    };
+
+    await startRunWithSavedRoute(client, 'run_123', 1234);
+
+    expect(client.readStartedAt).toHaveBeenCalledWith('run_123');
+    expect(client.writeStartedAt).not.toHaveBeenCalled();
+    expect(client.writeStatus).toHaveBeenCalledWith('run_123', 'ready');
+    expect(client.writeRoute).not.toHaveBeenCalled();
+  });
+
+  it('reopens route planning from the lobby by setting status back to draft', async () => {
+    const client = {
+      readStartedAt: jest.fn(),
+      writeRoute: jest.fn(),
+      writeStatus: jest.fn(),
+      writeStartedAt: jest.fn(),
+    };
+
+    await reopenRoutePlannerFromLobby(client, 'run_123');
+
+    expect(client.writeStatus).toHaveBeenCalledWith('run_123', 'draft');
+    expect(client.writeRoute).not.toHaveBeenCalled();
+    expect(client.writeStartedAt).not.toHaveBeenCalled();
   });
 });

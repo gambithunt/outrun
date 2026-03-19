@@ -1,8 +1,12 @@
 import { RefObject } from 'react';
 import { View } from 'react-native';
 
-import { getRouteBounds, type RoutePoint } from '@/lib/geo';
-import { Run } from '@/types/domain';
+import { type RoutePoint } from '@/lib/geo';
+import {
+  projectRoutePreviewLayout,
+  ROUTE_PREVIEW_COLORS,
+} from '@/lib/routePreview';
+import { Run, SummaryRoutePreview } from '@/types/domain';
 
 export type SummaryShareData = {
   title: string;
@@ -14,6 +18,7 @@ export type SummaryShareData = {
   fuelLines: string[];
   driverHighlights: string[];
   hazardBreakdown: string[];
+  routePreview: SummaryRoutePreview | null;
   routeThumbnailUri: string | null;
 };
 
@@ -45,7 +50,7 @@ function toTitleCase(value: string) {
 function buildDriverHighlights(run: Run) {
   return Object.values(run.summary?.driverStats ?? {}).map((driver) => {
     const topSpeed = driver.topSpeedKmh?.toFixed(1) ?? 'N/A';
-    return `${driver.name} • ${driver.carMake} ${driver.carModel} • Top speed ${topSpeed} km/h`;
+    return `${driver.name} • ${driver.carMake} ${driver.carModel} • Peak speed ${topSpeed} km/h`;
   });
 }
 
@@ -69,49 +74,71 @@ function buildFuelLines(run: Run) {
   ];
 }
 
-export function buildRouteThumbnailDataUri(points: RoutePoint[]) {
+function buildFallbackRoutePreview(points: RoutePoint[]): SummaryRoutePreview | null {
   if (points.length < 2) {
     return null;
   }
 
-  const bounds = getRouteBounds(points);
-  if (!bounds) {
-    return null;
+  return {
+    points,
+    speedBuckets: points.slice(1).map(() => 1),
+  };
+}
+
+function buildSummaryRoutePreview(run: Run): SummaryRoutePreview | null {
+  const summaryPreview = run.summary?.routePreview;
+  if (summaryPreview && summaryPreview.points.length >= 2) {
+    return {
+      points: summaryPreview.points,
+      speedBuckets:
+        summaryPreview.speedBuckets.length === summaryPreview.points.length - 1
+          ? summaryPreview.speedBuckets
+          : summaryPreview.points.slice(1).map(() => 1),
+    };
   }
 
+  return buildFallbackRoutePreview(run.route?.points ?? []);
+}
+
+export function buildRouteThumbnailDataUri(routePreview: SummaryRoutePreview | null) {
   const width = 640;
   const height = 360;
   const padding = 32;
-  const usableWidth = width - padding * 2;
-  const usableHeight = height - padding * 2;
-  const lngSpan = Math.max(bounds.maxLng - bounds.minLng, 0.0001);
-  const latSpan = Math.max(bounds.maxLat - bounds.minLat, 0.0001);
-  const xScale = usableWidth / lngSpan;
-  const yScale = usableHeight / latSpan;
-  const scale = Math.min(xScale, yScale);
-  const offsetX = (width - lngSpan * scale) / 2;
-  const offsetY = (height - latSpan * scale) / 2;
-
-  const path = points
-    .map(([lat, lng], index) => {
-      const x = offsetX + (lng - bounds.minLng) * scale;
-      const y = height - (offsetY + (lat - bounds.minLat) * scale);
-      return `${index === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`;
-    })
+  const layout = projectRoutePreviewLayout(routePreview, width, height, padding);
+  if (!layout) {
+    return null;
+  }
+  const routeBasePath = layout.projectedPoints
+    .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`)
     .join(' ');
+  const contextPaths = layout.contextPaths
+    .map(
+      (path) =>
+        `<path d="${path
+          .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`)
+          .join(' ')}" fill="none" stroke="#FFFFFF" stroke-opacity="0.72" stroke-width="6" stroke-linecap="round" />`
+    )
+    .join('');
+  const routeRuns = layout.colorRuns
+    .map((run) => {
+      const stroke = ROUTE_PREVIEW_COLORS[run.bucket];
+      return `<path d="${run.points
+        .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`)
+        .join(' ')}" fill="none" stroke="${stroke}" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" />`;
+    })
+    .join('');
+  const startPoint = layout.projectedPoints[0];
+  const endPoint = layout.projectedPoints[layout.projectedPoints.length - 1];
 
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
-      <defs>
-        <linearGradient id="clubrun-bg" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stop-color="#0f172a" />
-          <stop offset="100%" stop-color="#1d4ed8" />
-        </linearGradient>
-      </defs>
-      <rect width="${width}" height="${height}" rx="36" fill="url(#clubrun-bg)" />
-      <path d="${path}" fill="none" stroke="#f8fafc" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" />
-      <circle cx="${offsetX + (points[0][1] - bounds.minLng) * scale}" cy="${height - (offsetY + (points[0][0] - bounds.minLat) * scale)}" r="12" fill="#22c55e" />
-      <circle cx="${offsetX + (points[points.length - 1][1] - bounds.minLng) * scale}" cy="${height - (offsetY + (points[points.length - 1][0] - bounds.minLat) * scale)}" r="12" fill="#f97316" />
+      <rect width="${width}" height="${height}" rx="36" fill="#EEF3F8" />
+      <rect x="20" y="20" width="${width - 40}" height="${height - 40}" rx="28" fill="#E7EEF6" />
+      ${contextPaths}
+      <path d="${routeBasePath}" fill="none" stroke="#D2DCE8" stroke-width="16" stroke-linecap="round" stroke-linejoin="round" />
+      ${routeRuns}
+      <circle cx="${startPoint.x.toFixed(2)}" cy="${startPoint.y.toFixed(2)}" r="8" fill="#FFFFFF" stroke="#6E90B2" stroke-width="3" />
+      <circle cx="${endPoint.x.toFixed(2)}" cy="${endPoint.y.toFixed(2)}" r="8" fill="#FFFFFF" stroke="#0F172A" stroke-width="3" />
     </svg>
   `;
 
@@ -123,24 +150,27 @@ export function buildSummaryShareData(run: Run): SummaryShareData {
     throw new Error('Summary data is required before sharing.');
   }
 
+  const routePreview = buildSummaryRoutePreview(run);
+
   return {
     title: run.name,
-    subtitle: 'ClubRun convoy recap',
+    subtitle: 'ClubRun run recap',
     generatedDate: formatDateLabel(run.summary.generatedAt),
     distanceLabel: `${run.summary.totalDistanceKm.toFixed(1)} km`,
-    durationLabel: `${run.summary.totalDriveTimeMinutes} minutes`,
-    hazardsLabel: `${run.summary.hazardSummary.total} hazards reported`,
+    durationLabel: `${run.summary.totalDriveTimeMinutes} min`,
+    hazardsLabel: `${run.summary.hazardSummary.total} logged`,
     fuelLines: buildFuelLines(run),
     driverHighlights: buildDriverHighlights(run),
     hazardBreakdown: buildHazardBreakdown(run),
-    routeThumbnailUri: buildRouteThumbnailDataUri(run.route?.points ?? []),
+    routePreview,
+    routeThumbnailUri: buildRouteThumbnailDataUri(routePreview),
   };
 }
 
 export function buildSummaryPrintHtml(data: SummaryShareData) {
   const routeSection = data.routeThumbnailUri
     ? `<img src="${data.routeThumbnailUri}" alt="Route preview" style="width:100%;border-radius:24px;display:block;" />`
-    : `<div style="padding:24px;border:1px solid #cbd5e1;border-radius:24px;background:#f8fafc;color:#475569;">Route preview unavailable for this run.</div>`;
+    : `<div style="padding:24px;border:1px solid #cbd5e1;border-radius:24px;background:#f8fafc;color:#475569;">Route replay unavailable for this run.</div>`;
   const statCard = (label: string, value: string) => `
     <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:18px;padding:16px;">
       <div style="font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:#1d4ed8;">${escapeHtml(label)}</div>
@@ -181,19 +211,19 @@ export function buildSummaryPrintHtml(data: SummaryShareData) {
           <div class="stats">
             ${statCard('Distance', data.distanceLabel)}
             ${statCard('Drive Time', data.durationLabel)}
-            ${statCard('Hazards', data.hazardsLabel)}
+            ${statCard('Hazards Called Out', data.hazardsLabel)}
           </div>
           <div class="panel">
-            <h2>Fuel totals</h2>
-            <ul>${listItems(data.fuelLines, 'No fuel data recorded.')}</ul>
+            <h2>Fuel story</h2>
+            <ul>${listItems(data.fuelLines, 'No fuel story recorded.')}</ul>
           </div>
           <div class="panel">
-            <h2>Driver highlights</h2>
-            <ul>${listItems(data.driverHighlights, 'No driver summary data available.')}</ul>
+            <h2>Convoy spotlight</h2>
+            <ul>${listItems(data.driverHighlights, 'No driver spotlight was captured for this run.')}</ul>
           </div>
           <div class="panel">
-            <h2>Hazard breakdown</h2>
-            <ul>${listItems(data.hazardBreakdown, 'No hazards were reported.')}</ul>
+            <h2>Hazards called out</h2>
+            <ul>${listItems(data.hazardBreakdown, 'No hazards were called out.')}</ul>
           </div>
         </div>
       </body>
@@ -233,10 +263,12 @@ export async function shareSummaryAsImage(
     `Generated ${data.generatedDate}`,
     `Distance: ${data.distanceLabel}`,
     `Drive time: ${data.durationLabel}`,
-    `Hazards: ${data.hazardsLabel}`,
+    `Hazards called out: ${data.hazardsLabel}`,
     '',
-    'Driver highlights',
-    ...(data.driverHighlights.length > 0 ? data.driverHighlights : ['No driver summary data available.']),
+    'Convoy spotlight',
+    ...(data.driverHighlights.length > 0
+      ? data.driverHighlights
+      : ['No driver spotlight was captured for this run.']),
   ];
 
   downloadFile(

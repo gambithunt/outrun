@@ -1,4 +1,4 @@
-import { calculateStatsFromTrack } from '@/lib/trackService';
+import { buildConvoyRoutePreview, calculateStatsFromTrack } from '@/lib/trackService';
 import { DriverLocation } from '@/types/domain';
 
 // Helper to build a minimal DriverLocation.
@@ -133,5 +133,37 @@ describe('calculateStatsFromTrack', () => {
     const stats = calculateStatsFromTrack(points);
     expect(stats?.totalDistanceKm).toBeGreaterThan(100);
     expect(stats?.totalDistanceKm).toBeLessThan(120);
+  });
+});
+
+describe('buildConvoyRoutePreview', () => {
+  it('builds a simplified convoy route with per-segment speed buckets', () => {
+    const preview = buildConvoyRoutePreview({
+      driver_1: [
+        pt(-26.2041, 28.0473, 8, 0),
+        pt(-26.18, 28.08, 12, 15_000),
+        pt(-26.12, 28.14, 18, 30_000),
+        pt(-26.05, 28.2, 28, 45_000),
+      ],
+      driver_2: [
+        pt(-26.203, 28.048, 6, 0),
+        pt(-26.175, 28.083, 10, 15_000),
+        pt(-26.11, 28.145, 16, 30_000),
+        pt(-26.045, 28.205, 24, 45_000),
+      ],
+    });
+
+    expect(preview?.points.length).toBe(4);
+    expect(preview?.speedBuckets).toHaveLength(3);
+    expect(preview?.speedBuckets.every((bucket) => bucket >= 0 && bucket <= 3)).toBe(true);
+    expect(preview?.speedBuckets[preview.speedBuckets.length - 1]).toBe(3);
+  });
+
+  it('returns null when there is not enough real movement for a preview', () => {
+    const preview = buildConvoyRoutePreview({
+      driver_1: [pt(-26.2041, 28.0473, 0, 0), pt(-26.2041, 28.0473, 0, 15_000)],
+    });
+
+    expect(preview).toBeNull();
   });
 });

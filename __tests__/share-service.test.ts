@@ -73,6 +73,15 @@ const runFixture: Run = {
         debris: 1,
       },
     },
+    routePreview: {
+      points: [
+        [-26.2041, 28.0473],
+        [-26.15, 28.1],
+        [-26.0, 28.17],
+        [-25.7479, 28.2293],
+      ],
+      speedBuckets: [0, 2, 3],
+    },
     generatedAt: Date.UTC(2026, 2, 17, 8, 30, 0),
   },
 };
@@ -86,14 +95,27 @@ describe('shareService', () => {
     const shareData = buildSummaryShareData(runFixture);
 
     expect(shareData.title).toBe('Sunrise Run');
+    expect(shareData.routePreview).toEqual(runFixture.summary?.routePreview);
     expect(shareData.routeThumbnailUri).toContain('data:image/svg+xml;utf8,');
-    expect(shareData.driverHighlights).toContain('Jamie • BMW M3 • Top speed 108.0 km/h');
+    expect(shareData.driverHighlights).toContain('Jamie • BMW M3 • Peak speed 108.0 km/h');
+    expect(shareData.subtitle).toBe('ClubRun run recap');
+    expect(shareData.durationLabel).toBe('60 min');
+    expect(shareData.hazardsLabel).toBe('2 logged');
     expect(shareData.hazardBreakdown).toEqual(['Pothole: 1', 'Debris: 1']);
   });
 
   it('falls back when a route thumbnail cannot be generated', () => {
-    expect(buildRouteThumbnailDataUri([])).toBeNull();
-    expect(buildSummaryShareData({ ...runFixture, route: undefined }).routeThumbnailUri).toBeNull();
+    expect(buildRouteThumbnailDataUri(null)).toBeNull();
+    expect(
+      buildSummaryShareData({
+        ...runFixture,
+        route: undefined,
+        summary: {
+          ...runFixture.summary!,
+          routePreview: undefined,
+        },
+      }).routeThumbnailUri
+    ).toBeNull();
   });
 
   it('builds printable HTML for PDF export', () => {
@@ -103,6 +125,11 @@ describe('shareService', () => {
     expect(html).toContain('Distance');
     expect(html).toContain('Jamie');
     expect(html).toContain('Pothole: 1');
+    expect(html).toContain('Convoy spotlight');
+    expect(html).toContain('Fuel story');
+    expect(html).toContain('Hazards called out');
+    expect(html).not.toContain('panel-grid');
+    expect(html).not.toContain('repeat(2, 1fr)');
   });
 
   it('shares a PDF generated from the summary HTML', async () => {

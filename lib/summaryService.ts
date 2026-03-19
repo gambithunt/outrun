@@ -3,6 +3,11 @@ import { child, ref, set, type Database } from 'firebase/database';
 import { getFirebaseDatabase } from '@/lib/firebase';
 import { calculateRouteDistanceMeters } from '@/lib/geo';
 import {
+  buildConvoyRoutePreview,
+  calculateStatsFromTrack,
+  loadTracksForDriversWithFirebase,
+} from '@/lib/trackService';
+import {
   CollectiveFuelSummary,
   DriverRecord,
   DriverStats,
@@ -10,6 +15,7 @@ import {
   HazardSummary,
   Run,
   RunSummary,
+  SummaryRoutePreview,
   SummaryDriverStat,
 } from '@/types/domain';
 
@@ -112,7 +118,8 @@ function inferAvgMovingSpeedKmh(driver: DriverRecord): number | null {
 export function buildRunSummary(
   run: Run,
   now = Date.now(),
-  trackStatsByDriver?: Record<string, DriverStats>
+  trackStatsByDriver?: Record<string, DriverStats>,
+  routePreview?: SummaryRoutePreview | null
 ): RunSummary {
   const routeDistanceMetres = run.route?.distanceMetres ?? calculateRouteDistanceMeters(run.route?.points ?? []);
   const totalDistanceKm = roundToSingleDecimal(routeDistanceMetres / 1000);
@@ -175,6 +182,7 @@ export function buildRunSummary(
     driverStats,
     collectiveFuel: buildCollectiveFuelSummary(driverStats),
     hazardSummary: buildHazardSummary(run.hazards),
+    routePreview: routePreview ?? undefined,
     generatedAt: now,
   };
 }
@@ -204,7 +212,8 @@ export async function endRun(
   runId: string,
   run: Run,
   now = Date.now(),
-  trackStatsByDriver?: Record<string, DriverStats>
+  trackStatsByDriver?: Record<string, DriverStats>,
+  routePreview?: SummaryRoutePreview | null
 ) {
   if (!runId) {
     throw new Error('Run id is required to end the run.');
@@ -213,7 +222,8 @@ export async function endRun(
   const summary = buildRunSummary(
     { ...run, endedAt: now, status: 'ended' },
     now,
-    trackStatsByDriver
+    trackStatsByDriver,
+    routePreview
   );
 
   await client.writeEndedAt(runId, now);
@@ -234,5 +244,27 @@ export async function endRunWithFirebase(
   trackStatsByDriver?: Record<string, DriverStats>
 ) {
   const database = getFirebaseDatabase();
-  return endRun(createSummaryClient(database), runId, run, Date.now(), trackStatsByDriver);
+  const driverIds = Object.keys(run.drivers ?? {});
+  const tracksByDriver =
+    driverIds.length > 0 ? await loadTracksForDriversWithFirebase(runId, driverIds) : {};
+
+  const resolvedTrackStats =
+    trackStatsByDriver ??
+    Object.fromEntries(
+      Object.entries(tracksByDriver).flatMap(([driverId, points]) => {
+        const stats = calculateStatsFromTrack(points);
+        return stats ? ([[driverId, stats]] as const) : [];
+      })
+    );
+
+  const routePreview = buildConvoyRoutePreview(tracksByDriver);
+
+  return endRun(
+    createSummaryClient(database),
+    runId,
+    run,
+    Date.now(),
+    resolvedTrackStats,
+    routePreview
+  );
 }

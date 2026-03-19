@@ -2,7 +2,7 @@ import { child, get, push, ref, type Database } from 'firebase/database';
 
 import { getFirebaseDatabase } from '@/lib/firebase';
 import { haversineDistanceMeters } from '@/lib/geo';
-import { DriverLocation, DriverStats } from '@/types/domain';
+import { DriverLocation, DriverStats, SummaryRoutePreview } from '@/types/domain';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -11,6 +11,15 @@ const MOVING_THRESHOLD_MS = 0.5;
 
 /** Minimum stop duration to count as a stop event (ms). */
 const MIN_STOP_DURATION_MS = 15_000;
+
+/** Bucket convoy points into 15 second windows for a smooth recap route preview. */
+const CONVOY_PREVIEW_BUCKET_MS = 15_000;
+
+/** Ignore tiny preview hops so parked jitter does not dominate the recap image. */
+const MIN_PREVIEW_SEGMENT_DISTANCE_METERS = 20;
+
+/** Keep recap previews compact enough to render cleanly in cards and PDFs. */
+const MAX_PREVIEW_POINTS = 48;
 
 // ─── Pure stats calculation ───────────────────────────────────────────────────
 
@@ -98,6 +107,120 @@ export function calculateStatsFromTrack(points: DriverLocation[]): DriverStats |
   };
 }
 
+export function buildConvoyRoutePreview(
+  trackPointsByDriver: Record<string, DriverLocation[]>
+): SummaryRoutePreview | null {
+  const bucketMap = new Map<number, Map<string, DriverLocation>>();
+
+  for (const [driverId, points] of Object.entries(trackPointsByDriver)) {
+    const sortedPoints = [...points].sort((a, b) => a.timestamp - b.timestamp);
+
+    for (const point of sortedPoints) {
+      const bucketKey = Math.floor(point.timestamp / CONVOY_PREVIEW_BUCKET_MS);
+      const bucketDrivers = bucketMap.get(bucketKey) ?? new Map<string, DriverLocation>();
+      bucketDrivers.set(driverId, point);
+      bucketMap.set(bucketKey, bucketDrivers);
+    }
+  }
+
+  const aggregatedPoints = [...bucketMap.entries()]
+    .sort(([left], [right]) => left - right)
+    .map(([, driverPoints]) => {
+      const points = [...driverPoints.values()];
+      return {
+        lat: average(points.map((point) => point.lat)),
+        lng: average(points.map((point) => point.lng)),
+        speedMs: average(points.map((point) => Math.max(point.speed, 0))),
+      };
+    });
+
+  const simplifiedPoints = aggregatedPoints.reduce<typeof aggregatedPoints>((summary, point) => {
+    const previousPoint = summary[summary.length - 1];
+    if (!previousPoint) {
+      summary.push(point);
+      return summary;
+    }
+
+    const distanceMeters = haversineDistanceMeters(
+      [previousPoint.lat, previousPoint.lng],
+      [point.lat, point.lng]
+    );
+
+    if (distanceMeters < MIN_PREVIEW_SEGMENT_DISTANCE_METERS) {
+      summary[summary.length - 1] = {
+        lat: point.lat,
+        lng: point.lng,
+        speedMs: average([previousPoint.speedMs, point.speedMs]),
+      };
+      return summary;
+    }
+
+    summary.push(point);
+    return summary;
+  }, []);
+
+  const previewPoints = downsampleConvoyPoints(simplifiedPoints, MAX_PREVIEW_POINTS);
+  if (previewPoints.length < 2) {
+    return null;
+  }
+
+  const segmentSpeedsKmh = previewPoints.slice(1).map((point, index) => {
+    const previousPoint = previewPoints[index];
+    return ((previousPoint.speedMs + point.speedMs) / 2) * 3.6;
+  });
+
+  return {
+    points: previewPoints.map((point) => [point.lat, point.lng] as [number, number]),
+    speedBuckets: assignSpeedBuckets(segmentSpeedsKmh),
+  };
+}
+
+function average(values: number[]) {
+  return values.reduce((total, value) => total + value, 0) / values.length;
+}
+
+function downsampleConvoyPoints<T>(points: T[], maxPoints: number) {
+  if (points.length <= maxPoints) {
+    return points;
+  }
+
+  const result: T[] = [];
+  for (let index = 0; index < maxPoints; index += 1) {
+    const sourceIndex = Math.round((index * (points.length - 1)) / (maxPoints - 1));
+    result.push(points[sourceIndex]);
+  }
+  return result;
+}
+
+function assignSpeedBuckets(segmentSpeedsKmh: number[]) {
+  if (segmentSpeedsKmh.length === 0) {
+    return [];
+  }
+
+  const uniqueSpeeds = [...new Set(segmentSpeedsKmh.map((speed) => Math.round(speed * 10) / 10))];
+  if (uniqueSpeeds.length <= 1) {
+    return segmentSpeedsKmh.map(() => 1);
+  }
+
+  const sortedSpeeds = [...segmentSpeedsKmh].sort((left, right) => left - right);
+  const q1 = sortedSpeeds[Math.floor((sortedSpeeds.length - 1) * 0.25)];
+  const q2 = sortedSpeeds[Math.floor((sortedSpeeds.length - 1) * 0.5)];
+  const q3 = sortedSpeeds[Math.floor((sortedSpeeds.length - 1) * 0.75)];
+
+  return segmentSpeedsKmh.map((speed) => {
+    if (speed <= q1) {
+      return 0;
+    }
+    if (speed <= q2) {
+      return 1;
+    }
+    if (speed <= q3) {
+      return 2;
+    }
+    return 3;
+  });
+}
+
 // ─── Firebase client ──────────────────────────────────────────────────────────
 
 type TrackClient = {
@@ -140,6 +263,18 @@ export async function loadDriverTrack(
   return client.loadPoints(runId, driverId);
 }
 
+export async function loadTracksForDrivers(
+  client: TrackClient,
+  runId: string,
+  driverIds: string[]
+) {
+  const entries = await Promise.all(
+    driverIds.map(async (driverId) => [driverId, await client.loadPoints(runId, driverId)] as const)
+  );
+
+  return Object.fromEntries(entries);
+}
+
 // ─── Firebase-wired convenience functions ─────────────────────────────────────
 
 export async function appendTrackPointWithFirebase(
@@ -157,4 +292,9 @@ export async function loadDriverTrackWithFirebase(
 ): Promise<DriverLocation[]> {
   const database = getFirebaseDatabase();
   return loadDriverTrack(createTrackClient(database), runId, driverId);
+}
+
+export async function loadTracksForDriversWithFirebase(runId: string, driverIds: string[]) {
+  const database = getFirebaseDatabase();
+  return loadTracksForDrivers(createTrackClient(database), runId, driverIds);
 }

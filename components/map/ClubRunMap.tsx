@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Text, View } from 'react-native';
+import { MaterialIcons } from '@expo/vector-icons';
 import {
   Camera,
   LineLayer,
@@ -20,6 +21,7 @@ import { RouteStopDraft } from '@/types/domain';
 type MapMode = 'planning' | 'lobby' | 'navigation';
 
 type ClubRunMapProps = {
+  accentColorOverride?: string;
   currentDriverId?: string | null;
   currentLocation?: RoutePoint | null;
   drivers?: LiveDriver[];
@@ -32,6 +34,7 @@ type ClubRunMapProps = {
   onRegionDidChange?: (point: RoutePoint) => void;
   onUserPanned?: () => void;
   recenterToken?: number;
+  routeColorOverride?: string;
   routePoints?: RoutePoint[];
   selectedStopId?: string | null;
   showUserLocation?: boolean;
@@ -41,14 +44,15 @@ type ClubRunMapProps = {
 };
 
 const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json';
+const MAP_ANIMATIONS_ENABLED = !process.env.JEST_WORKER_ID;
 
-const HAZARD_EMOJI: Record<string, string> = {
-  pothole: '🕳️',
-  roadworks: '🚧',
-  police: '🚓',
-  debris: '⚠️',
-  animal: '🐄',
-  broken_down_car: '🚗',
+const HAZARD_EMOJI: Record<string, keyof typeof MaterialIcons.glyphMap> = {
+  pothole: 'trip-origin',
+  roadworks: 'construction',
+  police: 'local-police',
+  debris: 'warning-amber',
+  animal: 'pets',
+  broken_down_car: 'car-crash',
 };
 
 const PRESENCE_COLORS: Record<DriverPresenceStatus, string> = {
@@ -82,6 +86,11 @@ function getFirstName(name: string) {
   return name.split(' ')[0] ?? name;
 }
 
+function getSelfLabel(name: string) {
+  const firstName = getFirstName(name);
+  return firstName.toLowerCase() === 'you' ? 'You' : `${firstName} (you)`;
+}
+
 function getDriverInitials(name: string) {
   return name
     .split(' ')
@@ -107,6 +116,12 @@ function LobbyPulseRing({ size, color }: { size: number; color: string }) {
   const opacity = useRef(new Animated.Value(0.5)).current;
 
   useEffect(() => {
+    if (!MAP_ANIMATIONS_ENABLED) {
+      scale.setValue(1);
+      opacity.setValue(0.28);
+      return;
+    }
+
     const anim = Animated.loop(
       Animated.parallel([
         Animated.sequence([
@@ -182,7 +197,7 @@ function LobbyDriverPin({
         }}
       >
         <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '700' }}>
-          {isSelf ? `${getFirstName(driver.name)} (you)` : getFirstName(driver.name)}
+          {isSelf ? getSelfLabel(driver.name) : getFirstName(driver.name)}
         </Text>
       </View>
     </View>
@@ -250,7 +265,7 @@ function NavigationDriverPin({
         }}
       >
         <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '700' }}>
-          {isSelf ? `${getFirstName(driver.name)} ✦` : getFirstName(driver.name)}
+          {isSelf ? getSelfLabel(driver.name) : getFirstName(driver.name)}
         </Text>
       </View>
       {status === 'lost_signal' ? (
@@ -262,9 +277,9 @@ function NavigationDriverPin({
   );
 }
 
-// Waze-style hazard pin with emoji and count badge
+// Waze-style hazard pin with icon and count badge
 function HazardPin({ hazard }: { hazard: LiveHazard }) {
-  const emoji = HAZARD_EMOJI[hazard.type] ?? '⚠️';
+  const iconName = HAZARD_EMOJI[hazard.type] ?? 'warning-amber';
 
   return (
     <View style={{ alignItems: 'center', justifyContent: 'center' }}>
@@ -280,7 +295,7 @@ function HazardPin({ hazard }: { hazard: LiveHazard }) {
           justifyContent: 'center',
         }}
       >
-        <Text style={{ fontSize: 24 }}>{emoji}</Text>
+        <MaterialIcons color="#B45309" name={iconName} size={24} />
       </View>
       {hazard.reportCount > 1 ? (
         <View
@@ -307,6 +322,7 @@ function HazardPin({ hazard }: { hazard: LiveHazard }) {
 }
 
 export function ClubRunMap({
+  accentColorOverride,
   currentDriverId = null,
   currentLocation = null,
   drivers = [],
@@ -319,6 +335,7 @@ export function ClubRunMap({
   onRegionDidChange,
   onUserPanned,
   recenterToken = 0,
+  routeColorOverride,
   routePoints = [],
   selectedStopId = null,
   showUserLocation = false,
@@ -379,7 +396,8 @@ export function ClubRunMap({
 
   const isNavigation = mapMode === 'navigation';
   const isLobby = mapMode === 'lobby';
-  const accentColor = theme.colors.accent;
+  const accentColor = accentColorOverride ?? theme.colors.accent;
+  const routeColor = routeColorOverride ?? accentColor;
 
   return (
     <View
@@ -460,7 +478,7 @@ export function ClubRunMap({
             />
             <LineLayer
               id="route-line"
-              style={{ lineColor: accentColor, lineWidth: 5, lineOpacity: 0.95 }}
+              style={{ lineColor: routeColor, lineWidth: 5, lineOpacity: 0.95 }}
             />
           </ShapeSource>
         ) : null}

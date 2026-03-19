@@ -7,6 +7,7 @@ import { LiveHazard, formatHazardLabel } from '@/lib/hazardRealtime';
 import { RouteStopDraft } from '@/types/domain';
 
 type ClubRunMapProps = {
+  accentColorOverride?: string;
   currentDriverId?: string | null;
   currentLocation?: RoutePoint | null;
   drivers?: LiveDriver[];
@@ -19,6 +20,7 @@ type ClubRunMapProps = {
   onRegionDidChange?: (point: RoutePoint) => void;
   onUserPanned?: () => void;
   recenterToken?: number;
+  routeColorOverride?: string;
   waypoints?: RoutePoint[];
   routePoints?: RoutePoint[];
   selectedStopId?: string | null;
@@ -28,6 +30,7 @@ type ClubRunMapProps = {
 };
 
 export function ClubRunMap({
+  accentColorOverride: _accentColorOverride,
   currentLocation,
   drivers = [],
   edgeToEdge = false,
@@ -35,6 +38,7 @@ export function ClubRunMap({
   mapMode,
   onMapPress,
   onRegionDidChange,
+  routeColorOverride: _routeColorOverride,
   routePoints = [],
   selectedStopId,
   showUserLocation,

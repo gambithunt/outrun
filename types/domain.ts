@@ -66,6 +66,11 @@ export type HazardSummary = {
   byType: Partial<Record<HazardType, number>>;
 };
 
+export type SummaryRoutePreview = {
+  points: [number, number][];
+  speedBuckets: number[];
+};
+
 export type DriverRecord = {
   profile: DriverProfile;
   location?: DriverLocation;
@@ -113,6 +118,7 @@ export type RunSummary = {
   driverStats: Record<string, SummaryDriverStat>;
   collectiveFuel: CollectiveFuelSummary;
   hazardSummary: HazardSummary;
+  routePreview?: SummaryRoutePreview;
   generatedAt: number;
 };
 

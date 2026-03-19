@@ -63,8 +63,8 @@ function RootNavigator() {
         <Stack.Screen name="join/index" options={{ title: 'Join a Run' }} />
         <Stack.Screen name="join/[code]" options={{ title: 'Join ClubRun' }} />
         <Stack.Screen name="join/profile" options={{ title: 'Driver Profile' }} />
-        <Stack.Screen name="run/[id]/map" options={{ title: 'Live Map' }} />
-        <Stack.Screen name="run/[id]/summary" options={{ title: 'Run Summary' }} />
+        <Stack.Screen name="run/[id]/map" options={{ headerShown: false }} />
+        <Stack.Screen name="run/[id]/summary" options={{ headerShown: false }} />
         <Stack.Screen name="+not-found" options={{ title: 'Not Found' }} />
       </Stack>
     </NavigationThemeProvider>

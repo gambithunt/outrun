@@ -46,7 +46,7 @@ export default function CreateRunScreen() {
       setSession({
         runId: createdRun.runId,
         driverId: createdRun.adminId,
-        driverName: 'Admin',
+        driverName: 'You',
         joinCode: createdRun.joinCode,
         role: 'admin',
         status: createdRun.run.status,

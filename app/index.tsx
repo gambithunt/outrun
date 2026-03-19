@@ -40,7 +40,7 @@ export default function HomeScreen() {
     setSession({
       runId: entry.runId,
       driverId: entry.driverId,
-      driverName: 'Admin',
+      driverName: 'You',
       joinCode: entry.joinCode,
       role: 'admin',
       status: entry.status,
@@ -108,7 +108,7 @@ export default function HomeScreen() {
             marginBottom: 12,
           }}
         >
-          Recent Admin Runs
+          Your Recent Runs
         </Text>
 
         {recentRuns.length === 0 ? (
