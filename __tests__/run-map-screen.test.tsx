@@ -1,3 +1,8 @@
+jest.mock('@/contexts/AuthContext', () => ({
+  ...jest.requireActual('@/contexts/AuthContext'),
+  useAuthSession: jest.fn(),
+}));
+
 jest.mock('@/lib/runRealtime', () => ({
   subscribeToRunWithFirebase: jest.fn(),
 }));
@@ -57,6 +62,7 @@ import { act, fireEvent, waitFor } from '@testing-library/react-native';
 import { Linking } from 'react-native';
 
 import RunMapScreen from '@/app/run/[id]/map';
+import { useAuthSession } from '@/contexts/AuthContext';
 import {
   startBackgroundTrackingWithExpo,
   stopBackgroundTrackingWithExpo,
@@ -99,6 +105,11 @@ async function enableTracking(screen: ReturnType<typeof renderWithProviders>) {
 describe('RunMapScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    (useAuthSession as jest.Mock).mockReturnValue({
+      status: 'ready',
+      userId: null,
+      error: null,
+    });
     useRunSessionStore.getState().clearSession();
     useRunSessionStore.getState().setSession({
       runId: 'run_900',
@@ -248,6 +259,11 @@ describe('RunMapScreen', () => {
   });
 
   it('lets admins reopen the route planner from the lobby only after confirmation', async () => {
+    (useAuthSession as jest.Mock).mockReturnValue({
+      status: 'ready',
+      userId: 'driver_admin',
+      error: null,
+    });
     useRunSessionStore.getState().setSession({
       runId: 'run_900',
       driverId: 'driver_admin',
@@ -306,6 +322,52 @@ describe('RunMapScreen', () => {
     ).toHaveBeenCalledWith('/create/route?runId=run_900&joinCode=123456');
   });
 
+  it('does not offer edit route while organiser auth is still loading', async () => {
+    (useAuthSession as jest.Mock).mockReturnValue({
+      status: 'loading',
+      userId: null,
+      error: null,
+    });
+    useRunSessionStore.getState().setSession({
+      runId: 'run_900',
+      driverId: 'driver_admin',
+      driverName: 'You',
+      joinCode: '123456',
+      role: 'admin',
+      status: 'ready',
+    });
+    (subscribeToRunWithFirebase as jest.Mock).mockImplementation((_id, onData) => {
+      onData({
+        name: 'Sunrise Run',
+        adminId: 'driver_admin',
+        status: 'ready',
+        route: {
+          points: [
+            [-26.2041, 28.0473],
+            [-25.7479, 28.2293],
+          ],
+          distanceMetres: 54000,
+          source: 'drawn',
+        },
+      });
+
+      return jest.fn();
+    });
+    (subscribeToDriversWithFirebase as jest.Mock).mockImplementation((_id, onData) => {
+      onData([]);
+      return jest.fn();
+    });
+    (subscribeToHazardsWithFirebase as jest.Mock).mockImplementation((_id, onData) => {
+      onData([]);
+      return jest.fn();
+    });
+
+    const screen = renderWithProviders(<RunMapScreen />);
+
+    await waitFor(() => expect(screen.getByTestId('text-run-name')).toHaveTextContent('Sunrise Run'));
+    expect(screen.queryByTestId('button-edit-route')).toBeNull();
+  });
+
   it('does not offer edit route after the drive has already been launched', async () => {
     useRunSessionStore.getState().setSession({
       runId: 'run_900',
@@ -345,6 +407,53 @@ describe('RunMapScreen', () => {
 
     await waitFor(() => expect(screen.getByTestId('text-run-name')).toHaveTextContent('Sunrise Run'));
     expect(screen.queryByTestId('button-edit-route')).toBeNull();
+  });
+
+  it('hides organiser controls when the authenticated user is not the run admin', async () => {
+    (useAuthSession as jest.Mock).mockReturnValue({
+      status: 'ready',
+      userId: 'someone_else',
+      error: null,
+    });
+    useRunSessionStore.getState().setSession({
+      runId: 'run_900',
+      driverId: 'driver_admin',
+      driverName: 'You',
+      joinCode: '123456',
+      role: 'admin',
+      status: 'ready',
+    });
+    (subscribeToRunWithFirebase as jest.Mock).mockImplementation((_id, onData) => {
+      onData({
+        name: 'Sunrise Run',
+        adminId: 'driver_admin',
+        status: 'ready',
+        route: {
+          points: [
+            [-26.2041, 28.0473],
+            [-25.7479, 28.2293],
+          ],
+          distanceMetres: 54000,
+          source: 'drawn',
+        },
+      });
+
+      return jest.fn();
+    });
+    (subscribeToDriversWithFirebase as jest.Mock).mockImplementation((_id, onData) => {
+      onData([]);
+      return jest.fn();
+    });
+    (subscribeToHazardsWithFirebase as jest.Mock).mockImplementation((_id, onData) => {
+      onData([]);
+      return jest.fn();
+    });
+
+    const screen = renderWithProviders(<RunMapScreen />);
+
+    await waitFor(() => expect(screen.getByTestId('text-run-name')).toHaveTextContent('Sunrise Run'));
+    expect(screen.queryByTestId('button-edit-route')).toBeNull();
+    expect(screen.getByText('Sign in with the organiser account to manage this lobby.')).toBeTruthy();
   });
 
   it('reports a hazard from the current driver location', async () => {
@@ -413,6 +522,11 @@ describe('RunMapScreen', () => {
   });
 
   it('shows end run for admins and ends the run', async () => {
+    (useAuthSession as jest.Mock).mockReturnValue({
+      status: 'ready',
+      userId: 'driver_admin',
+      error: null,
+    });
     useRunSessionStore.getState().setSession({
       runId: 'run_900',
       driverId: 'driver_admin',
@@ -695,6 +809,11 @@ describe('RunMapScreen', () => {
   });
 
   it('shows admin-only hazard dismissal controls and dismisses a hazard', async () => {
+    (useAuthSession as jest.Mock).mockReturnValue({
+      status: 'ready',
+      userId: 'driver_admin',
+      error: null,
+    });
     useRunSessionStore.getState().setSession({
       runId: 'run_900',
       driverId: 'driver_admin',
@@ -756,6 +875,11 @@ describe('RunMapScreen', () => {
   });
 
   it('renders stale driver status and lets admins remove another driver', async () => {
+    (useAuthSession as jest.Mock).mockReturnValue({
+      status: 'ready',
+      userId: 'driver_admin',
+      error: null,
+    });
     useRunSessionStore.getState().setSession({
       runId: 'run_900',
       driverId: 'driver_admin',

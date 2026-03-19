@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ClubRunMap } from '@/components/map/ClubRunMap';
 import { AppButton } from '@/components/ui/AppButton';
+import { useAuthSession } from '@/contexts/AuthContext';
 import {
   startBackgroundTrackingWithExpo,
   stopBackgroundTrackingWithExpo,
@@ -614,6 +615,7 @@ function formatTrackingMode(mode: TrackingMode) {
 export default function RunMapScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id?: string }>();
+  const auth = useAuthSession();
   const { theme } = useAppTheme();
   const insets = useSafeAreaInsets();
   const session = useRunSessionStore();
@@ -827,6 +829,14 @@ export default function RunMapScreen() {
 
   async function handleStartDrive() {
     if (!id) return;
+    if (!hasAdminAuthority) {
+      setError(
+        auth.status === 'loading'
+          ? 'Still confirming organiser access. Try again in a moment.'
+          : 'Only the organiser can start the drive.'
+      );
+      return;
+    }
     setIsStartingDrive(true);
     try {
       await startDriveWithFirebase(id);
@@ -842,9 +852,13 @@ export default function RunMapScreen() {
       return;
     }
 
-    if (session.role !== 'admin' || currentRun?.status !== 'ready' || typeof currentRun?.driveStartedAt === 'number') {
+    if (!hasAdminAuthority || currentRun?.status !== 'ready' || typeof currentRun?.driveStartedAt === 'number') {
       setIsConfirmingRouteEdit(false);
-      setError('Route editing is only available before the drive has started.');
+      setError(
+        auth.status === 'loading'
+          ? 'Still confirming organiser access. Try again in a moment.'
+          : 'Route editing is only available to the organiser before the drive has started.'
+      );
       return;
     }
 
@@ -938,9 +952,17 @@ export default function RunMapScreen() {
 
   // ── Derived values ────────────────────────────────────────────────────────
   const driversWithGps = displayDrivers.filter((d) => d.location).length;
-  const canStartDrive = session.role === 'admin' && driversWithGps >= 1;
+  const runAdminId = currentRun?.adminId ?? (session.role === 'admin' ? session.driverId : null);
+  const isOrganiserSession = session.role === 'admin';
+  const hasAdminAuthority =
+    isOrganiserSession &&
+    auth.status === 'ready' &&
+    Boolean(auth.userId) &&
+    Boolean(runAdminId) &&
+    auth.userId === runAdminId;
+  const canStartDrive = hasAdminAuthority && driversWithGps >= 1;
   const hasDriveStarted = typeof currentRun?.driveStartedAt === 'number';
-  const canEditRoute = session.role === 'admin' && currentRun?.status === 'ready' && !hasDriveStarted;
+  const canEditRoute = hasAdminAuthority && currentRun?.status === 'ready' && !hasDriveStarted;
   const showTrackingPrompt =
     trackingMode === 'idle' || trackingMode === 'starting' || trackingMode === 'denied';
   const connectivityOffline = session.connectivityStatus !== 'online';
@@ -1098,7 +1120,7 @@ export default function RunMapScreen() {
           drivers={displayDrivers}
           currentDriverId={session.driverId}
           hazards={hazards}
-          isAdmin={session.role === 'admin'}
+          isAdmin={hasAdminAuthority}
           isEndingRun={isEndingRun}
           onExpandedChange={setIsDriverPanelExpanded}
           onDismissHazard={(hazard) => { void handleDismissHazard(hazard); }}
@@ -1115,14 +1137,18 @@ export default function RunMapScreen() {
           pointerEvents="box-none"
         >
           <View style={styles.lobbyCard}>
-            {session.role === 'admin' ? (
+            {isOrganiserSession ? (
               <>
                 <Text style={styles.lobbyCardEyebrow}>Lobby</Text>
                 <Text style={styles.lobbyCardTitle}>Ready to roll when the convoy is ready</Text>
                 <Text style={styles.lobbyCardBody}>
-                  {canStartDrive
+                  {auth.status === 'loading'
+                    ? 'Confirming organiser access before lobby controls unlock.'
+                    : canStartDrive
                     ? `${driversWithGps} driver${driversWithGps === 1 ? '' : 's'} with GPS are ready.`
-                    : 'Ask one driver to enable location so the live drive can begin cleanly.'}
+                    : hasAdminAuthority
+                    ? 'Ask one driver to enable location so the live drive can begin cleanly.'
+                    : 'Sign in with the organiser account to manage this lobby.'}
                 </Text>
                 <TouchableOpacity
                   style={[
@@ -1157,7 +1183,13 @@ export default function RunMapScreen() {
                   </Pressable>
                 ) : null}
                 {!canStartDrive ? (
-                  <Text style={styles.startDriveHint}>Waiting for at least 1 driver with GPS</Text>
+                  <Text style={styles.startDriveHint}>
+                    {auth.status === 'loading'
+                      ? 'Checking organiser access…'
+                      : hasAdminAuthority
+                      ? 'Waiting for at least 1 driver with GPS'
+                      : 'Lobby controls unlock once organiser access is confirmed.'}
+                  </Text>
                 ) : null}
                 {hasDriveStarted ? (
                   <Text style={styles.startDriveHint}>Route editing is unavailable after launch.</Text>

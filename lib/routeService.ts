@@ -1,5 +1,6 @@
 import { child, get, ref, set, type Database } from 'firebase/database';
 
+import { requireAuthenticatedUserIdWithFirebase } from '@/lib/auth';
 import { getFirebaseDatabase } from '@/lib/firebase';
 import { buildRouteWaypointsFromStops } from '@/lib/routePlanner';
 import { calculateRouteDistanceMeters, isValidRoutePoint, RoutePoint } from '@/lib/geo';
@@ -179,21 +180,25 @@ export async function reopenRoutePlannerFromLobby(client: RouteClient, runId: st
 }
 
 export async function saveRouteToRunWithFirebase(runId: string, route: RouteData) {
+  await requireAuthenticatedUserIdWithFirebase();
   const database = getFirebaseDatabase();
   return saveRouteToRun(createRouteClient(database), runId, route);
 }
 
 export async function saveRouteDraftToRunWithFirebase(runId: string, route: RouteData) {
+  await requireAuthenticatedUserIdWithFirebase();
   const database = getFirebaseDatabase();
   return saveRouteDraftToRun(createRouteClient(database), runId, route);
 }
 
 export async function startRunWithSavedRouteWithFirebase(runId: string) {
+  await requireAuthenticatedUserIdWithFirebase();
   const database = getFirebaseDatabase();
   return startRunWithSavedRoute(createRouteClient(database), runId);
 }
 
 export async function reopenRoutePlannerFromLobbyWithFirebase(runId: string) {
+  await requireAuthenticatedUserIdWithFirebase();
   const database = getFirebaseDatabase();
   return reopenRoutePlannerFromLobby(createRouteClient(database), runId);
 }
