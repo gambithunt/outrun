@@ -1,9 +1,23 @@
 import { create } from 'zustand';
 
-import { RouteData, RunStatus } from '@/types/domain';
+import { RouteData, RunStatus, RunVisibility } from '@/types/domain';
 
 type SessionRole = 'admin' | 'driver' | null;
 export type ConnectivityStatus = 'online' | 'offline' | 'reconnecting';
+export type AppShellTab = 'runs' | 'drive' | 'friends' | 'profile';
+
+type SignedInAccount = {
+  userId: string;
+  isAnonymous: boolean;
+  email?: string | null;
+};
+
+type ScheduledRunHero = {
+  runId: string;
+  name: string;
+  scheduledFor: number;
+  visibility: RunVisibility;
+};
 
 type RunSessionState = {
   runId: string | null;
@@ -16,6 +30,9 @@ type RunSessionState = {
   route: RouteData | null;
   isRunLoaded: boolean;
   connectivityStatus: ConnectivityStatus;
+  currentTab: AppShellTab;
+  account: SignedInAccount | null;
+  scheduledRunHero: ScheduledRunHero | null;
   setSession: (session: {
     runId: string;
     driverId: string;
@@ -32,6 +49,9 @@ type RunSessionState = {
   setStatus: (status: RunStatus) => void;
   updateNetworkAvailability: (isOnline: boolean) => void;
   markRealtimeSynced: () => void;
+  setCurrentTab: (tab: AppShellTab) => void;
+  setSignedInAccount: (account: SignedInAccount | null) => void;
+  setScheduledRunHero: (run: ScheduledRunHero | null) => void;
   clearSession: () => void;
 };
 
@@ -46,6 +66,9 @@ const initialState = {
   route: null,
   isRunLoaded: false,
   connectivityStatus: 'online' as ConnectivityStatus,
+  currentTab: 'runs' as AppShellTab,
+  account: null,
+  scheduledRunHero: null,
 };
 
 export const useRunSessionStore = create<RunSessionState>((set) => ({
@@ -80,5 +103,8 @@ export const useRunSessionStore = create<RunSessionState>((set) => ({
       connectivityStatus:
         state.connectivityStatus === 'reconnecting' ? 'online' : state.connectivityStatus,
     })),
+  setCurrentTab: (currentTab) => set({ currentTab }),
+  setSignedInAccount: (account) => set({ account }),
+  setScheduledRunHero: (scheduledRunHero) => set({ scheduledRunHero }),
   clearSession: () => set(initialState),
 }));

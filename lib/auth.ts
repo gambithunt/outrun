@@ -1,10 +1,15 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import {
+  createUserWithEmailAndPassword,
   connectAuthEmulator,
+  EmailAuthProvider,
   getAuth,
   initializeAuth,
+  linkWithCredential,
+  signInWithEmailAndPassword,
   signInAnonymously,
+  signOut,
   type Auth,
 } from 'firebase/auth';
 
@@ -13,6 +18,8 @@ import { getFirebaseApp, hasFirebaseConfig } from '@/lib/firebase';
 type EnvMap = Record<string, string | undefined>;
 type AuthUser = {
   uid: string;
+  isAnonymous?: boolean;
+  email?: string | null;
 };
 type AuthLike = {
   currentUser: AuthUser | null;
@@ -21,6 +28,11 @@ type SignInResult = {
   user: AuthUser | null;
 };
 type SignInFn = (auth: AuthLike) => Promise<SignInResult>;
+type SignOutFn = (auth: AuthLike) => Promise<void>;
+type LinkAccountFn = (
+  user: AuthUser,
+  credentials: { email: string; password: string }
+) => Promise<SignInResult>;
 type ReactNativeAuthModule = {
   getReactNativePersistence?: (storage: typeof AsyncStorage) => unknown;
 };
@@ -101,6 +113,32 @@ export async function requireAuthenticatedUserId(auth: AuthLike, signIn: SignInF
   return user.uid;
 }
 
+export async function linkAnonymousAccount(
+  auth: AuthLike,
+  credentials: {
+    email: string;
+    password: string;
+  },
+  linkAccount: LinkAccountFn
+) {
+  if (!auth.currentUser?.uid || auth.currentUser.isAnonymous === false) {
+    throw new Error('An anonymous Firebase session is required before linking an account.');
+  }
+
+  const result = await linkAccount(auth.currentUser, credentials);
+  return result.user ?? auth.currentUser;
+}
+
+export async function signOutToGuestOrSignedOutState(
+  auth: AuthLike,
+  signOutFn: SignOutFn,
+  signIn: SignInFn
+) {
+  await signOutFn(auth);
+  (auth as { currentUser: AuthUser | null }).currentUser = null;
+  return ensureAuthenticatedUser(auth, signIn);
+}
+
 export async function ensureAuthenticatedUserWithFirebase(env: EnvMap = runtimeEnv) {
   if (!hasFirebaseConfig(env)) {
     return null;
@@ -110,7 +148,13 @@ export async function ensureAuthenticatedUserWithFirebase(env: EnvMap = runtimeE
   return ensureAuthenticatedUser(auth as unknown as AuthLike, async (authLike) => {
     const credential = await signInAnonymously(authLike as unknown as Auth);
     return {
-      user: credential.user ? { uid: credential.user.uid } : null,
+      user: credential.user
+        ? {
+            uid: credential.user.uid,
+            isAnonymous: credential.user.isAnonymous,
+            email: credential.user.email,
+          }
+        : null,
     };
   });
 }
@@ -123,4 +167,92 @@ export async function requireAuthenticatedUserIdWithFirebase(env: EnvMap = runti
   }
 
   return user.uid;
+}
+
+export async function signUpWithEmailPassword(email: string, password: string, env: EnvMap = runtimeEnv) {
+  const auth = getFirebaseAuth(env);
+  const currentUser = auth.currentUser;
+
+  if (currentUser?.isAnonymous) {
+    return linkAnonymousAccount(
+      auth as unknown as AuthLike,
+      { email, password },
+      async (user, nextCredentials) => {
+        const credential = EmailAuthProvider.credential(
+          nextCredentials.email,
+          nextCredentials.password
+        );
+        const result = await linkWithCredential(user as never, credential);
+        return {
+          user: result.user
+            ? {
+                uid: result.user.uid,
+                isAnonymous: result.user.isAnonymous,
+                email: result.user.email,
+              }
+            : null,
+        };
+      }
+    );
+  }
+
+  const result = await createUserWithEmailAndPassword(auth, email, password);
+  return result.user
+    ? {
+        uid: result.user.uid,
+        isAnonymous: result.user.isAnonymous,
+        email: result.user.email,
+      }
+    : null;
+}
+
+export async function signInWithEmailPassword(email: string, password: string, env: EnvMap = runtimeEnv) {
+  const auth = getFirebaseAuth(env);
+  const result = await signInWithEmailAndPassword(auth, email, password);
+  return result.user
+    ? {
+        uid: result.user.uid,
+        isAnonymous: result.user.isAnonymous,
+        email: result.user.email,
+      }
+    : null;
+}
+
+export async function linkAnonymousAccountWithFirebase(
+  email: string,
+  password: string,
+  env: EnvMap = runtimeEnv
+) {
+  const auth = getFirebaseAuth(env);
+  return linkAnonymousAccount(
+    auth as unknown as AuthLike,
+    { email, password },
+    async (user, nextCredentials) => {
+      const credential = EmailAuthProvider.credential(
+        nextCredentials.email,
+        nextCredentials.password
+      );
+      const result = await linkWithCredential(user as never, credential);
+      return {
+        user: result.user
+          ? {
+              uid: result.user.uid,
+              isAnonymous: result.user.isAnonymous,
+              email: result.user.email,
+            }
+          : null,
+      };
+    }
+  );
+}
+
+export async function signOutToGuestOrSignedOutStateWithFirebase(env: EnvMap = runtimeEnv) {
+  const auth = getFirebaseAuth(env);
+  return signOutToGuestOrSignedOutState(
+    auth as unknown as AuthLike,
+    async () => {
+      await signOut(auth);
+    },
+    async () => ensureAuthenticatedUserWithFirebase(env).then((user) => ({ user }))
+  );
 }

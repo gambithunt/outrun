@@ -65,6 +65,90 @@ describe('Realtime Database rules', () => {
     );
   });
 
+  it('allows a signed-in user to write their own persistent profile and garage car', async () => {
+    await assertSucceeds(
+      driverDb('driver_1').ref('users/driver_1').set({
+        displayName: 'Jamie',
+        homeClub: 'Night Shift',
+        createdAt: 1,
+        updatedAt: 1,
+        stats: {
+          totalRuns: 0,
+          totalDistanceKm: 0,
+          hazardsReported: 0,
+          mostUsedCarId: null,
+        },
+      })
+    );
+
+    await assertSucceeds(
+      driverDb('driver_1').ref('garage/driver_1/car_1').set({
+        id: 'car_1',
+        nickname: 'Daily',
+        make: 'BMW',
+        model: 'M2',
+        fuelType: 'petrol',
+        createdAt: 1,
+        updatedAt: 1,
+      })
+    );
+
+    await assertFails(
+      driverDb('driver_2').ref('users/driver_1').set({
+        displayName: 'Intruder',
+        createdAt: 1,
+        updatedAt: 1,
+        stats: {
+          totalRuns: 0,
+          totalDistanceKm: 0,
+          hazardsReported: 0,
+        },
+      })
+    );
+  });
+
+  it('allows an organiser to write their scheduled run index and invite another user', async () => {
+    await seed({
+      runs: {
+        run_future: {
+          name: 'Night Cruise',
+          joinCode: '444444',
+          adminId: 'admin_1',
+          status: 'draft',
+          createdAt: 1,
+          startedAt: null,
+          endedAt: null,
+          maxDrivers: 12,
+        },
+      },
+    });
+
+    await assertSucceeds(
+      adminDb().ref('userRuns/admin_1/run_future').set({
+        scheduledFor: 1000,
+        name: 'Night Cruise',
+      })
+    );
+
+    await assertSucceeds(
+      adminDb().ref('runInvites/driver_2/run_future').set({
+        runId: 'run_future',
+        invitedBy: 'admin_1',
+        invitedAt: 1000,
+        status: 'pending',
+      })
+    );
+
+    await assertFails(
+      driverDb('driver_3').ref('runInvites/driver_2/run_future').set({
+        runId: 'run_future',
+        invitedBy: 'driver_3',
+        invitedAt: 1000,
+        status: 'pending',
+      })
+    );
+  });
+
   it('allows an authenticated admin to create a draft run and its join code', async () => {
     await assertSucceeds(
       adminDb().ref('runs/run_1').set({
@@ -401,6 +485,26 @@ describe('Realtime Database rules', () => {
 
     await assertFails(driverDb('driver_1').ref('runs/run_1/summary').set(summary));
     await assertSucceeds(adminDb().ref('runs/run_1/summary').set(summary));
+  });
+
+  it('allows an admin to reopen route planning by moving a lobby run from ready back to draft', async () => {
+    await seed({
+      runs: {
+        run_1: {
+          name: 'Sunrise Run',
+          joinCode: '123456',
+          adminId: 'admin_1',
+          status: 'ready',
+          createdAt: 1,
+          startedAt: 2,
+          endedAt: null,
+          maxDrivers: 15,
+        },
+      },
+    });
+
+    await assertFails(driverDb('driver_1').ref('runs/run_1/status').set('draft'));
+    await assertSucceeds(adminDb().ref('runs/run_1/status').set('draft'));
   });
 
   it('allows only admins to write startedAt and endedAt timestamps', async () => {

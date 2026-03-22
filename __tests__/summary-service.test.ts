@@ -124,4 +124,22 @@ describe('summaryService', () => {
     );
     expect(summary.totalDriveTimeMinutes).toBe(60);
   });
+
+  it('omits undefined route preview data and writes the summary before ending the run', async () => {
+    const client = {
+      writeSummary: jest.fn(async () => undefined),
+      writeStatus: jest.fn(async () => undefined),
+      writeEndedAt: jest.fn(async () => undefined),
+    };
+
+    const summary = await endRun(client, 'run_1', run, 3_660_000, undefined, null);
+
+    expect(summary).not.toHaveProperty('routePreview');
+    expect(client.writeEndedAt.mock.invocationCallOrder[0]).toBeLessThan(
+      client.writeSummary.mock.invocationCallOrder[0]
+    );
+    expect(client.writeSummary.mock.invocationCallOrder[0]).toBeLessThan(
+      client.writeStatus.mock.invocationCallOrder[0]
+    );
+  });
 });

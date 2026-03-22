@@ -95,7 +95,16 @@ export async function startForegroundTracking(
   );
 
   return () => {
-    subscription.remove();
+    if (typeof subscription.remove !== 'function') {
+      return;
+    }
+
+    try {
+      subscription.remove();
+    } catch {
+      // Expo location cleanup can throw on web/simulator shims.
+      // The watch is already ending, so this should not crash the run flow.
+    }
   };
 }
 

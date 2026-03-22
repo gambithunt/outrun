@@ -7,9 +7,13 @@ import { SummaryShareCard } from '@/components/summary/SummaryShareCard';
 import { AppButton } from '@/components/ui/AppButton';
 import { AppCard } from '@/components/ui/AppCard';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
+import { useAuthSession } from '@/contexts/AuthContext';
 import { useAppTheme } from '@/contexts/ThemeContext';
+import { syncRecentCrewContactsForRunWithFirebase } from '@/lib/recentCrewService';
 import { subscribeToRunWithFirebase } from '@/lib/runRealtime';
 import { buildSummaryShareData, shareSummaryAsImage, shareSummaryAsPdf } from '@/lib/shareService';
+import { updateUserStatsForCompletedRunWithFirebase } from '@/lib/userProfileService';
+import { useRunSessionStore } from '@/stores/runSessionStore';
 import { Run, SummaryDriverStat } from '@/types/domain';
 
 function formatSummaryDate(timestamp: number) {
@@ -112,7 +116,9 @@ function getRoadScout(run: Run) {
 export default function RunSummaryScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>();
   const router = useRouter();
+  const auth = useAuthSession();
   const { theme } = useAppTheme();
+  const account = useRunSessionStore((state) => state.account);
   const insets = useSafeAreaInsets();
   const [run, setRun] = useState<Run | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -120,6 +126,9 @@ export default function RunSummaryScreen() {
   const [isSharingImage, setIsSharingImage] = useState(false);
   const [isSharingPdf, setIsSharingPdf] = useState(false);
   const shareCardRef = useRef<View>(null);
+  const lastPersistedSummaryKey = useRef<string | null>(null);
+  const accountUserId = account?.userId ?? auth.userId;
+  const isPersistentAccount = Boolean(account?.userId || (auth.userId && !auth.isAnonymous));
 
   useEffect(() => {
     if (!id) {
@@ -138,6 +147,30 @@ export default function RunSummaryScreen() {
 
     return unsubscribe;
   }, [id]);
+
+  useEffect(() => {
+    if (!run?.summary || !accountUserId || !isPersistentAccount) {
+      return;
+    }
+
+    const summaryKey = `${id ?? run.joinCode}:${accountUserId}:${run.summary.generatedAt}`;
+    if (lastPersistedSummaryKey.current === summaryKey) {
+      return;
+    }
+
+    lastPersistedSummaryKey.current = summaryKey;
+    const totalDistanceKm = run.summary.driverStats[accountUserId]?.totalDistanceKm ?? 0;
+    const hazardsReported = Object.values(run.hazards ?? {}).filter(
+      (hazard) => hazard.reportedBy === accountUserId
+    ).length;
+
+    void syncRecentCrewContactsForRunWithFirebase(accountUserId, run).catch(() => undefined);
+    void updateUserStatsForCompletedRunWithFirebase(accountUserId, {
+      userId: accountUserId,
+      totalDistanceKm,
+      hazardsReported,
+    }).catch(() => undefined);
+  }, [account?.userId, accountUserId, auth.isAnonymous, auth.userId, id, isPersistentAccount, run]);
 
   if (!run?.summary) {
     return (

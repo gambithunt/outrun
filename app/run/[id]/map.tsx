@@ -82,6 +82,29 @@ function getSelfDriverLabel(name: string) {
   return name.trim().toLowerCase() === 'you' ? 'You' : `${name} (you)`;
 }
 
+function isFirebasePermissionDenied(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const message = error.message.toLowerCase();
+  return message.includes('permission_denied') || message.includes('permission denied');
+}
+
+function getLobbyActionErrorMessage(
+  action: 'start' | 'edit',
+  error: unknown,
+  fallback: string
+) {
+  if (isFirebasePermissionDenied(error)) {
+    return action === 'edit'
+      ? 'Route editing is blocked by the current Firebase rules. Deploy the latest database rules, then try again.'
+      : 'Starting the drive is blocked by the current Firebase rules. Deploy the latest database rules, then try again.';
+  }
+
+  return error instanceof Error ? error.message : fallback;
+}
+
 // ─── Incoming hazard alert (Waze-style slide from top) ───────────────────────
 
 function HazardAlert({ message, onDismiss }: { message: string; onDismiss: () => void }) {
@@ -841,7 +864,7 @@ export default function RunMapScreen() {
     try {
       await startDriveWithFirebase(id);
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : 'Unable to start the drive.');
+      setError(getLobbyActionErrorMessage('start', nextError, 'Unable to start the drive.'));
     } finally {
       setIsStartingDrive(false);
     }
@@ -881,7 +904,7 @@ export default function RunMapScreen() {
       ) as `/create/route?${string}`;
       router.replace(routePlannerHref);
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : 'Unable to reopen the route planner.');
+      setError(getLobbyActionErrorMessage('edit', nextError, 'Unable to reopen the route planner.'));
     } finally {
       setIsReopeningRoute(false);
     }

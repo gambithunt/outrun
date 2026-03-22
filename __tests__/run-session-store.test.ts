@@ -45,6 +45,33 @@ describe('runSessionStore', () => {
     expect(useRunSessionStore.getState().isRunLoaded).toBe(true);
     expect(useRunSessionStore.getState().connectivityStatus).toBe('online');
 
+    useRunSessionStore.getState().setCurrentTab('drive');
+    expect(useRunSessionStore.getState().currentTab).toBe('drive');
+
+    useRunSessionStore.getState().setSignedInAccount({
+      userId: 'uid_account',
+      isAnonymous: false,
+      email: 'jamie@example.com',
+    });
+    expect(useRunSessionStore.getState().account).toEqual({
+      userId: 'uid_account',
+      isAnonymous: false,
+      email: 'jamie@example.com',
+    });
+
+    useRunSessionStore.getState().setScheduledRunHero({
+      runId: 'run_future',
+      name: 'Night Cruise',
+      scheduledFor: 123456,
+      visibility: 'club',
+    });
+    expect(useRunSessionStore.getState().scheduledRunHero).toEqual({
+      runId: 'run_future',
+      name: 'Night Cruise',
+      scheduledFor: 123456,
+      visibility: 'club',
+    });
+
     useRunSessionStore.getState().updateNetworkAvailability(false);
     expect(useRunSessionStore.getState().connectivityStatus).toBe('offline');
 
@@ -58,5 +85,7 @@ describe('runSessionStore', () => {
     expect(useRunSessionStore.getState().runId).toBeNull();
     expect(useRunSessionStore.getState().driverId).toBeNull();
     expect(useRunSessionStore.getState().route).toBeNull();
+    expect(useRunSessionStore.getState().account).toBeNull();
+    expect(useRunSessionStore.getState().scheduledRunHero).toBeNull();
   });
 });

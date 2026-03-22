@@ -9,8 +9,10 @@ type AppTextInputProps = {
   placeholder?: string;
   error?: string;
   autoFocus?: boolean;
+  autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
   multiline?: boolean;
   numberOfLines?: number;
+  secureTextEntry?: boolean;
   testID?: string;
 };
 
@@ -21,38 +23,53 @@ export function AppTextInput({
   placeholder,
   error,
   autoFocus = false,
+  autoCapitalize = 'sentences',
   multiline = false,
   numberOfLines,
+  secureTextEntry = false,
   testID,
 }: AppTextInputProps) {
   const { theme } = useAppTheme();
 
   return (
     <View style={{ gap: 8 }}>
-      <Text style={{ color: theme.colors.textPrimary, fontWeight: '600' }}>{label}</Text>
+      <Text
+        style={{
+          color: theme.colors.textSecondary,
+          fontWeight: '800',
+          fontSize: 12,
+          letterSpacing: 1.4,
+          textTransform: 'uppercase',
+        }}
+      >
+        {label}
+      </Text>
       <TextInput
         autoFocus={autoFocus}
+        autoCapitalize={autoCapitalize}
         onChangeText={onChangeText}
         placeholder={placeholder}
         placeholderTextColor={theme.colors.textSecondary}
         multiline={multiline}
         numberOfLines={numberOfLines}
+        secureTextEntry={secureTextEntry}
         textAlignVertical={multiline ? 'top' : 'center'}
         style={{
           backgroundColor: theme.colors.surfaceElevated,
-          borderRadius: 16,
+          borderRadius: 20,
           borderWidth: 1,
           borderColor: error ? theme.colors.danger : theme.colors.border,
           color: theme.colors.textPrimary,
-          minHeight: multiline ? 112 : 52,
-          paddingHorizontal: 16,
-          paddingTop: multiline ? 16 : 0,
-          paddingBottom: multiline ? 16 : 0,
+          minHeight: multiline ? 120 : 56,
+          paddingHorizontal: 18,
+          paddingTop: multiline ? 18 : 0,
+          paddingBottom: multiline ? 18 : 0,
+          fontSize: 16,
         }}
         testID={testID}
         value={value}
       />
-      {error ? <Text style={{ color: theme.colors.danger }}>{error}</Text> : null}
+      {error ? <Text style={{ color: theme.colors.danger, lineHeight: 20 }}>{error}</Text> : null}
     </View>
   );
 }

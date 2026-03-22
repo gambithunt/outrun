@@ -322,6 +322,63 @@ describe('RunMapScreen', () => {
     ).toHaveBeenCalledWith('/create/route?runId=run_900&joinCode=123456');
   });
 
+  it('shows a helpful message when lobby route editing is blocked by Firebase rules', async () => {
+    (useAuthSession as jest.Mock).mockReturnValue({
+      status: 'ready',
+      userId: 'driver_admin',
+      error: null,
+    });
+    useRunSessionStore.getState().setSession({
+      runId: 'run_900',
+      driverId: 'driver_admin',
+      driverName: 'You',
+      joinCode: '123456',
+      role: 'admin',
+      status: 'ready',
+    });
+    (subscribeToRunWithFirebase as jest.Mock).mockImplementation((_id, onData) => {
+      onData({
+        name: 'Sunrise Run',
+        adminId: 'driver_admin',
+        status: 'ready',
+        route: {
+          points: [
+            [-26.2041, 28.0473],
+            [-25.7479, 28.2293],
+          ],
+          distanceMetres: 54000,
+          source: 'drawn',
+        },
+      });
+
+      return jest.fn();
+    });
+    (subscribeToDriversWithFirebase as jest.Mock).mockImplementation((_id, onData) => {
+      onData([]);
+      return jest.fn();
+    });
+    (subscribeToHazardsWithFirebase as jest.Mock).mockImplementation((_id, onData) => {
+      onData([]);
+      return jest.fn();
+    });
+    (reopenRoutePlannerFromLobbyWithFirebase as jest.Mock).mockRejectedValue(
+      new Error('PERMISSION_DENIED: Permission denied')
+    );
+
+    const screen = renderWithProviders(<RunMapScreen />);
+
+    await waitFor(() => expect(screen.getByTestId('button-edit-route')).toBeTruthy());
+    fireEvent.press(screen.getByTestId('button-edit-route'));
+    await waitFor(() => expect(screen.getByTestId('button-confirm-edit-route')).toBeTruthy());
+    fireEvent.press(screen.getByTestId('button-confirm-edit-route'));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('text-run-error')).toHaveTextContent(
+        /Route editing is blocked by the current Firebase rules\. Deploy the latest database rules, then try again\./
+      )
+    );
+  });
+
   it('does not offer edit route while organiser auth is still loading', async () => {
     (useAuthSession as jest.Mock).mockReturnValue({
       status: 'loading',

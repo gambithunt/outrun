@@ -27,6 +27,26 @@ function roundToSingleDecimal(value: number) {
   return Math.round(value * 10) / 10;
 }
 
+function removeUndefinedDeep<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((item) => removeUndefinedDeep(item)) as T;
+  }
+
+  if (value && typeof value === 'object') {
+    const cleanedEntries = Object.entries(value).flatMap(([key, entryValue]) => {
+      if (typeof entryValue === 'undefined') {
+        return [];
+      }
+
+      return [[key, removeUndefinedDeep(entryValue)]];
+    });
+
+    return Object.fromEntries(cleanedEntries) as T;
+  }
+
+  return value;
+}
+
 export function calculateFuelUsage(distanceKm: number, driver: DriverRecord) {
   const efficiency = driver.profile.fuelEfficiency;
   if (!efficiency) {
@@ -225,12 +245,13 @@ export async function endRun(
     trackStatsByDriver,
     routePreview
   );
+  const sanitizedSummary = removeUndefinedDeep(summary);
 
   await client.writeEndedAt(runId, now);
+  await client.writeSummary(runId, sanitizedSummary);
   await client.writeStatus(runId, 'ended');
-  await client.writeSummary(runId, summary);
 
-  return summary;
+  return sanitizedSummary;
 }
 
 /**

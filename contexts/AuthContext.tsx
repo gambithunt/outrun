@@ -5,37 +5,82 @@ import { hasFirebaseConfig } from '@/lib/firebase';
 
 type AuthStatus = 'loading' | 'ready' | 'error';
 
-type AuthContextValue = {
+type AuthState = {
   status: AuthStatus;
   userId: string | null;
+  isAnonymous: boolean;
+  email: string | null;
   error: string | null;
+};
+
+type AuthContextValue = AuthState & {
+  refreshSession: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 export function AuthProvider({ children }: PropsWithChildren) {
-  const [value, setValue] = useState<AuthContextValue>(() =>
+  const [value, setValue] = useState<AuthState>(() =>
     hasFirebaseConfig()
       ? {
           status: 'loading',
           userId: null,
+          isAnonymous: true,
+          email: null,
           error: null,
         }
       : {
           status: 'ready',
           userId: null,
+          isAnonymous: true,
+          email: null,
           error: null,
         }
   );
 
-  useEffect(() => {
+  async function refreshSession() {
     if (!hasFirebaseConfig()) {
+      setValue({
+        status: 'ready',
+        userId: null,
+        isAnonymous: true,
+        email: null,
+        error: null,
+      });
       return;
     }
 
+    setValue((current) => ({
+      ...current,
+      status: 'loading',
+      error: null,
+    }));
+
+    await ensureAuthenticatedUserWithFirebase()
+      .then((user) => {
+        setValue({
+          status: 'ready',
+          userId: user?.uid ?? null,
+          isAnonymous: user?.isAnonymous ?? true,
+          email: user?.email ?? null,
+          error: null,
+        });
+      })
+      .catch((nextError) => {
+        setValue({
+          status: 'error',
+          userId: null,
+          isAnonymous: true,
+          email: null,
+          error: nextError instanceof Error ? nextError.message : 'Unable to authenticate ClubRun.',
+        });
+      });
+  }
+
+  useEffect(() => {
     let isMounted = true;
 
-    ensureAuthenticatedUserWithFirebase()
+    void ensureAuthenticatedUserWithFirebase()
       .then((user) => {
         if (!isMounted) {
           return;
@@ -44,6 +89,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
         setValue({
           status: 'ready',
           userId: user?.uid ?? null,
+          isAnonymous: user?.isAnonymous ?? true,
+          email: user?.email ?? null,
           error: null,
         });
       })
@@ -55,6 +102,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
         setValue({
           status: 'error',
           userId: null,
+          isAnonymous: true,
+          email: null,
           error: nextError instanceof Error ? nextError.message : 'Unable to authenticate ClubRun.',
         });
       });
@@ -64,7 +113,13 @@ export function AuthProvider({ children }: PropsWithChildren) {
     };
   }, []);
 
-  const contextValue = useMemo(() => value, [value]);
+  const contextValue = useMemo(
+    () => ({
+      ...value,
+      refreshSession,
+    }),
+    [value]
+  );
 
   return <AuthContext.Provider value={contextValue}>{children}</AuthContext.Provider>;
 }

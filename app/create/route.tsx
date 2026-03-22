@@ -142,6 +142,14 @@ export default function RoutePlanningScreen() {
   const isSelectedStopComplete = isRouteStopComplete(selectedStop);
   const isWaypointPlacementMode = selectedStop.kind === 'waypoint' && !isSelectedStopComplete;
   const isDriveComposerReorderMode = driveComposerMode === 'reorder';
+  const shouldShowPlacementActions = !isDriveComposerReorderMode;
+  const stageTitle = getPlannerStageTitle(plannerStage, selectedStop, isWaypointPlacementMode);
+  const stageSubtitle = getPlannerStageSubtitle(
+    plannerStage,
+    selectedStop,
+    isSelectedStopComplete,
+    isWaypointPlacementMode
+  );
   const mapButtonBottom = isPickMode ? 148 : isMinimizedSheet ? SHEET_MINIMIZED_BOTTOM : SHEET_EXPANDED_BOTTOM;
   const shouldShowNoMatches =
     !isPickMode &&
@@ -813,59 +821,172 @@ export default function RoutePlanningScreen() {
         <View
           style={{
             position: 'absolute',
-            top: 20,
-            left: 20,
-            right: 20,
-            flexDirection: 'row',
-            justifyContent: 'space-between',
-            alignItems: 'center',
+            top: 18,
+            left: 18,
+            right: 18,
+            gap: 14,
           }}
         >
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => router.back()}
-            style={floatingTopButtonStyle(theme.colors.border)}
-            testID="button-back-route-planner"
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+            }}
           >
-            <Text style={{ color: theme.colors.textPrimary, fontSize: 24, fontWeight: '700' }}>
-              ‹
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => router.back()}
+              style={floatingTopButtonStyle(theme.colors.border, theme.colors.surface)}
+              testID="button-back-route-planner"
+            >
+              <MaterialIcons name="arrow-back" size={24} color={theme.colors.textPrimary} />
+            </Pressable>
+
+            <Text
+              style={{
+                flex: 1,
+                color: theme.colors.textPrimary,
+                fontSize: 26,
+                fontWeight: '900',
+                fontStyle: 'italic',
+                letterSpacing: -0.9,
+                textTransform: 'uppercase',
+                textAlign: 'center',
+              }}
+            >
+              ClubRun
             </Text>
-          </Pressable>
+
+            <View style={floatingTopButtonStyle(theme.colors.border, theme.colors.surface)}>
+              <MaterialIcons name="wifi-tethering" size={22} color={theme.colors.accent} />
+            </View>
+          </View>
 
           <View
             style={{
-              borderRadius: 24,
-              padding: 10,
-              backgroundColor: 'rgba(255,255,255,0.94)',
+              borderRadius: 28,
+              padding: 16,
+              backgroundColor: `${theme.colors.panel}F2`,
               borderWidth: 1,
               borderColor: theme.colors.border,
-              minWidth: 182,
-              gap: 8,
+              gap: 14,
               shadowColor: '#000000',
-              shadowOpacity: 0.08,
-              shadowRadius: 12,
-              shadowOffset: { width: 0, height: 4 },
-              elevation: 4,
+              shadowOpacity: 0.22,
+              shadowRadius: 20,
+              shadowOffset: { width: 0, height: 10 },
+              elevation: 8,
             }}
-            testID="route-planner-lobby-card"
+            testID="route-planner-stats-card"
           >
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12,
+              }}
+            >
+              <View style={{ flex: 1, gap: 4 }}>
+                <Text
+                  style={{
+                    color: theme.colors.accent,
+                    fontSize: 12,
+                    fontWeight: '800',
+                    letterSpacing: 1.8,
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  Open Lobby
+                </Text>
+                <Text
+                  style={{ color: theme.colors.textPrimary, fontSize: 28, fontWeight: '900' }}
+                  testID="text-driver-ready-count"
+                >
+                  {driverReadinessLabel}
+                </Text>
+              </View>
+              <View
+                style={{
+                  minWidth: 120,
+                  paddingHorizontal: 14,
+                  paddingVertical: 10,
+                  borderRadius: 18,
+                  backgroundColor: theme.colors.background,
+                  borderWidth: 1,
+                  borderColor: theme.colors.border,
+                }}
+              >
+                <Text
+                  style={{
+                    color: theme.colors.textPrimary,
+                    fontSize: 12,
+                    fontWeight: '800',
+                    letterSpacing: 1.4,
+                    textTransform: 'uppercase',
+                    textAlign: 'center',
+                  }}
+                  testID="text-route-save-state"
+                >
+                  {routeSaveStateLabel}
+                </Text>
+              </View>
+            </View>
+
+            <View
+              style={{
+                flexDirection: 'row',
+                gap: 10,
+              }}
+            >
+              {routeStats.map((stat) => (
+                <View
+                  key={stat.key}
+                  style={{
+                    flex: 1,
+                    borderRadius: 20,
+                    backgroundColor: theme.colors.surface,
+                    borderWidth: 1,
+                    borderColor: theme.colors.border,
+                    paddingHorizontal: 12,
+                    paddingVertical: 12,
+                    gap: 4,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: theme.colors.textSecondary,
+                      fontSize: 10,
+                      fontWeight: '800',
+                      letterSpacing: 1.4,
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    {stat.label}
+                  </Text>
+                  <Text
+                    style={{ color: theme.colors.textPrimary, fontSize: 18, fontWeight: '800' }}
+                    testID={
+                      stat.key === 'distance'
+                        ? 'text-route-distance'
+                        : stat.key === 'duration'
+                          ? 'text-route-duration'
+                          : 'text-route-stop-count'
+                    }
+                  >
+                    {stat.value}
+                  </Text>
+                </View>
+              ))}
+            </View>
+
             <AppButton
               disabled={!routePreview || isResolving || isPreviewing || isSaving || isStarting}
               label={isStarting ? 'Opening Lobby…' : lobbyActionLabel}
               onPress={handleOpenLobby}
               testID="button-open-lobby"
             />
-            <View style={{ alignItems: 'center', gap: 2 }}>
-              <Text
-                style={{ color: theme.colors.textPrimary, fontSize: 14, fontWeight: '700' }}
-                testID="text-driver-ready-count"
-              >
-                {driverReadinessLabel}
-              </Text>
-              <Text style={{ color: theme.colors.textSecondary, fontSize: 12, fontWeight: '600' }}>
-                Drivers with GPS
-              </Text>
-            </View>
           </View>
         </View>
 
@@ -882,20 +1003,20 @@ export default function RoutePlanningScreen() {
             <Pressable
               accessibilityRole="button"
               onPress={handleFitRoute}
-              style={floatingMapButtonStyle(theme.colors.border)}
-              testID="button-fit-route"
-            >
-              <Text style={{ color: theme.colors.textPrimary, fontWeight: '800' }}>□</Text>
-            </Pressable>
+            style={floatingMapButtonStyle(theme.colors.border, theme.colors.surface)}
+            testID="button-fit-route"
+          >
+            <MaterialIcons name="layers" size={24} color={theme.colors.textPrimary} />
+          </Pressable>
           ) : null}
 
           <Pressable
             accessibilityRole="button"
             onPress={handleRecenterOnUser}
-            style={floatingMapButtonStyle(theme.colors.border)}
+            style={floatingMapButtonStyle(theme.colors.border, theme.colors.surface)}
             testID="button-center-on-user"
           >
-            <Text style={{ color: theme.colors.textPrimary, fontWeight: '800' }}>◎</Text>
+            <MaterialIcons name="my-location" size={22} color={theme.colors.textPrimary} />
           </Pressable>
         </View>
 
@@ -944,21 +1065,27 @@ export default function RoutePlanningScreen() {
                 left: 16,
                 right: 16,
                 bottom: 16,
-                borderRadius: 24,
-                backgroundColor: 'rgba(255,255,255,0.95)',
+                borderRadius: 28,
+                backgroundColor: `${theme.colors.panel}F5`,
                 borderWidth: 1,
                 borderColor: theme.colors.border,
-                padding: 16,
-                gap: 12,
+                padding: 18,
+                gap: 14,
                 shadowColor: '#000000',
-                shadowOpacity: 0.12,
-                shadowRadius: 14,
-                shadowOffset: { width: 0, height: 8 },
+                shadowOpacity: 0.22,
+                shadowRadius: 22,
+                shadowOffset: { width: 0, height: 10 },
                 elevation: 10,
               }}
             >
               <Text
-                style={{ color: theme.colors.textPrimary, fontSize: 18, fontWeight: '800' }}
+                style={{
+                  color: theme.colors.textPrimary,
+                  fontSize: 28,
+                  fontWeight: '900',
+                  fontStyle: 'italic',
+                  textTransform: 'uppercase',
+                }}
                 testID="text-map-pick-mode"
               >
                 {`Choose ${getStopTitle(selectedStop)} On The Map`}
@@ -1001,16 +1128,16 @@ export default function RoutePlanningScreen() {
               left: 16,
               right: 16,
               bottom: 16,
-              borderRadius: 24,
-              backgroundColor: 'rgba(255,255,255,0.94)',
+              borderRadius: 26,
+              backgroundColor: `${theme.colors.panel}F2`,
               borderWidth: 1,
               borderColor: theme.colors.border,
               paddingHorizontal: 18,
-              paddingVertical: 12,
+              paddingVertical: 14,
               shadowColor: '#000000',
-              shadowOpacity: 0.1,
-              shadowRadius: 14,
-              shadowOffset: { width: 0, height: 8 },
+              shadowOpacity: 0.2,
+              shadowRadius: 18,
+              shadowOffset: { width: 0, height: 10 },
               elevation: 8,
             }}
             testID="route-summary-chip"
@@ -1051,8 +1178,8 @@ export default function RoutePlanningScreen() {
               left: 16,
               right: 16,
               bottom: 16,
-              borderRadius: 32,
-              backgroundColor: 'rgba(255,255,255,0.97)',
+              borderRadius: 34,
+              backgroundColor: `${theme.colors.backgroundAlt}F2`,
               borderWidth: 1,
               borderColor: theme.colors.border,
               paddingHorizontal: 20,
@@ -1061,9 +1188,9 @@ export default function RoutePlanningScreen() {
               gap: 16,
               maxHeight: isDriveComposerReorderMode ? '78%' : '66%',
               shadowColor: '#000000',
-              shadowOpacity: 0.14,
-              shadowRadius: 20,
-              shadowOffset: { width: 0, height: 10 },
+              shadowOpacity: 0.24,
+              shadowRadius: 24,
+              shadowOffset: { width: 0, height: 14 },
               elevation: 12,
             }}
             testID="route-planner-sheet"
@@ -1096,20 +1223,60 @@ export default function RoutePlanningScreen() {
                 flexGrow: isDriveComposerReorderMode ? 1 : 0,
               }}
             >
-            <View style={{ gap: 8 }}>
+            <View style={{ gap: 12 }}>
               <View
                 style={{
                   flexDirection: 'row',
-                  alignItems: 'center',
+                  alignItems: 'flex-start',
                   justifyContent: 'space-between',
+                  gap: 12,
                 }}
               >
-                <View style={{ gap: 2 }}>
-                  <Text style={{ color: theme.colors.textSecondary, fontSize: 12, fontWeight: '700' }}>
-                    Plan on the map
+                <View style={{ flex: 1, gap: 4 }}>
+                  <Text
+                    style={{
+                      color: theme.colors.textSecondary,
+                      fontSize: 12,
+                      fontWeight: '800',
+                      letterSpacing: 1.2,
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    Route plan
                   </Text>
-                  <Text style={{ color: theme.colors.textPrimary, fontSize: 20, fontWeight: '800' }}>
-                    Route Builder
+                  <Text
+                    style={{
+                      color: theme.colors.textSecondary,
+                      fontSize: 14,
+                      fontWeight: '800',
+                      letterSpacing: 1.5,
+                      textTransform: 'uppercase',
+                    }}
+                    testID="text-selected-stop-label"
+                  >
+                    {getStopTitle(selectedStop)}
+                  </Text>
+                  <Text
+                    style={{
+                      color: theme.colors.textPrimary,
+                      fontSize: 34,
+                      fontWeight: '900',
+                      fontStyle: 'italic',
+                      letterSpacing: -1,
+                      textTransform: 'uppercase',
+                    }}
+                    testID="text-stage-title"
+                  >
+                    {stageTitle}
+                  </Text>
+                  <Text
+                    style={{ color: theme.colors.textSecondary, fontSize: 17, lineHeight: 24, fontWeight: '600' }}
+                    testID="text-guided-step"
+                  >
+                    {sheetPrompt}
+                  </Text>
+                  <Text style={{ color: theme.colors.textSecondary, lineHeight: 22 }}>
+                    {stageSubtitle}
                   </Text>
                 </View>
                 <Text
@@ -1120,117 +1287,132 @@ export default function RoutePlanningScreen() {
                     paddingHorizontal: 12,
                     paddingVertical: 6,
                     borderRadius: 999,
-                    backgroundColor: theme.colors.surfaceElevated,
+                    backgroundColor: theme.colors.surface,
                   }}
                   testID="text-sheet-state"
                 >
                   Main
                 </Text>
               </View>
-              <Text
-                style={{ color: theme.colors.textSecondary, fontSize: 17, fontWeight: '600' }}
-                testID="text-guided-step"
-              >
-                {sheetPrompt}
-              </Text>
-            </View>
 
-            <View
-              style={{
-                borderRadius: 22,
-                borderWidth: 1,
-                borderColor: theme.colors.border,
-                backgroundColor: theme.colors.surface,
-                paddingHorizontal: 14,
-                paddingVertical: 12,
-                gap: 12,
-              }}
-            >
-              <View
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 12,
-                }}
-              >
-                {routeStats.map((stat, index) => (
-                  <View
-                    key={stat.key}
-                    style={{
-                      flex: 1,
-                      gap: 3,
-                      paddingLeft: index === 0 ? 0 : 12,
-                      borderLeftWidth: index === 0 ? 0 : 1,
-                      borderLeftColor: index === 0 ? 'transparent' : theme.colors.border,
-                    }}
-                  >
-                    <Text
-                      style={{ color: theme.colors.textSecondary, fontSize: 11, fontWeight: '700' }}
-                    >
-                      {stat.label}
-                    </Text>
-                    <Text
-                      style={{ color: theme.colors.textPrimary, fontSize: 16, fontWeight: '800' }}
-                      testID={
-                        stat.key === 'distance'
-                          ? 'text-route-distance'
-                          : stat.key === 'duration'
-                            ? 'text-route-duration'
-                            : 'text-route-stop-count'
-                      }
-                    >
-                      {stat.value}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-              <View
-                style={{
-                  alignSelf: 'flex-start',
-                  paddingHorizontal: 10,
-                  paddingVertical: 6,
-                  borderRadius: 999,
-                  backgroundColor: theme.colors.surfaceElevated,
-                }}
-              >
-                <Text style={{ color: theme.colors.textSecondary, fontWeight: '700' }} testID="text-route-save-state">
-                  {routeSaveStateLabel}
-                </Text>
-              </View>
             </View>
 
             {error ? (
-              <View
-                style={{
-                  borderRadius: 18,
-                  borderWidth: 1,
-                  borderColor: `${theme.colors.danger}33`,
-                  backgroundColor: `${theme.colors.danger}12`,
-                  paddingHorizontal: 14,
-                  paddingVertical: 12,
-                }}
-              >
-                <Text style={{ color: theme.colors.danger, lineHeight: 20 }}>{error}</Text>
-              </View>
+              <PlannerNotice tone="danger">{error}</PlannerNotice>
             ) : null}
             {statusMessage ? (
-              <View
-                style={{
-                  borderRadius: 18,
-                  borderWidth: 1,
-                  borderColor: `${theme.colors.success}33`,
-                  backgroundColor: `${theme.colors.success}10`,
-                  paddingHorizontal: 14,
-                  paddingVertical: 12,
-                }}
-              >
-                <Text style={{ color: theme.colors.textPrimary, lineHeight: 20 }}>
-                  {statusMessage}
-                </Text>
-              </View>
+              <PlannerNotice tone="success">{statusMessage}</PlannerNotice>
             ) : null}
             {isResolving || isPreviewing || isSaving || isStarting ? <LoadingSpinner /> : null}
+
+            {shouldShowPlacementActions && !isDriveComposerReorderMode ? (
+              <View style={{ gap: 12 }}>
+                <View
+                  style={{
+                    borderRadius: 24,
+                    borderWidth: 1,
+                    borderColor: theme.colors.border,
+                    backgroundColor: theme.colors.surface,
+                    padding: 16,
+                    gap: 14,
+                  }}
+                  testID="planner-action-search"
+                >
+                  <PlannerActionHeader
+                    icon="search"
+                    title="Search"
+                    subtitle={getSearchActionSubtitle(selectedStop, isWaypointPlacementMode)}
+                  />
+
+                  <AppTextInput
+                    autoFocus={isWaypointPlacementMode}
+                    label={
+                      isWaypointPlacementMode
+                        ? `Set ${getStopTitle(selectedStop)}`
+                        : `Search ${getStopTitle(selectedStop)}`
+                    }
+                    onChangeText={(text) => {
+                      setError(null);
+                      setStatusMessage(null);
+                      setSearchInput(text);
+                    }}
+                    placeholder="Search address or paste -26.2041, 28.0473"
+                    testID="input-stop-search"
+                    value={searchInput}
+                  />
+
+                  {isSearchingPlaces ? (
+                    <Text style={{ color: theme.colors.textSecondary }}>Searching places...</Text>
+                  ) : null}
+
+                  {placeResults.length > 0 ? (
+                    <ScrollView
+                      keyboardShouldPersistTaps="handled"
+                      showsVerticalScrollIndicator={false}
+                      style={{ maxHeight: 152 }}
+                      contentContainerStyle={{ gap: 8 }}
+                    >
+                      {placeResults.map((result) => (
+                        <Pressable
+                          key={result.id}
+                          accessibilityRole="button"
+                          onPress={() => {
+                            void handleSelectPlaceResult(result);
+                          }}
+                          style={{
+                            borderRadius: 16,
+                            padding: 14,
+                            backgroundColor: theme.colors.surfaceElevated,
+                            borderWidth: 1,
+                            borderColor: theme.colors.border,
+                          }}
+                          testID={`place-result-${result.id}`}
+                        >
+                          <Text style={{ color: theme.colors.textPrimary, fontWeight: '700' }}>
+                            {result.label}
+                          </Text>
+                          <Text style={{ color: theme.colors.textSecondary, marginTop: 4 }}>
+                            {formatStopCoordinateLabel(result.lat, result.lng)}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </ScrollView>
+                  ) : null}
+
+                  {shouldShowNoMatches ? (
+                    <Text style={{ color: theme.colors.textSecondary }}>
+                      No search matches yet. You can still paste coordinates or pick on the map.
+                    </Text>
+                  ) : null}
+                </View>
+
+                {selectedStop.kind === 'start' ? (
+                  <View testID="planner-action-current">
+                    <PlannerActionButton
+                      icon="near-me"
+                      onPress={handleUseCurrentLocation}
+                      subtitle="Auto-detect your current GPS location."
+                      testID="button-use-current-location"
+                      title="Use Current"
+                    />
+                  </View>
+                ) : null}
+
+                <View testID="planner-action-pick">
+                  <PlannerActionButton
+                    icon="map"
+                    onPress={handleEnterPickMode}
+                    subtitle={
+                      isWaypointPlacementMode
+                        ? `Drop ${getStopTitle(selectedStop)} manually on the terrain.`
+                        : 'Drop a pin manually on the terrain.'
+                    }
+                    testID="button-enter-pick-mode"
+                    title={isWaypointPlacementMode ? `Place ${getStopTitle(selectedStop)} On Map` : 'Pick On Map'}
+                  />
+                </View>
+              </View>
+            ) : null}
 
             {plannerStage === 'stops' || waypointStops.length > 0 ? (
               <View
@@ -1435,158 +1617,71 @@ export default function RoutePlanningScreen() {
             ) : null}
 
             {!isDriveComposerReorderMode && (
-              <View
-                style={{
-                  borderRadius: 24,
-                  borderWidth: 1,
-                  borderColor: theme.colors.border,
-                  backgroundColor: theme.colors.surface,
-                  padding: 16,
-                  gap: 14,
-                }}
-              >
+              plannerStage === 'stops' && (
                 <View
                   style={{
-                    flexDirection: 'row',
-                    alignItems: 'flex-start',
-                    justifyContent: 'space-between',
-                    gap: 12,
+                    borderRadius: 24,
+                    borderWidth: 1,
+                    borderColor: theme.colors.border,
+                    backgroundColor: theme.colors.surface,
+                    padding: 16,
+                    gap: 14,
                   }}
                 >
-                  <View style={{ flex: 1, gap: 6 }}>
-                    <Text
-                      style={{
-                        color: theme.colors.textSecondary,
-                        fontSize: 12,
-                        fontWeight: '700',
-                        letterSpacing: 0.5,
-                      }}
-                    >
-                      ACTIVE STOP
-                    </Text>
-                    <Text
-                      style={{ color: theme.colors.textPrimary, fontSize: 22, fontWeight: '800' }}
-                      testID="text-selected-stop-label"
-                    >
-                      {getStopTitle(selectedStop)}
-                    </Text>
-                    <Text style={{ color: theme.colors.textSecondary, lineHeight: 20 }}>
-                      {selectedStop.kind === 'start'
-                        ? 'Set the convoy start point.'
-                        : selectedStop.kind === 'destination'
-                          ? isSelectedStopComplete
-                            ? 'Choose where the drive finishes.'
-                            : 'Search for the destination or place it on the map.'
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'flex-start',
+                      justifyContent: 'space-between',
+                      gap: 12,
+                    }}
+                  >
+                    <View style={{ flex: 1, gap: 6 }}>
+                      <Text
+                        style={{
+                          color: theme.colors.textSecondary,
+                          fontSize: 12,
+                          fontWeight: '700',
+                          letterSpacing: 0.5,
+                        }}
+                      >
+                        ACTIVE STOP
+                      </Text>
+                      <Text style={{ color: theme.colors.textSecondary, lineHeight: 20 }}>
+                        {selectedStop.kind === 'destination'
+                          ? 'Choose where the drive finishes.'
                           : isWaypointPlacementMode
                             ? 'Search for a place or drop this stop directly on the map.'
                             : 'Dial in this stop or remove it from the route.'}
-                    </Text>
-                    {isWaypointPlacementMode ? (
-                      <Text
-                        style={{ color: theme.colors.textSecondary, fontWeight: '600', lineHeight: 20 }}
-                        testID="text-waypoint-placement-helper"
-                      >
-                        Search for a place or drop this stop directly on the map.
                       </Text>
-                    ) : null}
-                  </View>
-                  {plannerStage === 'stops' &&
-                  (selectedStop.kind === 'start' || selectedStop.kind === 'destination') ? (
-                    <Pressable
-                      accessibilityRole="button"
-                      onPress={handleSwapStartAndDestination}
-                      style={{
-                        borderRadius: 14,
-                        paddingHorizontal: 10,
-                        paddingVertical: 8,
-                      }}
-                      testID="button-swap-start-destination"
-                    >
-                      <Text style={{ color: theme.colors.textSecondary, fontWeight: '700' }}>
-                        Swap
-                      </Text>
-                    </Pressable>
-                  ) : null}
-                </View>
-
-                <AppTextInput
-                  autoFocus={isWaypointPlacementMode}
-                  label={
-                    isWaypointPlacementMode
-                      ? `Set ${getStopTitle(selectedStop)}`
-                      : `Search ${getStopTitle(selectedStop)}`
-                  }
-                  onChangeText={(text) => {
-                    setError(null);
-                    setStatusMessage(null);
-                    setSearchInput(text);
-                  }}
-                  placeholder="Search address or paste -26.2041, 28.0473"
-                  testID="input-stop-search"
-                  value={searchInput}
-                />
-
-                {isSearchingPlaces ? (
-                  <Text style={{ color: theme.colors.textSecondary }}>Searching places...</Text>
-                ) : null}
-
-                {placeResults.length > 0 ? (
-                  <ScrollView
-                    keyboardShouldPersistTaps="handled"
-                    showsVerticalScrollIndicator={false}
-                    style={{ maxHeight: 152 }}
-                    contentContainerStyle={{ gap: 8 }}
-                  >
-                    {placeResults.map((result) => (
-                      <Pressable
-                        key={result.id}
-                        accessibilityRole="button"
-                        onPress={() => {
-                          void handleSelectPlaceResult(result);
-                        }}
-                        style={{
-                          borderRadius: 16,
-                          padding: 14,
-                          backgroundColor: theme.colors.surfaceElevated,
-                          borderWidth: 1,
-                          borderColor: theme.colors.border,
-                        }}
-                        testID={`place-result-${result.id}`}
-                      >
-                        <Text style={{ color: theme.colors.textPrimary, fontWeight: '700' }}>
-                          {result.label}
+                      {isWaypointPlacementMode ? (
+                        <Text
+                          style={{ color: theme.colors.textSecondary, fontWeight: '600', lineHeight: 20 }}
+                          testID="text-waypoint-placement-helper"
+                        >
+                          Search for a place or drop this stop directly on the map.
                         </Text>
-                        <Text style={{ color: theme.colors.textSecondary, marginTop: 4 }}>
-                          {formatStopCoordinateLabel(result.lat, result.lng)}
+                      ) : null}
+                    </View>
+                    {(selectedStop.kind === 'start' || selectedStop.kind === 'destination') ? (
+                      <Pressable
+                        accessibilityRole="button"
+                        onPress={handleSwapStartAndDestination}
+                        style={{
+                          borderRadius: 14,
+                          paddingHorizontal: 10,
+                          paddingVertical: 8,
+                        }}
+                        testID="button-swap-start-destination"
+                      >
+                        <Text style={{ color: theme.colors.textSecondary, fontWeight: '700' }}>
+                          Swap
                         </Text>
                       </Pressable>
-                    ))}
-                  </ScrollView>
-                ) : null}
-
-                {shouldShowNoMatches ? (
-                  <Text style={{ color: theme.colors.textSecondary }}>
-                    No search matches yet. You can still paste coordinates or pick on the map.
-                  </Text>
-                ) : null}
-
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-                  {selectedStop.kind === 'start' ? (
-                    <AppButton
-                      label="Use Current"
-                      onPress={handleUseCurrentLocation}
-                      testID="button-use-current-location"
-                      variant="secondary"
-                    />
-                  ) : null}
-                  <AppButton
-                    label={isWaypointPlacementMode ? `Place ${getStopTitle(selectedStop)} On Map` : 'Pick On Map'}
-                    onPress={handleEnterPickMode}
-                    testID="button-enter-pick-mode"
-                    variant="secondary"
-                  />
+                    ) : null}
+                  </View>
                 </View>
-              </View>
+              )
             )}
 
             {!isDriveComposerReorderMode ? (
@@ -1832,38 +1927,247 @@ function formatRouteDuration(durationSeconds?: number) {
   return `${hours} hr ${minutes} min`;
 }
 
-function floatingMapButtonStyle(borderColor: string) {
+function getPlannerStageTitle(
+  plannerStage: ReturnType<typeof getRoutePlannerStage>,
+  selectedStop: RouteStopDraft,
+  isWaypointPlacementMode: boolean
+) {
+  if (plannerStage === 'start') {
+    return 'Choose Start';
+  }
+
+  if (plannerStage === 'destination') {
+    return 'Choose Destination';
+  }
+
+  if (isWaypointPlacementMode) {
+    return `Place ${getStopTitle(selectedStop)}`;
+  }
+
+  return 'Shape the Drive';
+}
+
+function getPlannerStageSubtitle(
+  plannerStage: ReturnType<typeof getRoutePlannerStage>,
+  selectedStop: RouteStopDraft,
+  isSelectedStopComplete: boolean,
+  isWaypointPlacementMode: boolean
+) {
+  if (plannerStage === 'start') {
+    return 'Select your departure point to lock in where the convoy begins.';
+  }
+
+  if (plannerStage === 'destination') {
+    return 'Search for the finish, or drop a pin directly on the map.';
+  }
+
+  if (isWaypointPlacementMode) {
+    return 'Search, drop a pin, or tune this stop before adding more to the route.';
+  }
+
+  if (selectedStop.kind === 'destination' && isSelectedStopComplete) {
+    return 'Refine the finish point, then add stops, save the route, or open the lobby.';
+  }
+
+  return 'Add, reorder, or fine-tune stops before opening the lobby.';
+}
+
+function getSearchActionSubtitle(selectedStop: RouteStopDraft, isWaypointPlacementMode: boolean) {
+  if (selectedStop.kind === 'start') {
+    return 'Enter location or point of interest.';
+  }
+
+  if (selectedStop.kind === 'destination') {
+    return 'Enter the place where the route should finish.';
+  }
+
+  if (isWaypointPlacementMode) {
+    return `Enter the location for ${getStopTitle(selectedStop).toLowerCase()}.`;
+  }
+
+  return 'Search for a place and apply it to this stop.';
+}
+
+function PlannerActionHeader({
+  icon,
+  subtitle,
+  title,
+}: {
+  icon: keyof typeof MaterialIcons.glyphMap;
+  subtitle: string;
+  title: string;
+}) {
+  const { theme } = useAppTheme();
+
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+      <View
+        style={{
+          width: 56,
+          height: 56,
+          borderRadius: 20,
+          backgroundColor: theme.colors.surface,
+          borderWidth: 1,
+          borderColor: theme.colors.border,
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <MaterialIcons name={icon} size={24} color={theme.colors.accent} />
+      </View>
+      <View style={{ flex: 1, gap: 2 }}>
+        <Text
+          style={{
+            color: theme.colors.textPrimary,
+            fontSize: 22,
+            fontWeight: '900',
+          }}
+        >
+          {title}
+        </Text>
+        <Text
+          style={{
+            color: theme.colors.textSecondary,
+            fontSize: 12,
+            fontWeight: '700',
+            letterSpacing: 1.1,
+            textTransform: 'uppercase',
+            lineHeight: 18,
+          }}
+        >
+          {subtitle}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+function PlannerActionButton({
+  icon,
+  onPress,
+  subtitle,
+  testID,
+  title,
+}: {
+  icon: keyof typeof MaterialIcons.glyphMap;
+  onPress: () => void;
+  subtitle: string;
+  testID: string;
+  title: string;
+}) {
+  const { theme } = useAppTheme();
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => ({
+        borderRadius: 26,
+        borderWidth: 1,
+        borderColor: theme.colors.border,
+        backgroundColor: pressed ? theme.colors.surfaceElevated : theme.colors.panel,
+        padding: 18,
+      })}
+      testID={testID}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+        <View
+          style={{
+            width: 56,
+            height: 56,
+            borderRadius: 20,
+            backgroundColor: theme.colors.surface,
+            borderWidth: 1,
+            borderColor: theme.colors.border,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <MaterialIcons name={icon} size={24} color={theme.colors.accent} />
+        </View>
+        <View style={{ flex: 1, gap: 2 }}>
+          <Text style={{ color: theme.colors.textPrimary, fontSize: 22, fontWeight: '900' }}>
+            {title}
+          </Text>
+          <Text
+            style={{
+              color: theme.colors.textSecondary,
+              fontSize: 12,
+              fontWeight: '700',
+              letterSpacing: 1.1,
+              textTransform: 'uppercase',
+              lineHeight: 18,
+            }}
+          >
+            {subtitle}
+          </Text>
+        </View>
+        <MaterialIcons name="chevron-right" size={24} color={theme.colors.textSecondary} />
+      </View>
+    </Pressable>
+  );
+}
+
+function PlannerNotice({
+  children,
+  tone,
+}: {
+  children: string;
+  tone: 'danger' | 'success';
+}) {
+  const { theme } = useAppTheme();
+  const borderColor = tone === 'danger' ? `${theme.colors.danger}33` : `${theme.colors.success}33`;
+  const backgroundColor = tone === 'danger' ? `${theme.colors.danger}12` : `${theme.colors.success}10`;
+  const textColor = tone === 'danger' ? theme.colors.danger : theme.colors.textPrimary;
+
+  return (
+    <View
+      style={{
+        borderRadius: 18,
+        borderWidth: 1,
+        borderColor,
+        backgroundColor,
+        paddingHorizontal: 14,
+        paddingVertical: 12,
+      }}
+    >
+      <Text style={{ color: textColor, lineHeight: 20 }}>{children}</Text>
+    </View>
+  );
+}
+
+function floatingMapButtonStyle(borderColor: string, backgroundColor: string) {
   return {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: 'rgba(255,255,255,0.94)',
+    width: 58,
+    height: 58,
+    borderRadius: 20,
+    backgroundColor,
     borderWidth: 1,
     borderColor,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
     shadowColor: '#000000',
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.22,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
     elevation: 6,
   };
 }
 
-function floatingTopButtonStyle(borderColor: string) {
+function floatingTopButtonStyle(borderColor: string, backgroundColor: string) {
   return {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: 'rgba(255,255,255,0.94)',
+    width: 54,
+    height: 54,
+    borderRadius: 18,
+    backgroundColor,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
     borderWidth: 1,
     borderColor,
     shadowColor: '#000000',
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
     elevation: 4,
   };
 }

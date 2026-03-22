@@ -8,16 +8,28 @@ jest.mock('@/lib/shareService', () => ({
   shareSummaryAsPdf: jest.fn(),
 }));
 
+jest.mock('@/lib/recentCrewService', () => ({
+  syncRecentCrewContactsForRunWithFirebase: jest.fn(async () => []),
+}));
+
+jest.mock('@/lib/userProfileService', () => ({
+  updateUserStatsForCompletedRunWithFirebase: jest.fn(async () => undefined),
+}));
+
 import { fireEvent, waitFor } from '@testing-library/react-native';
 
 import RunSummaryScreen from '@/app/run/[id]/summary';
+import { syncRecentCrewContactsForRunWithFirebase } from '@/lib/recentCrewService';
 import { subscribeToRunWithFirebase } from '@/lib/runRealtime';
 import { shareSummaryAsImage, shareSummaryAsPdf } from '@/lib/shareService';
+import { updateUserStatsForCompletedRunWithFirebase } from '@/lib/userProfileService';
+import { useRunSessionStore } from '@/stores/runSessionStore';
 import { renderWithProviders } from '@/test-utils/render';
 
 describe('RunSummaryScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    useRunSessionStore.getState().clearSession();
     (globalThis as { __mockExpoRouterParams?: Record<string, string> }).__mockExpoRouterParams = {
       id: 'run_900',
     };
@@ -229,5 +241,100 @@ describe('RunSummaryScreen', () => {
 
     await waitFor(() => expect(shareSummaryAsImage).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(shareSummaryAsPdf).toHaveBeenCalledTimes(1));
+  });
+
+  it('syncs recent crew and persistent stats for signed-in users when a summary loads', async () => {
+    useRunSessionStore.getState().setSignedInAccount({
+      userId: 'mock-auth-user',
+      isAnonymous: false,
+      email: 'jamie@example.com',
+    });
+
+    (subscribeToRunWithFirebase as jest.Mock).mockImplementation((_id, onData) => {
+      onData({
+        name: 'Sunrise Run',
+        drivers: {
+          'mock-auth-user': {
+            profile: {
+              name: 'Jamie',
+              carMake: 'BMW',
+              carModel: 'M3',
+              fuelType: 'petrol',
+            },
+            joinedAt: 1,
+            leftAt: null,
+          },
+          driver_2: {
+            profile: {
+              name: 'Ava',
+              carMake: 'Toyota',
+              carModel: 'GR86',
+              fuelType: 'petrol',
+            },
+            joinedAt: 1,
+            leftAt: null,
+          },
+        },
+        hazards: {
+          hazard_1: {
+            type: 'pothole',
+            reportedBy: 'mock-auth-user',
+            reporterName: 'Jamie',
+            lat: 0,
+            lng: 0,
+            timestamp: 1,
+            dismissed: false,
+            reportCount: 1,
+          },
+        },
+        summary: {
+          totalDistanceKm: 54,
+          totalDriveTimeMinutes: 60,
+          driverStats: {
+            'mock-auth-user': {
+              name: 'Jamie',
+              carMake: 'BMW',
+              carModel: 'M3',
+              totalDistanceKm: 54.2,
+              fuelType: 'petrol',
+            },
+          },
+          collectiveFuel: {
+            petrolLitres: 0,
+            dieselLitres: 0,
+            hybridLitres: 0,
+            electricKwh: 0,
+          },
+          hazardSummary: {
+            total: 1,
+            byType: {
+              pothole: 1,
+            },
+          },
+          generatedAt: 100,
+        },
+      });
+      return jest.fn();
+    });
+
+    renderWithProviders(<RunSummaryScreen />);
+
+    await waitFor(() =>
+      expect(syncRecentCrewContactsForRunWithFirebase).toHaveBeenCalledWith(
+        'mock-auth-user',
+        expect.objectContaining({
+          name: 'Sunrise Run',
+        })
+      )
+    );
+    await waitFor(() =>
+      expect(updateUserStatsForCompletedRunWithFirebase).toHaveBeenCalledWith(
+        'mock-auth-user',
+        expect.objectContaining({
+          totalDistanceKm: 54.2,
+          hazardsReported: 1,
+        })
+      )
+    );
   });
 });

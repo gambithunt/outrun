@@ -8,6 +8,49 @@
         ".write": "auth != null && !data.exists() && newData.hasChildren(['runId', 'createdAt']) && newData.child('runId').isString() && newData.child('createdAt').isNumber()"
       }
     },
+    "users": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid",
+        ".validate": "!newData.exists() || (newData.hasChildren(['displayName', 'createdAt', 'updatedAt', 'stats']) && newData.child('displayName').isString() && (!newData.child('homeClub').exists() || newData.child('homeClub').isString()) && newData.child('createdAt').isNumber() && newData.child('updatedAt').isNumber() && newData.child('stats').child('totalRuns').isNumber() && newData.child('stats').child('totalDistanceKm').isNumber() && newData.child('stats').child('hazardsReported').isNumber() && (!newData.child('stats').child('mostUsedCarId').exists() || newData.child('stats').child('mostUsedCarId').isString() || newData.child('stats').child('mostUsedCarId').val() === null))"
+      }
+    },
+    "garage": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        "$carId": {
+          ".write": "auth != null && auth.uid === $uid",
+          ".validate": "newData.hasChildren(['id', 'nickname', 'make', 'model', 'fuelType', 'createdAt', 'updatedAt']) && newData.child('id').isString() && newData.child('nickname').isString() && newData.child('make').isString() && newData.child('model').isString() && newData.child('fuelType').isString() && newData.child('createdAt').isNumber() && newData.child('updatedAt').isNumber()"
+        }
+      }
+    },
+    "contacts": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        "$otherUid": {
+          ".write": "auth != null && auth.uid === $uid",
+          ".validate": "newData.hasChildren(['userId', 'displayName', 'lastSeenAt']) && newData.child('userId').isString() && newData.child('displayName').isString() && (!newData.child('homeClub').exists() || newData.child('homeClub').isString()) && (!newData.child('lastRunName').exists() || newData.child('lastRunName').isString()) && newData.child('lastSeenAt').isNumber()"
+        }
+      }
+    },
+    "userRuns": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        "$runId": {
+          ".write": "auth != null && auth.uid === $uid",
+          ".validate": "newData.hasChildren(['scheduledFor', 'name']) && newData.child('scheduledFor').isNumber() && newData.child('name').isString()"
+        }
+      }
+    },
+    "runInvites": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        "$runId": {
+          ".write": "auth != null && ((data.exists() && auth.uid === $uid && newData.child('invitedBy').val() === data.child('invitedBy').val() && newData.child('runId').val() === data.child('runId').val() && newData.child('invitedAt').val() === data.child('invitedAt').val()) || (!data.exists() && root.child('runs/'+$runId+'/adminId').val() === auth.uid && newData.child('invitedBy').val() === auth.uid))",
+          ".validate": "newData.hasChildren(['runId', 'invitedBy', 'invitedAt', 'status']) && newData.child('runId').isString() && newData.child('invitedBy').isString() && newData.child('invitedAt').isNumber() && (newData.child('status').val() === 'pending' || newData.child('status').val() === 'accepted')"
+        }
+      }
+    },
     "runs": {
       "$runId": {
         ".read": "auth != null && (data.child('adminId').val() === auth.uid || data.child('drivers').child(auth.uid).exists() || data.child('status').val() !== 'ended')",

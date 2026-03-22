@@ -4,58 +4,70 @@ export type ThemeMode = 'system' | 'dark' | 'light';
 export type AppTheme = {
   colors: {
     background: string;
+    backgroundAlt: string;
     surface: string;
     surfaceElevated: string;
+    panel: string;
     textPrimary: string;
     textSecondary: string;
     accent: string;
     accentMuted: string;
+    accentGlow: string;
     success: string;
     warning: string;
     danger: string;
     border: string;
     onAccent: string;
+    tabBar: string;
   };
 };
 
 export const APP_THEME_STORAGE_KEY = 'clubrun.theme.mode';
 
 const shared = {
-  accent: '#E63946',
-  onAccent: '#FFF7F8',
+  accent: '#FF5B4D',
+  onAccent: '#190909',
 };
 
 export const themes: Record<'dark' | 'light', AppTheme> = {
   dark: {
     colors: {
-      background: '#0D1117',
-      surface: '#161B22',
-      surfaceElevated: '#21262D',
-      textPrimary: '#F0F6FC',
-      textSecondary: '#8B949E',
+      background: '#070707',
+      backgroundAlt: '#121011',
+      surface: '#181516',
+      surfaceElevated: '#262122',
+      panel: '#221D1E',
+      textPrimary: '#F5EFEE',
+      textSecondary: '#D2BFBB',
       accent: shared.accent,
-      accentMuted: 'rgba(230, 57, 70, 0.2)',
-      success: '#3FB950',
-      warning: '#D29922',
-      danger: '#F85149',
-      border: '#30363D',
+      accentMuted: 'rgba(255, 91, 77, 0.18)',
+      accentGlow: 'rgba(255, 91, 77, 0.42)',
+      success: '#69D59E',
+      warning: '#F1BA67',
+      danger: '#FF7A6B',
+      border: '#342C2E',
       onAccent: shared.onAccent,
+      tabBar: '#151213',
     },
   },
   light: {
     colors: {
       background: '#F8FAFC',
+      backgroundAlt: '#F1F5F9',
       surface: '#FFFFFF',
       surfaceElevated: '#F1F5F9',
+      panel: '#FFFFFF',
       textPrimary: '#0F172A',
       textSecondary: '#64748B',
       accent: shared.accent,
       accentMuted: 'rgba(230, 57, 70, 0.1)',
+      accentGlow: 'rgba(230, 57, 70, 0.16)',
       success: '#16A34A',
       warning: '#CA8A04',
       danger: '#DC2626',
       border: '#E2E8F0',
       onAccent: shared.onAccent,
+      tabBar: '#FFFFFF',
     },
   },
 };

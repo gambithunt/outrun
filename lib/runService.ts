@@ -4,6 +4,10 @@ import { child, get, push, ref, set, type Database } from 'firebase/database';
 import { getFirebaseDatabase } from '@/lib/firebase';
 import { Run, RunStatus } from '@/types/domain';
 
+const FIREBASE_OPERATION_TIMEOUT_MS = 12_000;
+const FIREBASE_UNREACHABLE_MESSAGE =
+  'ClubRun could not reach Firebase. Check your connection and Firebase setup, then try again.';
+
 export type RunDraftInput = {
   name: string;
   description?: string;
@@ -125,7 +129,6 @@ export async function createRun(
     const timestamp = now();
     const run: Run = {
       name: validated.name,
-      description: validated.description,
       joinCode,
       adminId,
       status,
@@ -133,6 +136,7 @@ export async function createRun(
       startedAt: null,
       endedAt: null,
       maxDrivers,
+      ...(validated.description ? { description: validated.description } : {}),
     };
 
     await client.writeRun(runId, run);
@@ -161,18 +165,48 @@ export async function resolveJoinCode(client: RunClient, code: string) {
   return client.readJoinCode(normalized);
 }
 
-export async function createRunWithFirebase(input: RunDraftInput) {
-  const database = getFirebaseDatabase();
-  const adminId = await requireAuthenticatedUserIdWithFirebase();
-  return createRun(createRunClient(database), input, {
-    adminId,
+function withFirebaseTimeout<T>(
+  operation: Promise<T>,
+  timeoutMs = FIREBASE_OPERATION_TIMEOUT_MS,
+  message = FIREBASE_UNREACHABLE_MESSAGE
+) {
+  return new Promise<T>((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      reject(new Error(message));
+    }, timeoutMs);
+
+    operation
+      .then((value) => {
+        clearTimeout(timeoutId);
+        resolve(value);
+      })
+      .catch((error) => {
+        clearTimeout(timeoutId);
+        reject(error);
+      });
   });
 }
 
+export async function createRunWithFirebase(input: RunDraftInput) {
+  return withFirebaseTimeout(
+    (async () => {
+      const database = getFirebaseDatabase();
+      const adminId = await requireAuthenticatedUserIdWithFirebase();
+      return createRun(createRunClient(database), input, {
+        adminId,
+      });
+    })()
+  );
+}
+
 export async function resolveJoinCodeWithFirebase(code: string) {
-  await requireAuthenticatedUserIdWithFirebase();
-  const database = getFirebaseDatabase();
-  return resolveJoinCode(createRunClient(database), code);
+  return withFirebaseTimeout(
+    (async () => {
+      await requireAuthenticatedUserIdWithFirebase();
+      const database = getFirebaseDatabase();
+      return resolveJoinCode(createRunClient(database), code);
+    })()
+  );
 }
 
 type DriveClient = {

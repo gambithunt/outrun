@@ -137,21 +137,59 @@ jest.mock('firebase/app', () => ({
 }));
 
 const mockFirebaseAuth = {
-  currentUser: null as { uid: string } | null,
+  currentUser: null as { uid: string; isAnonymous?: boolean; email?: string | null } | null,
 };
 
 jest.mock('firebase/auth', () => ({
-  connectAuthEmulator: jest.fn(),
-  getReactNativePersistence: jest.fn(() => ({ type: 'LOCAL' })),
-  getAuth: jest.fn(() => mockFirebaseAuth),
-  initializeAuth: jest.fn(() => mockFirebaseAuth),
-  signInAnonymously: jest.fn(async () => {
+  EmailAuthProvider: {
+    credential: jest.fn((email, password) => ({ email, password, providerId: 'password' })),
+  },
+  createUserWithEmailAndPassword: jest.fn(async (_auth, email: string) => {
     mockFirebaseAuth.currentUser = {
-      uid: 'mock-auth-user',
+      uid: `created-${email}`,
+      isAnonymous: false,
+      email,
     };
     return {
       user: mockFirebaseAuth.currentUser,
     };
+  }),
+  connectAuthEmulator: jest.fn(),
+  getReactNativePersistence: jest.fn(() => ({ type: 'LOCAL' })),
+  getAuth: jest.fn(() => mockFirebaseAuth),
+  initializeAuth: jest.fn(() => mockFirebaseAuth),
+  linkWithCredential: jest.fn(async (user, credential) => {
+    mockFirebaseAuth.currentUser = {
+      uid: user.uid,
+      isAnonymous: false,
+      email: credential.email,
+    };
+    return {
+      user: mockFirebaseAuth.currentUser,
+    };
+  }),
+  signInWithEmailAndPassword: jest.fn(async (_auth, email: string) => {
+    mockFirebaseAuth.currentUser = {
+      uid: `signed-in-${email}`,
+      isAnonymous: false,
+      email,
+    };
+    return {
+      user: mockFirebaseAuth.currentUser,
+    };
+  }),
+  signInAnonymously: jest.fn(async () => {
+    mockFirebaseAuth.currentUser = {
+      uid: 'mock-auth-user',
+      isAnonymous: true,
+      email: null,
+    };
+    return {
+      user: mockFirebaseAuth.currentUser,
+    };
+  }),
+  signOut: jest.fn(async () => {
+    mockFirebaseAuth.currentUser = null;
   }),
 }));
 

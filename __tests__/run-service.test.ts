@@ -125,4 +125,17 @@ describe('runService', () => {
       })
     );
   });
+
+  it('omits undefined optional fields from the persisted run payload', async () => {
+    const { client, writes } = createMockClient();
+
+    await createRun(client, { name: 'No description drive' }, { now: () => 123, random: () => 0.123456 });
+
+    expect(writes['run:run_123']).toEqual(
+      expect.not.objectContaining({
+        description: undefined,
+      })
+    );
+    expect(writes['run:run_123']).not.toHaveProperty('description');
+  });
 });

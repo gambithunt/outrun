@@ -9,12 +9,17 @@ export function AppCard({ children }: PropsWithChildren) {
   return (
     <View
       style={{
-        backgroundColor: theme.colors.surface,
-        borderRadius: 24,
+        backgroundColor: theme.colors.panel,
+        borderRadius: 30,
         borderWidth: 1,
         borderColor: theme.colors.border,
-        padding: 20,
-        gap: 12,
+        padding: 22,
+        gap: 14,
+        shadowColor: '#000000',
+        shadowOpacity: 0.28,
+        shadowRadius: 28,
+        shadowOffset: { width: 0, height: 14 },
+        elevation: 10,
       }}
     >
       {children}

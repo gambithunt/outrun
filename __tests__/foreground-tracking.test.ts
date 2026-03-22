@@ -89,4 +89,38 @@ describe('foregroundTracking', () => {
     stop();
     expect(remove).toHaveBeenCalledTimes(1);
   });
+
+  it('swallows subscription cleanup failures from expo location listeners', async () => {
+    const writeDriverLocation = jest.fn();
+    const appendTrackPoint = jest.fn(async () => undefined);
+    const remove = jest.fn(() => {
+      throw new TypeError('_LocationEventEmitter.removeSubscription is not a function');
+    });
+    const locationModule = {
+      Accuracy: { High: 'high' },
+      requestForegroundPermissionsAsync: jest.fn(async () => ({ status: 'granted', granted: true })),
+      watchPositionAsync: jest.fn(async (_options, callback) => {
+        await callback({
+          coords: {
+            latitude: -26.2041,
+            longitude: 28.0473,
+            speed: 0,
+            heading: 0,
+            accuracy: 5,
+          },
+          timestamp: 1000,
+        });
+        return { remove };
+      }),
+    };
+
+    const stop = await startForegroundTracking(
+      { writeDriverLocation, appendTrackPoint },
+      locationModule,
+      { runId: 'run_1', driverId: 'driver_1' }
+    );
+
+    expect(() => stop()).not.toThrow();
+    expect(remove).toHaveBeenCalledTimes(1);
+  });
 });

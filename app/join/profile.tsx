@@ -7,6 +7,7 @@ import { AppButton } from '@/components/ui/AppButton';
 import { AppCard } from '@/components/ui/AppCard';
 import { AppTextInput } from '@/components/ui/AppTextInput';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
+import { useAuthSession } from '@/contexts/AuthContext';
 import { useAppTheme } from '@/contexts/ThemeContext';
 import { getSuggestedMakes, getSuggestedModels } from '@/lib/carData';
 import {
@@ -14,14 +15,16 @@ import {
   saveDriverProfileDraft,
   saveDriverProfileWithFirebase,
 } from '@/lib/profileService';
+import { listGarageCarsWithFirebase, loadUserProfileWithFirebase } from '@/lib/userProfileService';
 import { useRunSessionStore } from '@/stores/runSessionStore';
-import { FuelType } from '@/types/domain';
+import { FuelType, GarageCar } from '@/types/domain';
 
 const FUEL_TYPES: FuelType[] = ['petrol', 'diesel', 'electric', 'hybrid'];
 
 export default function DriverProfileScreen() {
   const router = useRouter();
   const { runId, code } = useLocalSearchParams<{ runId?: string; code?: string }>();
+  const auth = useAuthSession();
   const { theme } = useAppTheme();
   const setSession = useRunSessionStore((state) => state.setSession);
   const [name, setName] = useState('');
@@ -31,24 +34,83 @@ export default function DriverProfileScreen() {
   const [engineUnit, setEngineUnit] = useState<'cc' | 'litres'>('litres');
   const [fuelType, setFuelType] = useState<FuelType>('petrol');
   const [fuelEfficiency, setFuelEfficiency] = useState('');
+  const [garage, setGarage] = useState<GarageCar[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  function applyGarageCar(car: GarageCar) {
+    setCarMake(car.make);
+    setCarModel(car.model);
+    setFuelType(car.fuelType);
+  }
+
+  function applyDraft(input: {
+    name: string;
+    carMake: string;
+    carModel: string;
+    engineSize: string;
+    engineUnit: 'cc' | 'litres';
+    fuelType: FuelType;
+    fuelEfficiency: string;
+  }) {
+    setName(input.name);
+    setCarMake(input.carMake);
+    setCarModel(input.carModel);
+    setEngineSize(input.engineSize);
+    setEngineUnit(input.engineUnit);
+    setFuelType(input.fuelType);
+    setFuelEfficiency(input.fuelEfficiency);
+  }
+
   useEffect(() => {
-    loadDriverProfileDraft().then((draft) => {
-      if (!draft) {
+    let cancelled = false;
+
+    async function hydrate() {
+      const draft = await loadDriverProfileDraft();
+      if (cancelled) {
         return;
       }
 
-      setName(draft.name);
-      setCarMake(draft.carMake);
-      setCarModel(draft.carModel);
-      setEngineSize(draft.engineSize ?? '');
-      setEngineUnit(draft.engineUnit ?? 'litres');
-      setFuelType(draft.fuelType);
-      setFuelEfficiency(draft.fuelEfficiency ? String(draft.fuelEfficiency) : '');
-    });
-  }, []);
+      if (draft) {
+        applyDraft({
+          name: draft.name,
+          carMake: draft.carMake,
+          carModel: draft.carModel,
+          engineSize: draft.engineSize ?? '',
+          engineUnit: draft.engineUnit ?? 'litres',
+          fuelType: draft.fuelType,
+          fuelEfficiency: draft.fuelEfficiency ? String(draft.fuelEfficiency) : '',
+        });
+        return;
+      }
+
+      if (!auth.userId || auth.isAnonymous) {
+        return;
+      }
+
+      const [profile, cars] = await Promise.all([
+        loadUserProfileWithFirebase(auth.userId),
+        listGarageCarsWithFirebase(auth.userId),
+      ]);
+      if (cancelled) {
+        return;
+      }
+
+      if (profile) {
+        setName(profile.displayName);
+      }
+      setGarage(cars);
+      if (cars[0]) {
+        applyGarageCar(cars[0]);
+      }
+    }
+
+    void hydrate();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [auth.isAnonymous, auth.userId]);
 
   const makeSuggestions = useMemo(() => getSuggestedMakes(carMake), [carMake]);
   const modelSuggestions = useMemo(() => getSuggestedModels(carMake, carModel), [carMake, carModel]);
@@ -104,6 +166,23 @@ export default function DriverProfileScreen() {
       </AppCard>
 
       <AppCard>
+        {garage.length > 0 ? (
+          <View style={{ gap: 10 }}>
+            <Text style={{ color: theme.colors.textPrimary, fontWeight: '700' }}>Saved garage</Text>
+            <View style={{ gap: 10 }}>
+              {garage.map((car) => (
+                <AppButton
+                  key={car.id}
+                  label={`${car.nickname}: ${car.make} ${car.model}`}
+                  onPress={() => applyGarageCar(car)}
+                  variant="secondary"
+                  size="compact"
+                  testID={`button-garage-car-${car.id}`}
+                />
+              ))}
+            </View>
+          </View>
+        ) : null}
         <AppTextInput
           label="Display name"
           value={name}

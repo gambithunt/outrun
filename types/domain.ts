@@ -2,6 +2,8 @@ export type RunStatus = 'draft' | 'ready' | 'active' | 'ended';
 
 export type FuelType = 'petrol' | 'diesel' | 'electric' | 'hybrid';
 
+export type RunVisibility = 'private' | 'club' | 'public';
+
 export type HazardType =
   | 'pothole'
   | 'roadworks'
@@ -71,6 +73,58 @@ export type SummaryRoutePreview = {
   speedBuckets: number[];
 };
 
+export type UserStats = {
+  totalRuns: number;
+  totalDistanceKm: number;
+  hazardsReported: number;
+  mostUsedCarId?: string | null;
+};
+
+export type UserProfile = {
+  displayName: string;
+  homeClub?: string;
+  createdAt: number;
+  updatedAt: number;
+  stats: UserStats;
+};
+
+export type GarageCar = {
+  id: string;
+  nickname: string;
+  make: string;
+  model: string;
+  fuelType: FuelType;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type RecentCrewContact = {
+  userId: string;
+  displayName: string;
+  homeClub?: string;
+  lastRunName?: string;
+  lastSeenAt: number;
+};
+
+export type ScheduledRunMeta = {
+  scheduledFor: number;
+  visibility: RunVisibility;
+  createdBy: string;
+};
+
+export type RunInvite = {
+  runId: string;
+  invitedBy: string;
+  invitedAt: number;
+  status: 'pending' | 'accepted';
+};
+
+export type RunInviteSummary = {
+  totalInvites: number;
+  acceptedInvites: number;
+  lastUpdatedAt: number;
+};
+
 export type DriverRecord = {
   profile: DriverProfile;
   location?: DriverLocation;
@@ -133,6 +187,10 @@ export type Run = {
   driveStartedAt?: number | null;
   endedAt: number | null;
   maxDrivers: number;
+  scheduledFor?: number;
+  createdBy?: string;
+  visibility?: RunVisibility;
+  inviteSummary?: RunInviteSummary;
   route?: RouteData;
   drivers?: Record<string, DriverRecord>;
   hazards?: Record<string, Hazard>;

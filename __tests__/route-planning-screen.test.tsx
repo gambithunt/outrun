@@ -74,9 +74,14 @@ describe('RoutePlanningScreen', () => {
     const screen = renderWithProviders(<RoutePlanningScreen />);
 
     expect(screen.getByTestId('route-planning-map')).toBeTruthy();
+    expect(screen.getByTestId('route-planner-stats-card')).toBeTruthy();
     expect(screen.getByTestId('route-planner-sheet')).toBeTruthy();
+    expect(screen.getByTestId('text-stage-title')).toHaveTextContent('Choose Start');
     expect(screen.getByTestId('text-guided-step')).toHaveTextContent('Choose start');
     expect(screen.getByTestId('text-selected-stop-label')).toHaveTextContent('Start');
+    expect(screen.getByTestId('planner-action-search')).toBeTruthy();
+    expect(screen.getByTestId('planner-action-current')).toBeTruthy();
+    expect(screen.getByTestId('planner-action-pick')).toBeTruthy();
 
     await waitFor(() =>
       expect(screen.getByTestId('mock-map-camera-center')).toHaveTextContent('28.0473,-26.2041')
@@ -90,8 +95,12 @@ describe('RoutePlanningScreen', () => {
 
     fireEvent.press(screen.getByTestId('route-summary-chip'));
 
+    expect(screen.getByTestId('text-stage-title')).toHaveTextContent('Choose Destination');
     expect(screen.getByTestId('text-guided-step')).toHaveTextContent('Choose destination');
     expect(screen.getByTestId('text-selected-stop-label')).toHaveTextContent('Destination');
+    expect(screen.getByTestId('planner-action-search')).toBeTruthy();
+    expect(screen.queryByTestId('planner-action-current')).toBeNull();
+    expect(screen.getByTestId('planner-action-pick')).toBeTruthy();
   });
 
   it('shows live readiness in the top card, saves the route draft, marks later edits dirty, then opens the lobby after re-saving', async () => {

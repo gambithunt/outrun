@@ -9,6 +9,7 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { AuthProvider, useAuthSession } from '@/contexts/AuthContext';
 import { ensureBackgroundTrackingTaskRegisteredWithExpo } from '@/lib/backgroundTracking';
 import { useDeviceLocationStore } from '@/stores/deviceLocationStore';
+import { useRunSessionStore } from '@/stores/runSessionStore';
 import { AppThemeProvider, useAppTheme } from '@/contexts/ThemeContext';
 
 ensureBackgroundTrackingTaskRegisteredWithExpo();
@@ -27,10 +28,24 @@ function RootNavigator() {
   const { navigationTheme, theme } = useAppTheme();
   const auth = useAuthSession();
   const bootstrapLocation = useDeviceLocationStore((state) => state.bootstrapLocation);
+  const setSignedInAccount = useRunSessionStore((state) => state.setSignedInAccount);
 
   useEffect(() => {
     void bootstrapLocation();
   }, [bootstrapLocation]);
+
+  useEffect(() => {
+    if (auth.status !== 'ready' || !auth.userId || auth.isAnonymous) {
+      setSignedInAccount(null);
+      return;
+    }
+
+    setSignedInAccount({
+      userId: auth.userId,
+      isAnonymous: auth.isAnonymous,
+      email: auth.email,
+    });
+  }, [auth.email, auth.isAnonymous, auth.status, auth.userId, setSignedInAccount]);
 
   if (auth.status === 'loading') {
     return (
@@ -57,6 +72,9 @@ function RootNavigator() {
     <NavigationThemeProvider value={navigationTheme}>
       <Stack>
         <Stack.Screen name="index" options={{ headerShown: false }} />
+        <Stack.Screen name="drive" options={{ headerShown: false }} />
+        <Stack.Screen name="friends" options={{ headerShown: false }} />
+        <Stack.Screen name="profile" options={{ headerShown: false }} />
         <Stack.Screen name="settings" options={{ title: 'Settings' }} />
         <Stack.Screen name="create/index" options={{ headerShown: false }} />
         <Stack.Screen name="create/route" options={{ headerShown: false }} />
