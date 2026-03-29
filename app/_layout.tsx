@@ -71,10 +71,7 @@ function RootNavigator() {
   return (
     <NavigationThemeProvider value={navigationTheme}>
       <Stack>
-        <Stack.Screen name="index" options={{ headerShown: false }} />
-        <Stack.Screen name="drive" options={{ headerShown: false }} />
-        <Stack.Screen name="friends" options={{ headerShown: false }} />
-        <Stack.Screen name="profile" options={{ headerShown: false }} />
+        <Stack.Screen name="(shell)" options={{ headerShown: false }} />
         <Stack.Screen name="settings" options={{ title: 'Settings' }} />
         <Stack.Screen name="create/index" options={{ headerShown: false }} />
         <Stack.Screen name="create/route" options={{ headerShown: false }} />

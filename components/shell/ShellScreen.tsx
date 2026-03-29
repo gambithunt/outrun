@@ -5,8 +5,6 @@ import { SafeAreaView, ScrollView, StyleProp, Text, View, ViewStyle } from 'reac
 import { useAppTheme } from '@/contexts/ThemeContext';
 import { AppShellTab, useRunSessionStore } from '@/stores/runSessionStore';
 
-import { MainTabBar } from './MainTabBar';
-
 type ShellScreenProps = PropsWithChildren<{
   activeTab: AppShellTab;
   scrollable?: boolean;
@@ -15,7 +13,7 @@ type ShellScreenProps = PropsWithChildren<{
 }>;
 
 export function ShellScreen({
-  activeTab,
+  activeTab: _activeTab,
   children,
   contentContainerStyle,
   scrollable = true,
@@ -120,7 +118,6 @@ export function ShellScreen({
           <View style={contentStyle}>{children}</View>
         )}
       </View>
-      <MainTabBar activeTab={activeTab} />
     </SafeAreaView>
   );
 }

@@ -322,6 +322,67 @@ describe('RunMapScreen', () => {
     ).toHaveBeenCalledWith('/create/route?runId=run_900&joinCode=123456');
   });
 
+  it('shows the branded lobby chrome before the drive launches', async () => {
+    (useAuthSession as jest.Mock).mockReturnValue({
+      status: 'ready',
+      userId: 'driver_admin',
+      error: null,
+    });
+    useRunSessionStore.getState().setSession({
+      runId: 'run_900',
+      driverId: 'driver_admin',
+      driverName: 'Admin',
+      joinCode: '123456',
+      role: 'admin',
+      status: 'ready',
+    });
+    (subscribeToRunWithFirebase as jest.Mock).mockImplementation((_id, onData) => {
+      onData({
+        name: 'Sunrise Run',
+        adminId: 'driver_admin',
+        status: 'ready',
+        route: {
+          points: [
+            [-26.2041, 28.0473],
+            [-25.7479, 28.2293],
+          ],
+          distanceMetres: 54000,
+          source: 'drawn',
+        },
+      });
+
+      return jest.fn();
+    });
+    (subscribeToDriversWithFirebase as jest.Mock).mockImplementation((_id, onData) => {
+      onData([
+        {
+          id: 'driver_admin',
+          name: 'Admin',
+          location: {
+            lat: -26.2041,
+            lng: 28.0473,
+            heading: 0,
+            speed: 0,
+            accuracy: 0,
+            timestamp: Date.now(),
+          },
+        },
+      ]);
+      return jest.fn();
+    });
+    (subscribeToHazardsWithFirebase as jest.Mock).mockImplementation((_id, onData) => {
+      onData([]);
+      return jest.fn();
+    });
+
+    const screen = renderWithProviders(<RunMapScreen />);
+
+    await waitFor(() => expect(screen.getByTestId('text-run-name')).toHaveTextContent('Sunrise Run'));
+    expect(screen.getByTestId('text-live-map-brand')).toHaveTextContent('CLUBRUN');
+    expect(screen.getByTestId('button-start-drive')).toBeTruthy();
+    expect(screen.getByTestId('button-edit-route')).toBeTruthy();
+  });
+
   it('shows a helpful message when lobby route editing is blocked by Firebase rules', async () => {
     (useAuthSession as jest.Mock).mockReturnValue({
       status: 'ready',
@@ -374,7 +435,7 @@ describe('RunMapScreen', () => {
 
     await waitFor(() =>
       expect(screen.getByTestId('text-run-error')).toHaveTextContent(
-        /Route editing is blocked by the current Firebase rules\. Deploy the latest database rules, then try again\./
+        /Route editing is blocked by Firebase rules\. Update the database rules, then try again\./
       )
     );
   });

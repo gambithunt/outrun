@@ -60,6 +60,16 @@ describe('create and join screens', () => {
         role: 'admin',
       })
     );
+    expect(
+      (
+        globalThis as {
+          __mockExpoRouter?: { push: jest.Mock };
+        }
+      ).__mockExpoRouter?.push
+    ).toHaveBeenCalledWith({
+      pathname: '/create/route',
+      params: { runId: 'run_42', joinCode: '123456' },
+    });
 
     fireEvent.press(screen.getByTestId('button-toggle-run-details'));
     expect(screen.getByTestId('text-generated-run-id')).toHaveTextContent('run_42');
@@ -90,6 +100,19 @@ describe('create and join screens', () => {
         maxDrivers: 15,
       })
     );
+  });
+
+  it('guards against double-submitting the create draft action', () => {
+    const pendingCreate = new Promise(() => undefined);
+    (createRunWithFirebase as jest.Mock).mockImplementation(() => pendingCreate);
+
+    const screen = renderWithProviders(<CreateRunScreen />);
+
+    fireEvent.changeText(screen.getByTestId('input-run-name'), 'Monday');
+    fireEvent.press(screen.getByTestId('button-submit-run'));
+    fireEvent.press(screen.getByTestId('button-submit-run'));
+
+    expect(createRunWithFirebase).toHaveBeenCalledTimes(1);
   });
 
   it('shows a floating back button on the create screen', () => {

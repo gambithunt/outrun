@@ -26,7 +26,6 @@ import {
 import { updateAdminRunStatusInHistory } from '@/lib/adminRunHistory';
 import { subscribeToConnectivityWithFirebase } from '@/lib/connectivity';
 import { removeDriverWithFirebase } from '@/lib/driverManagementService';
-import { useAppTheme } from '@/contexts/ThemeContext';
 import {
   getDriverPresenceStatus,
   LiveDriver,
@@ -51,6 +50,27 @@ import { HazardType, Run } from '@/types/domain';
 
 type TrackingMode = 'idle' | 'starting' | 'foreground' | 'background' | 'denied';
 
+const runMapPalette = {
+  background: '#120F10',
+  panel: 'rgba(27, 23, 24, 0.94)',
+  panelElevated: 'rgba(36, 32, 33, 0.96)',
+  panelMuted: 'rgba(44, 37, 38, 0.98)',
+  panelSoft: 'rgba(29, 24, 25, 0.86)',
+  overlay: 'rgba(13, 10, 11, 0.2)',
+  border: '#352D2E',
+  borderMuted: 'rgba(53, 45, 46, 0.84)',
+  textPrimary: '#F6F1F0',
+  textSecondary: '#C1B0AD',
+  textMuted: '#9E8E8C',
+  accent: '#FF5B4D',
+  accentGlow: 'rgba(255, 91, 77, 0.28)',
+  accentMuted: 'rgba(255, 91, 77, 0.14)',
+  success: '#54C98E',
+  warning: '#F1BA67',
+  danger: '#FF7C6E',
+  dangerMuted: 'rgba(255, 124, 110, 0.12)',
+};
+
 const HAZARD_EMOJI: Record<HazardType, keyof typeof MaterialIcons.glyphMap> = {
   pothole: 'trip-origin',
   roadworks: 'construction',
@@ -60,22 +80,22 @@ const HAZARD_EMOJI: Record<HazardType, keyof typeof MaterialIcons.glyphMap> = {
   broken_down_car: 'car-crash',
 };
 
-const LIVE_MAP_TINT = '#0A84FF';
-const LIVE_MAP_ROUTE = '#FF3B30';
+const LIVE_MAP_TINT = runMapPalette.accent;
+const LIVE_MAP_ROUTE = runMapPalette.accent;
 const ANIMATIONS_ENABLED = !process.env.JEST_WORKER_ID;
 
 function getPresenceMeta(driver: LiveDriver) {
   const status = getDriverPresenceStatus(driver);
   if (status === 'active') {
-    return { color: '#16A34A', label: 'active' };
+    return { color: runMapPalette.success, label: 'active' };
   }
   if (status === 'stale') {
-    return { color: '#D97706', label: 'checking in' };
+    return { color: runMapPalette.warning, label: 'checking in' };
   }
   if (status === 'lost_signal') {
-    return { color: '#DC2626', label: 'lost signal' };
+    return { color: runMapPalette.danger, label: 'lost signal' };
   }
-  return { color: '#64748B', label: 'waiting for GPS' };
+  return { color: runMapPalette.textMuted, label: 'waiting for GPS' };
 }
 
 function getSelfDriverLabel(name: string) {
@@ -98,8 +118,8 @@ function getLobbyActionErrorMessage(
 ) {
   if (isFirebasePermissionDenied(error)) {
     return action === 'edit'
-      ? 'Route editing is blocked by the current Firebase rules. Deploy the latest database rules, then try again.'
-      : 'Starting the drive is blocked by the current Firebase rules. Deploy the latest database rules, then try again.';
+      ? 'Route editing is blocked by Firebase rules. Update the database rules, then try again.'
+      : 'Starting the drive is blocked by Firebase rules. Update the database rules, then try again.';
   }
 
   return error instanceof Error ? error.message : fallback;
@@ -263,7 +283,7 @@ function DriverPanel({
                 {drivers.length} in convoy
               </Text>
             </View>
-            <MaterialIcons color="#475569" name="keyboard-arrow-up" size={22} />
+            <MaterialIcons color={runMapPalette.textMuted} name="keyboard-arrow-up" size={22} />
           </View>
           <ScrollView
             horizontal
@@ -274,15 +294,19 @@ function DriverPanel({
               const isSelf = driver.id === currentDriverId;
               const status = getDriverPresenceStatus(driver);
               const dotColor =
-                status === 'active' ? '#22C55E' : status === 'stale' ? '#F59E0B' : '#EF4444';
+                status === 'active'
+                  ? runMapPalette.success
+                  : status === 'stale'
+                    ? runMapPalette.warning
+                    : runMapPalette.danger;
               return (
                 <View key={driver.id} style={styles.driverStripItem}>
                   <View
                     style={[
                       styles.driverStripAvatar,
                       {
-                        backgroundColor: isSelf ? accentColor : '#CBD5E1',
-                        borderColor: isSelf ? '#DBEAFE' : '#FFFFFF',
+                        backgroundColor: isSelf ? accentColor : runMapPalette.panelMuted,
+                        borderColor: isSelf ? runMapPalette.accentMuted : runMapPalette.border,
                         borderWidth: 2,
                       },
                     ]}
@@ -290,7 +314,7 @@ function DriverPanel({
                     <Text
                       style={[
                         styles.driverStripInitials,
-                        { color: isSelf ? '#FFFFFF' : '#0F172A' },
+                        { color: runMapPalette.textPrimary },
                       ]}
                     >
                       {driver.name
@@ -325,7 +349,7 @@ function DriverPanel({
               activeOpacity={0.8}
               testID="button-driver-panel-toggle"
             >
-              <MaterialIcons color="#64748B" name="keyboard-arrow-down" size={22} />
+              <MaterialIcons color={runMapPalette.textMuted} name="keyboard-arrow-down" size={22} />
             </TouchableOpacity>
           </View>
           <ScrollView style={styles.driverList} showsVerticalScrollIndicator={false}>
@@ -337,19 +361,19 @@ function DriverPanel({
                   key={driver.id}
                   style={[
                     styles.driverRow,
-                    isSelf && { backgroundColor: 'rgba(10,132,255,0.12)' },
+                    isSelf && { backgroundColor: runMapPalette.accentMuted },
                   ]}
                 >
                   <View
                     style={[
                       styles.driverRowAvatar,
-                      { backgroundColor: isSelf ? accentColor : '#CBD5E1' },
+                      { backgroundColor: isSelf ? accentColor : runMapPalette.panelMuted },
                     ]}
                   >
                     <Text
                       style={[
                         styles.driverRowInitials,
-                        { color: isSelf ? '#FFFFFF' : '#0F172A' },
+                        { color: runMapPalette.textPrimary },
                       ]}
                     >
                       {driver.name
@@ -383,7 +407,16 @@ function DriverPanel({
 
             {isAdmin && hazards.length > 0 ? (
               <View style={{ paddingTop: 8 }}>
-                <Text style={{ color: '#64748B', fontSize: 12, fontWeight: '700', marginBottom: 6 }}>
+                <Text
+                  style={{
+                    color: runMapPalette.textMuted,
+                    fontSize: 12,
+                    fontWeight: '700',
+                    marginBottom: 6,
+                    letterSpacing: 1.4,
+                    textTransform: 'uppercase',
+                  }}
+                >
                   Active hazards
                 </Text>
                 {hazards.map((hazard) => (
@@ -391,7 +424,7 @@ function DriverPanel({
                     <View style={styles.activeHazardMeta}>
                       <View style={styles.activeHazardIcon}>
                         <MaterialIcons
-                          color="#0F172A"
+                          color={runMapPalette.accent}
                           name={HAZARD_EMOJI[hazard.type as HazardType] ?? 'warning-amber'}
                           size={18}
                         />
@@ -454,7 +487,7 @@ function DriverPanel({
                     activeOpacity={0.82}
                     testID="button-end-run"
                   >
-                    <MaterialIcons color="#DC2626" name="stop-circle" size={18} />
+                    <MaterialIcons color={runMapPalette.danger} name="stop-circle" size={18} />
                     <Text style={styles.endRunSubtleText}>End Run</Text>
                   </TouchableOpacity>
                 )}
@@ -592,7 +625,7 @@ function HazardActionRail({
               testID={`button-hazard-${type}`}
             >
               <MaterialIcons
-                color="#0F172A"
+                color={runMapPalette.accent}
                 name={HAZARD_EMOJI[type]}
                 size={18}
               />
@@ -617,7 +650,7 @@ function HazardActionRail({
         testID="button-open-hazard-actions"
       >
         <MaterialIcons
-          color={expanded ? '#FFFFFF' : '#0F172A'}
+          color={expanded ? runMapPalette.background : runMapPalette.textPrimary}
           name={expanded ? 'close' : 'report-problem'}
           size={24}
         />
@@ -633,13 +666,19 @@ function formatTrackingMode(mode: TrackingMode) {
   return 'disabled';
 }
 
+function formatTrackingMetric(mode: TrackingMode) {
+  if (mode === 'background') return 'GPS live';
+  if (mode === 'foreground') return 'Foreground';
+  if (mode === 'starting') return 'Starting';
+  return 'Disabled';
+}
+
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
 export default function RunMapScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id?: string }>();
   const auth = useAuthSession();
-  const { theme } = useAppTheme();
   const insets = useSafeAreaInsets();
   const session = useRunSessionStore();
   const setRunSnapshot = useRunSessionStore((state) => state.setRunSnapshot);
@@ -989,6 +1028,12 @@ export default function RunMapScreen() {
   const showTrackingPrompt =
     trackingMode === 'idle' || trackingMode === 'starting' || trackingMode === 'denied';
   const connectivityOffline = session.connectivityStatus !== 'online';
+  const signalColor =
+    session.connectivityStatus === 'offline'
+      ? runMapPalette.danger
+      : session.connectivityStatus === 'reconnecting'
+        ? runMapPalette.warning
+        : runMapPalette.textPrimary;
 
   const adminName = currentRun
     ? displayDrivers.find((d) => d.id === currentRun.adminId)?.name ?? 'the organiser'
@@ -999,6 +1044,7 @@ export default function RunMapScreen() {
         ? `${driversWithGps}/${displayDrivers.length} ready to start`
         : `Waiting for ${adminName}`
       : `${driversWithGps}/${displayDrivers.length} live · ${hazards.length} hazards`;
+  const routeStateLabel = session.route?.points.length ? 'Locked' : 'Draft';
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -1025,10 +1071,12 @@ export default function RunMapScreen() {
           testID="live-run-map"
         />
       ) : (
-        <View style={[styles.container, { alignItems: 'center', justifyContent: 'center', backgroundColor: theme.colors.background }]}>
-          <Text style={{ color: theme.colors.textSecondary, fontSize: 16 }}>Loading run…</Text>
+        <View style={[styles.container, styles.loadingState]}>
+          <Text style={styles.loadingStateText}>Loading run…</Text>
         </View>
       )}
+
+      <View pointerEvents="none" style={styles.mapScrim} />
 
       {/* ── Top overlay: compact chrome + status banners ── */}
       <View style={[styles.topOverlay, { paddingTop: insets.top + 8 }]} pointerEvents="box-none">
@@ -1040,17 +1088,51 @@ export default function RunMapScreen() {
             activeOpacity={0.86}
             testID="button-back-live-map"
           >
-            <MaterialIcons color="#0F172A" name="arrow-back-ios-new" size={22} />
+            <MaterialIcons color={runMapPalette.textPrimary} name="arrow-back-ios-new" size={22} />
           </TouchableOpacity>
 
-          <View style={styles.runHeaderCard}>
+          <Text style={styles.brandWordmark} testID="text-live-map-brand">
+            CLUBRUN
+          </Text>
+
+          <View style={styles.topStatusButton}>
+            <MaterialIcons color={signalColor} name="wifi-tethering" size={24} />
+          </View>
+        </View>
+
+        <View style={styles.runHeaderCard}>
+          <View style={styles.runHeaderTopRow}>
             <View style={styles.runHeaderCopy}>
+              <Text style={styles.runHeaderEyebrow}>
+                {mapMode === 'lobby' ? 'Open Lobby' : 'Live Convoy'}
+              </Text>
               <Text style={styles.runHeaderTitle} numberOfLines={1} testID="text-run-name">
                 {session.runName ?? 'Live Run'}
               </Text>
-              <Text style={styles.runHeaderSubtitle} numberOfLines={1}>
+              <Text style={styles.runHeaderSubtitle}>
                 {runSubtitle}
               </Text>
+            </View>
+
+            {session.joinCode ? (
+              <View style={styles.runHeaderCodePill}>
+                <Text style={styles.runHeaderCodeText}>Code {session.joinCode}</Text>
+              </View>
+            ) : null}
+          </View>
+
+          <View style={styles.runHeaderMetrics}>
+            <View style={styles.runHeaderMetricCard}>
+              <Text style={styles.runHeaderMetricLabel}>Tracking</Text>
+              <Text style={styles.runHeaderMetricValue}>{formatTrackingMetric(trackingMode)}</Text>
+            </View>
+            <View style={styles.runHeaderMetricCard}>
+              <Text style={styles.runHeaderMetricLabel}>Drivers</Text>
+              <Text style={styles.runHeaderMetricValue}>{displayDrivers.length}</Text>
+            </View>
+            <View style={styles.runHeaderMetricCard}>
+              <Text style={styles.runHeaderMetricLabel}>Route</Text>
+              <Text style={styles.runHeaderMetricValue}>{routeStateLabel}</Text>
             </View>
           </View>
         </View>
@@ -1063,8 +1145,8 @@ export default function RunMapScreen() {
               {
                 backgroundColor:
                   session.connectivityStatus === 'offline'
-                    ? 'rgba(153, 27, 27, 0.94)'
-                    : 'rgba(185, 28, 28, 0.88)',
+                    ? runMapPalette.panelMuted
+                    : runMapPalette.panelMuted,
               },
             ]}
             pointerEvents="none"
@@ -1160,73 +1242,74 @@ export default function RunMapScreen() {
           pointerEvents="box-none"
         >
           <View style={styles.lobbyCard}>
-            {isOrganiserSession ? (
-              <>
-                <Text style={styles.lobbyCardEyebrow}>Lobby</Text>
-                <Text style={styles.lobbyCardTitle}>Ready to roll when the convoy is ready</Text>
-                <Text style={styles.lobbyCardBody}>
-                  {auth.status === 'loading'
-                    ? 'Confirming organiser access before lobby controls unlock.'
-                    : canStartDrive
-                    ? `${driversWithGps} driver${driversWithGps === 1 ? '' : 's'} with GPS are ready.`
+            <Text style={styles.lobbyCardEyebrow}>
+              {isOrganiserSession ? 'Launch Control' : 'Open Lobby'}
+            </Text>
+            <Text style={styles.lobbyCardTitle}>
+              {isOrganiserSession ? 'START DRIVE' : 'WAIT FOR LAUNCH'}
+            </Text>
+            <Text style={styles.lobbyCardBody}>
+              {isOrganiserSession
+                ? auth.status === 'loading'
+                  ? 'Confirming organiser access before launch controls unlock.'
+                  : canStartDrive
+                    ? `${driversWithGps} driver${driversWithGps === 1 ? '' : 's'} with GPS are ready to move.`
                     : hasAdminAuthority
-                    ? 'Ask one driver to enable location so the live drive can begin cleanly.'
-                    : 'Sign in with the organiser account to manage this lobby.'}
+                      ? 'Ask one driver to enable location so the convoy can launch cleanly.'
+                      : 'Sign in with the organiser account to manage this lobby.'
+                : 'The organiser will launch the convoy once the crew and route are locked in.'}
+            </Text>
+
+            <View style={styles.lobbyStatsRow}>
+              <View style={styles.lobbyStatCard}>
+                <Text style={styles.lobbyStatLabel}>Ready</Text>
+                <Text style={styles.lobbyStatValue}>
+                  {driversWithGps}/{displayDrivers.length}
                 </Text>
-                <TouchableOpacity
-                  style={[
-                    styles.startDriveButton,
-                    (!canStartDrive || isStartingDrive) && styles.startDriveButtonDisabled,
-                  ]}
+              </View>
+              <View style={styles.lobbyStatCard}>
+                <Text style={styles.lobbyStatLabel}>Route</Text>
+                <Text style={styles.lobbyStatValue}>{routeStateLabel}</Text>
+              </View>
+              <View style={styles.lobbyStatCard}>
+                <Text style={styles.lobbyStatLabel}>Hazards</Text>
+                <Text style={styles.lobbyStatValue}>{hazards.length}</Text>
+              </View>
+            </View>
+
+            {isOrganiserSession ? (
+              <View style={styles.lobbyActions}>
+                <AppButton
+                  label={isStartingDrive ? 'Starting Drive' : 'Start Drive'}
                   onPress={() => {
                     void handleStartDrive();
                   }}
                   disabled={!canStartDrive || isStartingDrive}
-                  activeOpacity={0.86}
-                >
-                  <Text style={styles.startDriveText}>
-                    {isStartingDrive ? 'Starting…' : 'Start Drive'}
-                  </Text>
-                  <MaterialIcons color="#FFFFFF" name="navigation" size={18} />
-                </TouchableOpacity>
+                  testID="button-start-drive"
+                />
                 {canEditRoute ? (
-                  <Pressable
-                    accessibilityRole="button"
-                    disabled={isReopeningRoute}
+                  <AppButton
+                    label={isReopeningRoute ? 'Opening Route' : 'Edit Route'}
                     onPress={() => setIsConfirmingRouteEdit(true)}
-                    style={({ pressed }) => [
-                      styles.editRouteSecondaryButton,
-                      pressed && styles.editRouteSecondaryButtonPressed,
-                    ]}
+                    variant="secondary"
+                    disabled={isReopeningRoute}
                     testID="button-edit-route"
-                  >
-                    <Text style={styles.editRouteSecondaryText}>
-                      {isReopeningRoute ? 'Opening…' : 'Edit Route'}
-                    </Text>
-                  </Pressable>
+                  />
                 ) : null}
                 {!canStartDrive ? (
                   <Text style={styles.startDriveHint}>
                     {auth.status === 'loading'
                       ? 'Checking organiser access…'
                       : hasAdminAuthority
-                      ? 'Waiting for at least 1 driver with GPS'
-                      : 'Lobby controls unlock once organiser access is confirmed.'}
+                        ? 'Waiting for at least 1 driver with GPS'
+                        : 'Lobby controls unlock once organiser access is confirmed.'}
                   </Text>
                 ) : null}
                 {hasDriveStarted ? (
                   <Text style={styles.startDriveHint}>Route editing is unavailable after launch.</Text>
                 ) : null}
-              </>
-            ) : (
-              <>
-                <Text style={styles.lobbyCardEyebrow}>Live Lobby</Text>
-                <Text style={styles.lobbyCardTitle}>Take in the route while everyone joins</Text>
-                <Text style={styles.lobbyCardBody}>
-                  The organiser will start the drive once the convoy is ready.
-                </Text>
-              </>
-            )}
+              </View>
+            ) : null}
           </View>
         </View>
       ) : null}
@@ -1301,7 +1384,20 @@ export default function RunMapScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0F0F0F',
+    backgroundColor: runMapPalette.background,
+  },
+  loadingState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: runMapPalette.background,
+  },
+  loadingStateText: {
+    color: runMapPalette.textSecondary,
+    fontSize: 16,
+  },
+  mapScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: runMapPalette.overlay,
   },
 
   // Top overlay
@@ -1312,88 +1408,181 @@ const styles = StyleSheet.create({
     right: 0,
     gap: 10,
     paddingHorizontal: 14,
-    zIndex: 10,
+    zIndex: 24,
   },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    alignSelf: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
   },
   topIconButton: {
-    width: 44,
-    height: 44,
+    width: 56,
+    height: 56,
     borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.88)',
+    backgroundColor: runMapPalette.panel,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.68)',
+    borderColor: runMapPalette.borderMuted,
     ...Platform.select({
       ios: {
-        shadowColor: '#0F172A',
+        shadowColor: '#000000',
         shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.1,
+        shadowOpacity: 0.24,
+        shadowRadius: 16,
+      },
+      android: { elevation: 5 },
+    }),
+  },
+  brandWordmark: {
+    flex: 1,
+    textAlign: 'center',
+    color: runMapPalette.textPrimary,
+    fontSize: 30,
+    fontWeight: '900',
+    fontStyle: 'italic',
+    letterSpacing: -1.2,
+    textTransform: 'uppercase',
+  },
+  topStatusButton: {
+    width: 56,
+    height: 56,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: runMapPalette.panel,
+    borderWidth: 1,
+    borderColor: runMapPalette.borderMuted,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000000',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.24,
         shadowRadius: 16,
       },
       android: { elevation: 5 },
     }),
   },
   runHeaderCard: {
-    maxWidth: 248,
-    minWidth: 164,
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    backgroundColor: 'rgba(255,255,255,0.84)',
+    borderRadius: 30,
+    paddingHorizontal: 20,
+    paddingVertical: 18,
+    backgroundColor: runMapPalette.panel,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.7)',
+    borderColor: runMapPalette.borderMuted,
     ...Platform.select({
       ios: {
-        shadowColor: '#0F172A',
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.1,
-        shadowRadius: 16,
+        shadowColor: '#000000',
+        shadowOffset: { width: 0, height: 14 },
+        shadowOpacity: 0.3,
+        shadowRadius: 24,
       },
-      android: { elevation: 5 },
+      android: { elevation: 9 },
     }),
   },
+  runHeaderTopRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
   runHeaderCopy: {
-    gap: 2,
+    flex: 1,
+    gap: 6,
+  },
+  runHeaderEyebrow: {
+    color: runMapPalette.accent,
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 2.4,
+    textTransform: 'uppercase',
   },
   runHeaderTitle: {
-    color: '#0F172A',
-    fontSize: 18,
-    fontWeight: '700',
-    letterSpacing: -0.3,
+    color: runMapPalette.textPrimary,
+    fontSize: 30,
+    fontWeight: '900',
+    fontStyle: 'italic',
+    letterSpacing: -1.2,
+    textTransform: 'uppercase',
   },
   runHeaderSubtitle: {
-    color: '#64748B',
-    fontSize: 13,
-    fontWeight: '600',
-    marginTop: 2,
+    color: runMapPalette.textSecondary,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  runHeaderCodePill: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 18,
+    backgroundColor: runMapPalette.panelElevated,
+    borderWidth: 1,
+    borderColor: runMapPalette.borderMuted,
+  },
+  runHeaderCodeText: {
+    color: runMapPalette.textPrimary,
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 1.6,
+    textTransform: 'uppercase',
+  },
+  runHeaderMetrics: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 16,
+  },
+  runHeaderMetricCard: {
+    flex: 1,
+    borderRadius: 20,
+    backgroundColor: runMapPalette.panelElevated,
+    borderWidth: 1,
+    borderColor: runMapPalette.borderMuted,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 6,
+  },
+  runHeaderMetricLabel: {
+    color: runMapPalette.textMuted,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1.6,
+    textTransform: 'uppercase',
+  },
+  runHeaderMetricValue: {
+    color: runMapPalette.textPrimary,
+    fontSize: 16,
+    fontWeight: '800',
   },
   connectivityBanner: {
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 124, 110, 0.24)',
   },
   connectivityText: {
-    color: '#FFF7ED',
+    color: runMapPalette.textPrimary,
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '700',
     textAlign: 'center',
   },
   errorBanner: {
-    backgroundColor: 'rgba(220,38,38,0.94)',
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    backgroundColor: runMapPalette.panelMuted,
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 124, 110, 0.28)',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.24,
+    shadowRadius: 18,
+    elevation: 8,
   },
   errorText: {
-    color: '#FFFFFF',
+    color: runMapPalette.danger,
     fontSize: 13,
-    fontWeight: '500',
+    fontWeight: '700',
     textAlign: 'center',
   },
 
@@ -1405,10 +1594,10 @@ const styles = StyleSheet.create({
     zIndex: 20,
   },
   hazardAlert: {
-    backgroundColor: '#1C1917',
-    borderRadius: 14,
+    backgroundColor: runMapPalette.panelMuted,
+    borderRadius: 20,
     borderWidth: 1.5,
-    borderColor: '#F59E0B',
+    borderColor: runMapPalette.warning,
     overflow: 'hidden',
   },
   hazardAlertInner: {
@@ -1420,12 +1609,12 @@ const styles = StyleSheet.create({
   },
   hazardAlertText: {
     flex: 1,
-    color: '#FFFFFF',
+    color: runMapPalette.textPrimary,
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   hazardAlertDismiss: {
-    color: '#9CA3AF',
+    color: runMapPalette.textMuted,
     fontSize: 16,
     fontWeight: '700',
   },
@@ -1437,25 +1626,29 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: 'rgba(255,255,255,0.96)',
-    borderRadius: 22,
+    backgroundColor: runMapPalette.panel,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: runMapPalette.borderMuted,
     paddingHorizontal: 14,
     paddingVertical: 11,
     zIndex: 15,
     ...Platform.select({
       ios: {
-        shadowColor: '#0F172A',
+        shadowColor: '#000000',
         shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: 0.14,
+        shadowOpacity: 0.24,
         shadowRadius: 18,
       },
       android: { elevation: 5 },
     }),
   },
   recenterText: {
-    color: '#0F172A',
+    color: runMapPalette.textPrimary,
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '800',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
   },
 
   // Expandable action rail
@@ -1470,14 +1663,14 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderRadius: 22,
     marginRight: 10,
-    backgroundColor: 'rgba(255,255,255,0.92)',
+    backgroundColor: runMapPalette.panel,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.74)',
+    borderColor: runMapPalette.borderMuted,
     ...Platform.select({
       ios: {
-        shadowColor: '#0F172A',
+        shadowColor: '#000000',
         shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: 0.12,
+        shadowOpacity: 0.24,
         shadowRadius: 18,
       },
       android: { elevation: 5 },
@@ -1495,7 +1688,9 @@ const styles = StyleSheet.create({
     width: 54,
     height: 52,
     borderRadius: 16,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: runMapPalette.panelElevated,
+    borderWidth: 1,
+    borderColor: runMapPalette.borderMuted,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 3,
@@ -1507,7 +1702,7 @@ const styles = StyleSheet.create({
     opacity: 0.86,
   },
   actionRailLabel: {
-    color: '#334155',
+    color: runMapPalette.textSecondary,
     fontSize: 10,
     fontWeight: '700',
   },
@@ -1515,16 +1710,16 @@ const styles = StyleSheet.create({
     width: 54,
     height: 54,
     borderRadius: 27,
-    backgroundColor: 'rgba(255,255,255,0.94)',
+    backgroundColor: runMapPalette.panel,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.78)',
+    borderColor: runMapPalette.borderMuted,
     ...Platform.select({
       ios: {
-        shadowColor: '#0F172A',
+        shadowColor: '#000000',
         shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: 0.14,
+        shadowOpacity: 0.24,
         shadowRadius: 18,
       },
       android: { elevation: 5 },
@@ -1543,17 +1738,17 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: 'rgba(255,255,255,0.95)',
+    backgroundColor: runMapPalette.panel,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     zIndex: 15,
     borderTopWidth: 1,
-    borderColor: 'rgba(255,255,255,0.76)',
+    borderColor: runMapPalette.borderMuted,
     ...Platform.select({
       ios: {
-        shadowColor: '#0F172A',
+        shadowColor: '#000000',
         shadowOffset: { width: 0, height: -12 },
-        shadowOpacity: 0.12,
+        shadowOpacity: 0.26,
         shadowRadius: 24,
       },
       android: { elevation: 8 },
@@ -1568,7 +1763,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 4,
     borderRadius: 2,
-    backgroundColor: '#CBD5E1',
+    backgroundColor: runMapPalette.border,
   },
   driverStripHeader: {
     flexDirection: 'row',
@@ -1578,12 +1773,13 @@ const styles = StyleSheet.create({
     paddingBottom: 6,
   },
   driverStripTitle: {
-    color: '#0F172A',
+    color: runMapPalette.textPrimary,
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '800',
+    letterSpacing: 0.3,
   },
   driverStripSubtitle: {
-    color: '#64748B',
+    color: runMapPalette.textSecondary,
     fontSize: 12,
     fontWeight: '600',
     marginTop: 2,
@@ -1624,9 +1820,10 @@ const styles = StyleSheet.create({
     borderColor: '#FFFFFF',
   },
   driverStripName: {
-    color: '#334155',
+    color: runMapPalette.textSecondary,
     fontSize: 10,
-    fontWeight: '600',
+    fontWeight: '700',
+    letterSpacing: 0.6,
     maxWidth: 46,
     textAlign: 'center',
   },
@@ -1640,12 +1837,12 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
   },
   driverListTitle: {
-    color: '#0F172A',
+    color: runMapPalette.textPrimary,
     fontSize: 17,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   driverListSubtitle: {
-    color: '#64748B',
+    color: runMapPalette.textSecondary,
     fontSize: 12,
     fontWeight: '600',
     marginTop: 2,
@@ -1662,7 +1859,9 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     gap: 12,
     marginBottom: 8,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: runMapPalette.panelElevated,
+    borderWidth: 1,
+    borderColor: runMapPalette.borderMuted,
   },
   driverRowAvatar: {
     width: 40,
@@ -1677,12 +1876,12 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   driverRowName: {
-    color: '#0F172A',
+    color: runMapPalette.textPrimary,
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   driverRowStatus: {
-    color: '#64748B',
+    color: runMapPalette.textSecondary,
     fontSize: 12,
     marginTop: 1,
     textTransform: 'capitalize',
@@ -1700,28 +1899,28 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: '#E2E8F0',
+    backgroundColor: runMapPalette.accentMuted,
     alignItems: 'center',
     justifyContent: 'center',
   },
   activeHazardTitle: {
-    color: '#0F172A',
+    color: runMapPalette.textPrimary,
     fontSize: 13,
     fontWeight: '700',
   },
   activeHazardDetail: {
-    color: '#64748B',
+    color: runMapPalette.textSecondary,
     fontSize: 12,
     marginTop: 2,
   },
   removeBtn: {
-    backgroundColor: 'rgba(239,68,68,0.1)',
+    backgroundColor: runMapPalette.dangerMuted,
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
   removeBtnText: {
-    color: '#EF4444',
+    color: runMapPalette.danger,
     fontSize: 12,
     fontWeight: '700',
   },
@@ -1734,30 +1933,32 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     borderRadius: 999,
-    backgroundColor: 'rgba(220,38,38,0.08)',
+    backgroundColor: runMapPalette.dangerMuted,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 124, 110, 0.2)',
     paddingHorizontal: 14,
     paddingVertical: 10,
   },
   endRunSubtleText: {
-    color: '#DC2626',
+    color: runMapPalette.danger,
     fontSize: 13,
     fontWeight: '700',
   },
   endRunConfirmCard: {
     borderRadius: 18,
-    backgroundColor: '#FFF7F7',
+    backgroundColor: runMapPalette.panelElevated,
     borderWidth: 1,
-    borderColor: 'rgba(220,38,38,0.18)',
+    borderColor: 'rgba(255, 124, 110, 0.22)',
     padding: 14,
     gap: 12,
   },
   endRunConfirmTitle: {
-    color: '#7F1D1D',
+    color: runMapPalette.danger,
     fontSize: 15,
     fontWeight: '700',
   },
   endRunConfirmBody: {
-    color: '#7F1D1D',
+    color: runMapPalette.textSecondary,
     fontSize: 13,
     lineHeight: 19,
   },
@@ -1768,28 +1969,32 @@ const styles = StyleSheet.create({
   endRunCancelButton: {
     flex: 1,
     borderRadius: 14,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: runMapPalette.panelMuted,
     paddingVertical: 12,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: runMapPalette.borderMuted,
   },
   endRunCancelText: {
-    color: '#334155',
+    color: runMapPalette.textPrimary,
     fontSize: 13,
     fontWeight: '700',
   },
   endRunConfirmButton: {
     flex: 1,
     borderRadius: 14,
-    backgroundColor: '#DC2626',
+    backgroundColor: runMapPalette.accent,
     paddingVertical: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
   endRunConfirmButtonText: {
-    color: '#FFFFFF',
+    color: runMapPalette.background,
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
   },
 
   // Lobby bottom
@@ -1802,80 +2007,80 @@ const styles = StyleSheet.create({
     zIndex: 15,
   },
   lobbyCard: {
-    backgroundColor: 'rgba(255,255,255,0.94)',
-    borderRadius: 22,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    backgroundColor: runMapPalette.panel,
+    borderRadius: 30,
+    paddingHorizontal: 20,
+    paddingVertical: 20,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.76)',
+    borderColor: runMapPalette.borderMuted,
     ...Platform.select({
       ios: {
-        shadowColor: '#0F172A',
+        shadowColor: '#000000',
         shadowOffset: { width: 0, height: -10 },
-        shadowOpacity: 0.12,
+        shadowOpacity: 0.28,
         shadowRadius: 24,
       },
       android: { elevation: 8 },
     }),
   },
   lobbyCardEyebrow: {
-    color: '#64748B',
+    color: runMapPalette.accent,
     fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 0.2,
+    fontWeight: '800',
+    letterSpacing: 2.6,
     textTransform: 'uppercase',
   },
   lobbyCardTitle: {
-    color: '#0F172A',
-    fontSize: 18,
-    fontWeight: '700',
-    letterSpacing: -0.3,
-    marginTop: 4,
+    color: runMapPalette.textPrimary,
+    fontSize: 40,
+    fontWeight: '900',
+    fontStyle: 'italic',
+    letterSpacing: -1.6,
+    marginTop: 10,
+    textTransform: 'uppercase',
   },
   lobbyCardBody: {
-    color: '#475569',
-    fontSize: 13,
-    lineHeight: 20,
-    marginTop: 6,
-    marginBottom: 12,
-  },
-  startDriveButton: {
-    backgroundColor: LIVE_MAP_TINT,
-    borderRadius: 18,
-    minHeight: 52,
-    paddingHorizontal: 18,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  startDriveButtonDisabled: {
-    backgroundColor: 'rgba(148,163,184,0.94)',
-  },
-  startDriveText: {
-    color: '#FFFFFF',
+    color: runMapPalette.textSecondary,
     fontSize: 16,
-    fontWeight: '700',
-  },
-  editRouteSecondaryButton: {
-    alignSelf: 'center',
+    lineHeight: 24,
     marginTop: 10,
-    paddingVertical: 4,
-    paddingHorizontal: 8,
   },
-  editRouteSecondaryButtonPressed: {
-    opacity: 0.7,
+  lobbyStatsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 18,
   },
-  editRouteSecondaryText: {
-    color: LIVE_MAP_TINT,
-    fontSize: 13,
-    fontWeight: '700',
+  lobbyStatCard: {
+    flex: 1,
+    borderRadius: 20,
+    backgroundColor: runMapPalette.panelElevated,
+    borderWidth: 1,
+    borderColor: runMapPalette.borderMuted,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 6,
+  },
+  lobbyStatLabel: {
+    color: runMapPalette.textMuted,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1.8,
+    textTransform: 'uppercase',
+  },
+  lobbyStatValue: {
+    color: runMapPalette.textPrimary,
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  lobbyActions: {
+    gap: 10,
+    marginTop: 18,
   },
   startDriveHint: {
-    color: '#64748B',
+    color: runMapPalette.textMuted,
     fontSize: 12,
     fontWeight: '600',
-    marginTop: 10,
+    marginTop: 2,
     textAlign: 'center',
   },
 
@@ -1887,42 +2092,44 @@ const styles = StyleSheet.create({
   },
   routeEditConfirmBackdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(15, 23, 42, 0.18)',
+    backgroundColor: 'rgba(0, 0, 0, 0.44)',
   },
   routeEditConfirmSheet: {
     marginHorizontal: 16,
     marginBottom: 12,
-    borderRadius: 26,
-    backgroundColor: 'rgba(255,255,255,0.97)',
+    borderRadius: 30,
+    backgroundColor: runMapPalette.panel,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.82)',
+    borderColor: runMapPalette.borderMuted,
     paddingHorizontal: 18,
     paddingTop: 18,
     ...Platform.select({
       ios: {
-        shadowColor: '#0F172A',
+        shadowColor: '#000000',
         shadowOffset: { width: 0, height: 16 },
-        shadowOpacity: 0.16,
+        shadowOpacity: 0.3,
         shadowRadius: 24,
       },
       android: { elevation: 10 },
     }),
   },
   routeEditConfirmEyebrow: {
-    color: '#64748B',
+    color: runMapPalette.accent,
     fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 0.2,
+    fontWeight: '800',
+    letterSpacing: 2.4,
     textTransform: 'uppercase',
   },
   routeEditConfirmTitle: {
-    color: '#0F172A',
-    fontSize: 20,
-    fontWeight: '800',
-    marginTop: 6,
+    color: runMapPalette.textPrimary,
+    fontSize: 24,
+    fontWeight: '900',
+    fontStyle: 'italic',
+    marginTop: 8,
+    textTransform: 'uppercase',
   },
   routeEditConfirmBody: {
-    color: '#475569',
+    color: runMapPalette.textSecondary,
     fontSize: 14,
     lineHeight: 21,
     marginTop: 8,
@@ -1935,8 +2142,10 @@ const styles = StyleSheet.create({
   routeEditCancelButton: {
     flex: 1,
     minHeight: 52,
-    borderRadius: 16,
-    backgroundColor: '#F8FAFC',
+    borderRadius: 20,
+    backgroundColor: runMapPalette.panelElevated,
+    borderWidth: 1,
+    borderColor: runMapPalette.borderMuted,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1944,15 +2153,17 @@ const styles = StyleSheet.create({
     opacity: 0.78,
   },
   routeEditCancelText: {
-    color: '#334155',
+    color: runMapPalette.textPrimary,
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
   },
   routeEditConfirmButton: {
     flex: 1,
     minHeight: 52,
-    borderRadius: 16,
-    backgroundColor: LIVE_MAP_TINT,
+    borderRadius: 20,
+    backgroundColor: runMapPalette.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1963,9 +2174,11 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   routeEditConfirmText: {
-    color: '#FFFFFF',
+    color: runMapPalette.background,
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
   },
 
   // Tracking modal
@@ -1977,36 +2190,38 @@ const styles = StyleSheet.create({
     zIndex: 20,
   },
   trackingModal: {
-    backgroundColor: 'rgba(255,255,255,0.97)',
+    backgroundColor: runMapPalette.panel,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     paddingHorizontal: 24,
     paddingTop: 24,
     gap: 12,
     borderTopWidth: 1,
-    borderColor: 'rgba(255,255,255,0.78)',
+    borderColor: runMapPalette.borderMuted,
     ...Platform.select({
       ios: {
-        shadowColor: '#0F172A',
+        shadowColor: '#000000',
         shadowOffset: { width: 0, height: -12 },
-        shadowOpacity: 0.12,
+        shadowOpacity: 0.26,
         shadowRadius: 24,
       },
       android: { elevation: 10 },
     }),
   },
   trackingModalTitle: {
-    color: '#0F172A',
-    fontSize: 20,
-    fontWeight: '800',
+    color: runMapPalette.textPrimary,
+    fontSize: 24,
+    fontWeight: '900',
+    fontStyle: 'italic',
+    textTransform: 'uppercase',
   },
   trackingModalBody: {
-    color: '#64748B',
+    color: runMapPalette.textSecondary,
     fontSize: 14,
     lineHeight: 22,
   },
   trackingModalDetail: {
-    color: '#94A3B8',
+    color: runMapPalette.textMuted,
     fontSize: 12,
     lineHeight: 18,
   },

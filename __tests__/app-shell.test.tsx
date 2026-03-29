@@ -24,14 +24,15 @@ jest.mock('@/lib/recentCrewService', () => ({
 
 import { fireEvent, waitFor } from '@testing-library/react-native';
 
-import HomeScreen from '@/app/index';
+import ShellLayout from '@/app/(shell)/_layout';
+import HomeScreen from '@/app/(shell)';
 import RootLayout from '@/app/_layout';
 import CreateRunScreen from '@/app/create';
-import DriveScreen from '@/app/drive';
-import FriendsScreen from '@/app/friends';
+import DriveScreen from '@/app/(shell)/drive';
+import FriendsScreen from '@/app/(shell)/friends';
 import JoinRunScreen from '@/app/join';
 import DriverProfileScreen from '@/app/join/profile';
-import ProfileScreen from '@/app/profile';
+import ProfileScreen from '@/app/(shell)/profile';
 import RunMapScreen from '@/app/run/[id]/map';
 import RunSummaryScreen from '@/app/run/[id]/summary';
 import SettingsScreen from '@/app/settings';
@@ -44,6 +45,7 @@ import { renderWithProviders } from '@/test-utils/render';
 describe('ClubRun app shell', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    (globalThis as { __mockExpoRouterPathname?: string }).__mockExpoRouterPathname = '/';
     useRunSessionStore.getState().clearSession();
     (loadAdminRunHistory as jest.Mock).mockResolvedValue([]);
   });
@@ -90,15 +92,25 @@ describe('ClubRun app shell', () => {
   it('renders the root layout stack screens', async () => {
     const screen = renderWithProviders(<RootLayout />);
 
-    await waitFor(() => expect(screen.getByText('screen:index')).toBeTruthy());
-    expect(screen.getByText('screen:drive')).toBeTruthy();
-    expect(screen.getByText('screen:friends')).toBeTruthy();
-    expect(screen.getByText('screen:profile')).toBeTruthy();
+    await waitFor(() => expect(screen.getByText('screen:(shell)')).toBeTruthy());
     expect(screen.getByText('screen:settings')).toBeTruthy();
     expect(screen.getByText('screen:create/index')).toBeTruthy();
     expect(screen.getByText('screen:join/index')).toBeTruthy();
     expect(screen.getByText('screen:run/[id]/map')).toBeTruthy();
     expect(screen.getByText('screen:run/[id]/summary')).toBeTruthy();
+  });
+
+  it('renders the persistent shell tab bar inside the shared shell layout', async () => {
+    const shellScreen = renderWithProviders(<ShellLayout />);
+
+    await waitFor(() => expect(shellScreen.getByText('screen:index')).toBeTruthy());
+    expect(shellScreen.getByText('screen:drive')).toBeTruthy();
+    expect(shellScreen.getByText('screen:friends')).toBeTruthy();
+    expect(shellScreen.getByText('screen:profile')).toBeTruthy();
+    await waitFor(() => expect(shellScreen.getByTestId('tab-runs')).toBeTruthy());
+    expect(shellScreen.getByTestId('tab-drive')).toBeTruthy();
+    expect(shellScreen.getByTestId('tab-friends')).toBeTruthy();
+    expect(shellScreen.getByTestId('tab-profile')).toBeTruthy();
   });
 
   it('renders each placeholder route shell', () => {
@@ -188,8 +200,31 @@ describe('ClubRun app shell', () => {
         globalThis as {
           __mockExpoRouter?: { push: jest.Mock };
         }
-      ).__mockExpoRouter?.push
+    ).__mockExpoRouter?.push
     ).toHaveBeenCalledWith('/run/run_drive/map');
+  });
+
+  it('keeps the runs tab on the dashboard even when a live session exists', async () => {
+    useRunSessionStore.getState().setSession({
+      runId: 'run_live',
+      driverId: 'driver_admin',
+      driverName: 'Jamie',
+      joinCode: '123456',
+      role: 'admin',
+      status: 'draft',
+    });
+
+    const screen = renderWithProviders(<HomeScreen />);
+
+    await waitFor(() => expect(screen.getAllByText('Runs').length).toBeGreaterThan(0));
+    expect(screen.getByTestId('screen-home')).toBeTruthy();
+    expect(
+      (
+        globalThis as {
+          __mockExpoRouter?: { replace: jest.Mock };
+        }
+      ).__mockExpoRouter?.replace
+    ).not.toHaveBeenCalledWith('/drive');
   });
 
   it('shows launch actions and the next scheduled run when there is no live convoy', () => {

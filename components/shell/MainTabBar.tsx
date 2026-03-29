@@ -116,3 +116,23 @@ export function MainTabBar({ activeTab }: { activeTab: AppShellTab }) {
     </View>
   );
 }
+
+export function resolveShellTabForPathname(pathname: string | null | undefined): AppShellTab | null {
+  if (pathname === '/') {
+    return 'runs';
+  }
+
+  if (pathname === '/drive') {
+    return 'drive';
+  }
+
+  if (pathname === '/friends') {
+    return 'friends';
+  }
+
+  if (pathname === '/profile') {
+    return 'profile';
+  }
+
+  return null;
+}

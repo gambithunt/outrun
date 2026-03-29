@@ -74,7 +74,7 @@ describe('RoutePlanningScreen', () => {
     const screen = renderWithProviders(<RoutePlanningScreen />);
 
     expect(screen.getByTestId('route-planning-map')).toBeTruthy();
-    expect(screen.getByTestId('route-planner-stats-card')).toBeTruthy();
+    expect(screen.queryByTestId('route-planner-stats-card')).toBeNull();
     expect(screen.getByTestId('route-planner-sheet')).toBeTruthy();
     expect(screen.getByTestId('text-stage-title')).toHaveTextContent('Choose Start');
     expect(screen.getByTestId('text-guided-step')).toHaveTextContent('Choose start');
@@ -103,7 +103,7 @@ describe('RoutePlanningScreen', () => {
     expect(screen.getByTestId('planner-action-pick')).toBeTruthy();
   });
 
-  it('shows live readiness in the top card, saves the route draft, marks later edits dirty, then opens the lobby after re-saving', async () => {
+  it('shows live readiness in the minimized top card once a route exists, saves the route draft, marks later edits dirty, then opens the lobby after re-saving', async () => {
     (saveRouteDraftToRunWithFirebase as jest.Mock).mockResolvedValue(undefined);
     (startRunWithSavedRouteWithFirebase as jest.Mock).mockResolvedValue(undefined);
     (subscribeToDriversWithFirebase as jest.Mock).mockImplementation((_runId, onData) => {
@@ -135,7 +135,7 @@ describe('RoutePlanningScreen', () => {
     });
 
     const screen = renderWithProviders(<RoutePlanningScreen />);
-    expect(screen.getByTestId('text-driver-ready-count')).toHaveTextContent('1/3 ready');
+    expect(screen.queryByTestId('text-driver-ready-count')).toBeNull();
 
     fireEvent.press(screen.getByTestId('button-use-current-location'));
     await waitFor(() => expect(screen.getByTestId('route-summary-chip')).toBeTruthy());
@@ -156,6 +156,13 @@ describe('RoutePlanningScreen', () => {
     expect(screen.getByTestId('button-open-lobby')).toBeEnabled();
     expect(screen.getByTestId('button-open-lobby')).toHaveTextContent('Open Lobby');
     expect(screen.getByTestId('text-route-save-state')).toHaveTextContent('Saved');
+
+    fireEvent.press(screen.getByTestId('button-minimize-route-sheet'));
+    await waitFor(() => expect(screen.getByTestId('route-planner-stats-card')).toBeTruthy());
+    expect(screen.getByTestId('text-driver-ready-count')).toHaveTextContent('1/3 ready');
+    expect(screen.getByTestId('button-open-lobby')).toBeTruthy();
+
+    fireEvent.press(screen.getByTestId('route-summary-chip'));
 
     fireEvent.press(screen.getByTestId('button-add-stop-inline'));
     expect(screen.getByTestId('route-flow-stop-waypoint-1')).toBeTruthy();
@@ -183,7 +190,7 @@ describe('RoutePlanningScreen', () => {
   it('keeps route actions contextual until a valid route exists', async () => {
     const screen = renderWithProviders(<RoutePlanningScreen />);
 
-    expect(screen.getByTestId('button-open-lobby')).toBeDisabled();
+    expect(screen.queryByTestId('button-open-lobby')).toBeNull();
     expect(screen.queryByTestId('button-save-route')).toBeNull();
     expect(screen.queryByTestId('button-swap-start-destination')).toBeNull();
 
@@ -193,7 +200,7 @@ describe('RoutePlanningScreen', () => {
 
     expect(screen.queryByTestId('button-save-route')).toBeNull();
     expect(screen.queryByTestId('button-swap-start-destination')).toBeNull();
-    expect(screen.getByTestId('button-open-lobby')).toBeDisabled();
+    expect(screen.queryByTestId('button-open-lobby')).toBeNull();
 
     fireEvent.changeText(screen.getByTestId('input-stop-search'), '-25.7479, 28.2293');
 

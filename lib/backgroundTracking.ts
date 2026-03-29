@@ -3,6 +3,7 @@ import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import { child, push, ref, set, type Database } from 'firebase/database';
 
+import { ensureAuthenticatedUserWithFirebase } from '@/lib/auth';
 import { getFirebaseDatabase, hasFirebaseConfig } from '@/lib/firebase';
 import { mapLocationUpdateToDriverLocation } from '@/lib/locationService';
 import { DriverLocation } from '@/types/domain';
@@ -81,6 +82,10 @@ type BackgroundTrackingClient = {
   appendTrackPoint: (runId: string, driverId: string, location: DriverLocation) => Promise<void>;
 };
 
+type BackgroundTrackingAuthUser = {
+  uid: string;
+};
+
 type BackgroundTrackingStartResult = {
   enabled: boolean;
   reason: 'granted' | 'permission_denied';
@@ -131,6 +136,7 @@ export function createBackgroundTrackingClient(database: Database): BackgroundTr
 
 export function registerBackgroundTrackingTask(options: {
   client: BackgroundTrackingClient;
+  ensureAuthenticatedUser?: () => Promise<BackgroundTrackingAuthUser | null>;
   storage: BackgroundTrackingStorage;
   taskManagerModule: BackgroundTaskManagerModule;
 }) {
@@ -145,6 +151,11 @@ export function registerBackgroundTrackingTask(options: {
 
     const session = await options.storage.load();
     if (!session) {
+      return;
+    }
+
+    const authenticatedUser = await options.ensureAuthenticatedUser?.();
+    if (!authenticatedUser?.uid || authenticatedUser.uid !== session.driverId) {
       return;
     }
 
@@ -238,6 +249,7 @@ export function ensureBackgroundTrackingTaskRegisteredWithExpo() {
   const database = getFirebaseDatabase();
   registerBackgroundTrackingTask({
     client: createBackgroundTrackingClient(database),
+    ensureAuthenticatedUser: ensureAuthenticatedUserWithFirebase,
     storage: expoBackgroundTrackingStorage,
     taskManagerModule: TaskManager as BackgroundTaskManagerModule,
   });

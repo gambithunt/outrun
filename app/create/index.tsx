@@ -1,6 +1,6 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, Share, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -50,6 +50,7 @@ export default function CreateRunScreen() {
   const [runId, setRunId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showRunDetails, setShowRunDetails] = useState(false);
+  const submissionLockRef = useRef(false);
 
   useEffect(() => {
     const invitedParam = params.invitedUserIds;
@@ -76,6 +77,11 @@ export default function CreateRunScreen() {
   const createMode = scheduledDate.trim() && scheduledTime.trim() ? 'Scheduled' : 'Draft';
 
   async function handleCreateRun() {
+    if (submissionLockRef.current) {
+      return;
+    }
+
+    submissionLockRef.current = true;
     setError(null);
     setIsSubmitting(true);
 
@@ -109,14 +115,27 @@ export default function CreateRunScreen() {
         status: createdRun.run.status,
         createdAt: Date.now(),
       });
+      router.push({
+        pathname: '/create/route',
+        params: {
+          runId: createdRun.runId,
+          joinCode: createdRun.joinCode,
+        },
+      });
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : 'Unable to create run.');
     } finally {
+      submissionLockRef.current = false;
       setIsSubmitting(false);
     }
   }
 
   async function handleScheduleRun() {
+    if (submissionLockRef.current) {
+      return;
+    }
+
+    submissionLockRef.current = true;
     setError(null);
     setIsSubmitting(true);
 
@@ -154,6 +173,7 @@ export default function CreateRunScreen() {
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : 'Unable to schedule run.');
     } finally {
+      submissionLockRef.current = false;
       setIsSubmitting(false);
     }
   }
@@ -486,12 +506,14 @@ export default function CreateRunScreen() {
             onPress={handleCreateRun}
             testID="button-submit-run"
             variant="primary"
+            disabled={isSubmitting}
           />
           <CreateActionButton
             label="Schedule Run"
             onPress={handleScheduleRun}
             testID="button-schedule-run"
             variant="secondary"
+            disabled={isSubmitting}
           />
           <Text style={{ color: createPalette.textMuted, lineHeight: 21 }}>
             You can still adjust details before sharing the drive with the club.
@@ -916,11 +938,13 @@ function DriverCounterButton({
 }
 
 function CreateActionButton({
+  disabled = false,
   label,
   onPress,
   testID,
   variant,
 }: {
+  disabled?: boolean;
   label: string;
   onPress: () => void;
   testID?: string;
@@ -940,6 +964,7 @@ function CreateActionButton({
   return (
     <Pressable
       accessibilityRole="button"
+      disabled={disabled}
       onPress={onPress}
       style={({ pressed }) => ({
         minHeight: 60,
@@ -954,7 +979,7 @@ function CreateActionButton({
         shadowOpacity: variant === 'primary' ? 0.28 : 0,
         shadowRadius: variant === 'primary' ? 20 : 0,
         shadowOffset: { width: 0, height: 10 },
-        opacity: pressed ? 0.88 : 1,
+        opacity: disabled ? 0.55 : pressed ? 0.88 : 1,
       })}
       testID={testID}
     >

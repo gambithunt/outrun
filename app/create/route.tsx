@@ -139,10 +139,12 @@ export default function RoutePlanningScreen() {
   const currentSheetState: RoutePlannerSheetState = isPickMode ? 'hidden' : sheetState;
   const isMainSheet = sheetState === 'main';
   const isMinimizedSheet = sheetState === 'minimized';
+  const hasRoutePreview = Boolean(routePreview);
   const isSelectedStopComplete = isRouteStopComplete(selectedStop);
   const isWaypointPlacementMode = selectedStop.kind === 'waypoint' && !isSelectedStopComplete;
   const isDriveComposerReorderMode = driveComposerMode === 'reorder';
   const shouldShowPlacementActions = !isDriveComposerReorderMode;
+  const shouldShowPersistentLobbyCard = isMinimizedSheet && hasRoutePreview;
   const stageTitle = getPlannerStageTitle(plannerStage, selectedStop, isWaypointPlacementMode);
   const stageSubtitle = getPlannerStageSubtitle(
     plannerStage,
@@ -864,130 +866,132 @@ export default function RoutePlanningScreen() {
             </View>
           </View>
 
-          <View
-            style={{
-              borderRadius: 28,
-              padding: 16,
-              backgroundColor: `${theme.colors.panel}F2`,
-              borderWidth: 1,
-              borderColor: theme.colors.border,
-              gap: 14,
-              shadowColor: '#000000',
-              shadowOpacity: 0.22,
-              shadowRadius: 20,
-              shadowOffset: { width: 0, height: 10 },
-              elevation: 8,
-            }}
-            testID="route-planner-stats-card"
-          >
+          {shouldShowPersistentLobbyCard ? (
             <View
               style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: 12,
+                borderRadius: 28,
+                padding: 16,
+                backgroundColor: `${theme.colors.panel}F2`,
+                borderWidth: 1,
+                borderColor: theme.colors.border,
+                gap: 14,
+                shadowColor: '#000000',
+                shadowOpacity: 0.22,
+                shadowRadius: 20,
+                shadowOffset: { width: 0, height: 10 },
+                elevation: 8,
               }}
+              testID="route-planner-stats-card"
             >
-              <View style={{ flex: 1, gap: 4 }}>
-                <Text
-                  style={{
-                    color: theme.colors.accent,
-                    fontSize: 12,
-                    fontWeight: '800',
-                    letterSpacing: 1.8,
-                    textTransform: 'uppercase',
-                  }}
-                >
-                  Open Lobby
-                </Text>
-                <Text
-                  style={{ color: theme.colors.textPrimary, fontSize: 28, fontWeight: '900' }}
-                  testID="text-driver-ready-count"
-                >
-                  {driverReadinessLabel}
-                </Text>
-              </View>
               <View
                 style={{
-                  minWidth: 120,
-                  paddingHorizontal: 14,
-                  paddingVertical: 10,
-                  borderRadius: 18,
-                  backgroundColor: theme.colors.background,
-                  borderWidth: 1,
-                  borderColor: theme.colors.border,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 12,
                 }}
               >
-                <Text
-                  style={{
-                    color: theme.colors.textPrimary,
-                    fontSize: 12,
-                    fontWeight: '800',
-                    letterSpacing: 1.4,
-                    textTransform: 'uppercase',
-                    textAlign: 'center',
-                  }}
-                  testID="text-route-save-state"
-                >
-                  {routeSaveStateLabel}
-                </Text>
-              </View>
-            </View>
-
-            <View
-              style={{
-                flexDirection: 'row',
-                gap: 10,
-              }}
-            >
-              {routeStats.map((stat) => (
+                <View style={{ flex: 1, gap: 4 }}>
+                  <Text
+                    style={{
+                      color: theme.colors.accent,
+                      fontSize: 12,
+                      fontWeight: '800',
+                      letterSpacing: 1.8,
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    Open Lobby
+                  </Text>
+                  <Text
+                    style={{ color: theme.colors.textPrimary, fontSize: 28, fontWeight: '900' }}
+                    testID="text-driver-ready-count"
+                  >
+                    {driverReadinessLabel}
+                  </Text>
+                </View>
                 <View
-                  key={stat.key}
                   style={{
-                    flex: 1,
-                    borderRadius: 20,
-                    backgroundColor: theme.colors.surface,
+                    minWidth: 120,
+                    paddingHorizontal: 14,
+                    paddingVertical: 10,
+                    borderRadius: 18,
+                    backgroundColor: theme.colors.background,
                     borderWidth: 1,
                     borderColor: theme.colors.border,
-                    paddingHorizontal: 12,
-                    paddingVertical: 12,
-                    gap: 4,
                   }}
                 >
                   <Text
                     style={{
-                      color: theme.colors.textSecondary,
-                      fontSize: 10,
+                      color: theme.colors.textPrimary,
+                      fontSize: 12,
                       fontWeight: '800',
                       letterSpacing: 1.4,
                       textTransform: 'uppercase',
+                      textAlign: 'center',
                     }}
+                    testID="text-route-save-state"
                   >
-                    {stat.label}
-                  </Text>
-                  <Text
-                    style={{ color: theme.colors.textPrimary, fontSize: 18, fontWeight: '800' }}
-                    testID={
-                      stat.key === 'distance'
-                        ? 'text-route-distance'
-                        : stat.key === 'duration'
-                          ? 'text-route-duration'
-                          : 'text-route-stop-count'
-                    }
-                  >
-                    {stat.value}
+                    {routeSaveStateLabel}
                   </Text>
                 </View>
-              ))}
-            </View>
+              </View>
 
-            <AppButton
-              disabled={!routePreview || isResolving || isPreviewing || isSaving || isStarting}
-              label={isStarting ? 'Opening Lobby…' : lobbyActionLabel}
-              onPress={handleOpenLobby}
-              testID="button-open-lobby"
-            />
-          </View>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  gap: 10,
+                }}
+              >
+                {routeStats.map((stat) => (
+                  <View
+                    key={stat.key}
+                    style={{
+                      flex: 1,
+                      borderRadius: 20,
+                      backgroundColor: theme.colors.surface,
+                      borderWidth: 1,
+                      borderColor: theme.colors.border,
+                      paddingHorizontal: 12,
+                      paddingVertical: 12,
+                      gap: 4,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: theme.colors.textSecondary,
+                        fontSize: 10,
+                        fontWeight: '800',
+                        letterSpacing: 1.4,
+                        textTransform: 'uppercase',
+                      }}
+                    >
+                      {stat.label}
+                    </Text>
+                    <Text
+                      style={{ color: theme.colors.textPrimary, fontSize: 18, fontWeight: '800' }}
+                      testID={
+                        stat.key === 'distance'
+                          ? 'text-route-distance'
+                          : stat.key === 'duration'
+                            ? 'text-route-duration'
+                            : 'text-route-stop-count'
+                      }
+                    >
+                      {stat.value}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+
+              <AppButton
+                disabled={!routePreview || isResolving || isPreviewing || isSaving || isStarting}
+                label={isStarting ? 'Opening Lobby…' : lobbyActionLabel}
+                onPress={handleOpenLobby}
+                testID="button-open-lobby"
+              />
+            </View>
+          ) : null}
         </View>
 
         <View
@@ -1304,6 +1308,82 @@ export default function RoutePlanningScreen() {
               <PlannerNotice tone="success">{statusMessage}</PlannerNotice>
             ) : null}
             {isResolving || isPreviewing || isSaving || isStarting ? <LoadingSpinner /> : null}
+
+            {hasRoutePreview ? (
+              <View
+                style={{
+                  borderRadius: 24,
+                  borderWidth: 1,
+                  borderColor: theme.colors.border,
+                  backgroundColor: theme.colors.surface,
+                  paddingHorizontal: 14,
+                  paddingVertical: 14,
+                  gap: 12,
+                }}
+              >
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 12,
+                  }}
+                >
+                  {routeStats.map((stat, index) => (
+                    <View
+                      key={stat.key}
+                      style={{
+                        flex: 1,
+                        gap: 3,
+                        paddingLeft: index === 0 ? 0 : 12,
+                        borderLeftWidth: index === 0 ? 0 : 1,
+                        borderLeftColor: index === 0 ? 'transparent' : theme.colors.border,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: theme.colors.textSecondary,
+                          fontSize: 11,
+                          fontWeight: '800',
+                          letterSpacing: 1.1,
+                          textTransform: 'uppercase',
+                        }}
+                      >
+                        {stat.label}
+                      </Text>
+                      <Text
+                        style={{ color: theme.colors.textPrimary, fontSize: 18, fontWeight: '800' }}
+                        testID={
+                          stat.key === 'distance'
+                            ? 'text-route-distance'
+                            : stat.key === 'duration'
+                              ? 'text-route-duration'
+                              : 'text-route-stop-count'
+                        }
+                      >
+                        {stat.value}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+                <View
+                  style={{
+                    alignSelf: 'flex-start',
+                    paddingHorizontal: 10,
+                    paddingVertical: 6,
+                    borderRadius: 999,
+                    backgroundColor: theme.colors.surfaceElevated,
+                  }}
+                >
+                  <Text
+                    style={{ color: theme.colors.textSecondary, fontWeight: '700' }}
+                    testID="text-route-save-state"
+                  >
+                    {routeSaveStateLabel}
+                  </Text>
+                </View>
+              </View>
+            ) : null}
 
             {shouldShowPlacementActions && !isDriveComposerReorderMode ? (
               <View style={{ gap: 12 }}>
@@ -1698,14 +1778,23 @@ export default function RoutePlanningScreen() {
                 >
                   <Text style={{ color: theme.colors.textSecondary, lineHeight: 20 }}>
                     Save the route if you want to come back later. The lobby action stays pinned at
-                    the top-right and will save automatically first when needed.
+                    the sheet while you are editing, and the minimized map view keeps it one tap away.
                   </Text>
-                  <AppButton
-                    disabled={!routePreview}
-                    label="Save Route"
-                    onPress={handleSaveRoute}
-                    testID="button-save-route"
-                  />
+                  <View style={{ gap: 10 }}>
+                    <AppButton
+                      disabled={!routePreview}
+                      label="Save Route"
+                      onPress={handleSaveRoute}
+                      testID="button-save-route"
+                    />
+                    <AppButton
+                      disabled={!routePreview || isResolving || isPreviewing || isSaving || isStarting}
+                      label={isStarting ? 'Opening Lobby…' : lobbyActionLabel}
+                      onPress={handleOpenLobby}
+                      testID="button-open-lobby"
+                      variant="secondary"
+                    />
+                  </View>
                 </View>
               ) : (
                 <Text style={{ color: theme.colors.textSecondary, lineHeight: 20 }}>

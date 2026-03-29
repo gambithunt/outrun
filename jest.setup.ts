@@ -6,6 +6,7 @@ const mockExpoRouter = {
 
 (globalThis as { __mockExpoRouter?: typeof mockExpoRouter }).__mockExpoRouter = mockExpoRouter;
 (globalThis as { __mockExpoRouterParams?: Record<string, string> }).__mockExpoRouterParams = {};
+(globalThis as { __mockExpoRouterPathname?: string }).__mockExpoRouterPathname = '/';
 
 jest.mock('@react-native-async-storage/async-storage', () =>
   require('@react-native-async-storage/async-storage/jest/async-storage-mock')
@@ -124,6 +125,8 @@ jest.mock('expo-router', () => {
       }
     ),
     useFocusEffect: (cb: () => void) => { const { useEffect } = require('react'); useEffect(cb, []); },
+    usePathname: () =>
+      (globalThis as { __mockExpoRouterPathname?: string }).__mockExpoRouterPathname ?? '/',
     useRouter: () => (globalThis as { __mockExpoRouter?: typeof mockExpoRouter }).__mockExpoRouter,
     useLocalSearchParams: () =>
       (globalThis as { __mockExpoRouterParams?: Record<string, string> }).__mockExpoRouterParams ?? {},

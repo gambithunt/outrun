@@ -102,11 +102,15 @@ describe('backgroundTracking', () => {
     const defineTask = jest.fn();
     const writeDriverLocation = jest.fn(async () => undefined);
     const appendTrackPoint = jest.fn(async () => undefined);
+    const ensureAuthenticatedUser = jest.fn(async () => ({
+      uid: 'driver_3',
+    }));
     registerBackgroundTrackingTask({
       client: {
         writeDriverLocation,
         appendTrackPoint,
       },
+      ensureAuthenticatedUser,
       storage,
       taskManagerModule: {
         defineTask,
@@ -136,6 +140,7 @@ describe('backgroundTracking', () => {
     });
 
     expect(defineTask).toHaveBeenCalledWith(BACKGROUND_TRACKING_TASK_NAME, expect.any(Function));
+    expect(ensureAuthenticatedUser).toHaveBeenCalledTimes(1);
     expect(writeDriverLocation).toHaveBeenCalledWith(
       'run_3',
       'driver_3',
@@ -156,6 +161,52 @@ describe('backgroundTracking', () => {
         speed: 10,
       })
     );
+  });
+
+  it('skips background writes when Firebase auth is unavailable in the task runtime', async () => {
+    const storage = createBackgroundTrackingStorage(AsyncStorage);
+    await storage.save({
+      runId: 'run_5',
+      driverId: 'driver_5',
+    });
+
+    const defineTask = jest.fn();
+    const writeDriverLocation = jest.fn(async () => undefined);
+    const appendTrackPoint = jest.fn(async () => undefined);
+    const ensureAuthenticatedUser = jest.fn(async () => null);
+
+    registerBackgroundTrackingTask({
+      client: {
+        writeDriverLocation,
+        appendTrackPoint,
+      },
+      ensureAuthenticatedUser,
+      storage,
+      taskManagerModule: {
+        defineTask,
+        isTaskDefined: jest.fn(() => false),
+      },
+    });
+
+    const taskHandler = defineTask.mock.calls[0]?.[1] as ((payload: unknown) => Promise<void>) | undefined;
+
+    await taskHandler?.({
+      data: {
+        locations: [
+          {
+            coords: {
+              latitude: -26.2041,
+              longitude: 28.0473,
+            },
+            timestamp: 2200,
+          },
+        ],
+      },
+    });
+
+    expect(ensureAuthenticatedUser).toHaveBeenCalledTimes(1);
+    expect(writeDriverLocation).not.toHaveBeenCalled();
+    expect(appendTrackPoint).not.toHaveBeenCalled();
   });
 
   it('does not redefine the task when it already exists', () => {

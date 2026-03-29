@@ -111,12 +111,6 @@ export default function HomeScreen() {
     };
   }, [accountUserId]);
 
-  useEffect(() => {
-    if (session.runId && session.status && session.status !== 'ended') {
-      router.replace('/drive');
-    }
-  }, [router, session.runId, session.status]);
-
   const dashboard = useMemo(
     () =>
       buildRunsDashboardSections({
