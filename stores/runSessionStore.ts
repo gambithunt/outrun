@@ -4,7 +4,7 @@ import { RouteData, RunStatus, RunVisibility } from '@/types/domain';
 
 type SessionRole = 'admin' | 'driver' | null;
 export type ConnectivityStatus = 'online' | 'offline' | 'reconnecting';
-export type AppShellTab = 'runs' | 'drive' | 'friends' | 'profile';
+export type AppShellTab = 'start' | 'drive' | 'friends' | 'profile';
 
 type SignedInAccount = {
   userId: string;
@@ -66,7 +66,7 @@ const initialState = {
   route: null,
   isRunLoaded: false,
   connectivityStatus: 'online' as ConnectivityStatus,
-  currentTab: 'runs' as AppShellTab,
+  currentTab: 'start' as AppShellTab,
   account: null,
   scheduledRunHero: null,
 };

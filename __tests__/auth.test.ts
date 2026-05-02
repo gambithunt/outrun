@@ -2,8 +2,10 @@ import {
   ensureAuthenticatedUser,
   linkAnonymousAccount,
   requireAuthenticatedUserId,
+  sendPasswordResetEmailWithFirebase,
   signOutToGuestOrSignedOutState,
 } from '@/lib/auth';
+import { sendPasswordResetEmail } from 'firebase/auth';
 
 describe('auth helpers', () => {
   it('returns the existing firebase user when one is already signed in', async () => {
@@ -104,5 +106,21 @@ describe('auth helpers', () => {
 
     expect(signOut).toHaveBeenCalledTimes(1);
     expect(signIn).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends a password reset email for an existing account', async () => {
+    await expect(
+      sendPasswordResetEmailWithFirebase('jamie@example.com', {
+        EXPO_PUBLIC_FIREBASE_API_KEY: 'api-key',
+        EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN: 'auth-domain',
+        EXPO_PUBLIC_FIREBASE_DATABASE_URL: 'database-url',
+        EXPO_PUBLIC_FIREBASE_PROJECT_ID: 'project-id',
+        EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET: 'storage-bucket',
+        EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: 'sender-id',
+        EXPO_PUBLIC_FIREBASE_APP_ID: 'app-id',
+      })
+    ).resolves.toBeUndefined();
+
+    expect(sendPasswordResetEmail).toHaveBeenCalledWith(expect.anything(), 'jamie@example.com');
   });
 });

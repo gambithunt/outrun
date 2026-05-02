@@ -2,7 +2,8 @@ import { MaterialIcons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { PanResponder, Pressable, SafeAreaView, ScrollView, Text, View } from 'react-native';
+import { PanResponder, Pressable, ScrollView, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ClubRunMap } from '@/components/map/ClubRunMap';
 import { AppButton } from '@/components/ui/AppButton';
@@ -61,6 +62,7 @@ export default function RoutePlanningScreen() {
   const router = useRouter();
   const { runId } = useLocalSearchParams<{ runId?: string }>();
   const { theme } = useAppTheme();
+  const insets = useSafeAreaInsets();
   const setRunSnapshot = useRunSessionStore((state) => state.setRunSnapshot);
   const savedRoute = useRunSessionStore((state) => state.route);
   const currentLocation = useDeviceLocationStore((state) => state.currentLocation);
@@ -122,9 +124,6 @@ export default function RoutePlanningScreen() {
     : hasMeaningfulDraft
       ? 'Unsaved changes'
       : 'Draft in progress';
-  const driversJoinedCount = drivers.length;
-  const driversReadyCount = drivers.filter((driver) => driver.location).length;
-  const driverReadinessLabel = `${driversReadyCount}/${driversJoinedCount} ready`;
   const lobbyActionLabel = routePreview
     ? isRouteSaved
       ? 'Open Lobby'
@@ -144,7 +143,6 @@ export default function RoutePlanningScreen() {
   const isWaypointPlacementMode = selectedStop.kind === 'waypoint' && !isSelectedStopComplete;
   const isDriveComposerReorderMode = driveComposerMode === 'reorder';
   const shouldShowPlacementActions = !isDriveComposerReorderMode;
-  const shouldShowPersistentLobbyCard = isMinimizedSheet && hasRoutePreview;
   const stageTitle = getPlannerStageTitle(plannerStage, selectedStop, isWaypointPlacementMode);
   const stageSubtitle = getPlannerStageSubtitle(
     plannerStage,
@@ -152,7 +150,10 @@ export default function RoutePlanningScreen() {
     isSelectedStopComplete,
     isWaypointPlacementMode
   );
-  const mapButtonBottom = isPickMode ? 148 : isMinimizedSheet ? SHEET_MINIMIZED_BOTTOM : SHEET_EXPANDED_BOTTOM;
+  const floatingSheetBottom = insets.bottom + 16;
+  const mapButtonBottom =
+    floatingSheetBottom +
+    (isPickMode ? 132 : isMinimizedSheet ? 80 : SHEET_EXPANDED_BOTTOM - 16);
   const shouldShowNoMatches =
     !isPickMode &&
     searchInput.trim().length >= 3 &&
@@ -802,7 +803,7 @@ export default function RoutePlanningScreen() {
   }
 
   return (
-    <SafeAreaView
+    <View
       style={{ flex: 1, backgroundColor: theme.colors.background }}
       testID="screen-route-planning"
     >
@@ -823,175 +824,18 @@ export default function RoutePlanningScreen() {
         <View
           style={{
             position: 'absolute',
-            top: 18,
-            left: 18,
-            right: 18,
-            gap: 14,
+            top: insets.top + 12,
+            left: 16,
           }}
         >
-          <View
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 12,
-            }}
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.back()}
+            style={floatingMapButtonStyle(theme.colors.border, `${theme.colors.surface}F0`)}
+            testID="button-back-route-planner"
           >
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => router.back()}
-              style={floatingTopButtonStyle(theme.colors.border, theme.colors.surface)}
-              testID="button-back-route-planner"
-            >
-              <MaterialIcons name="arrow-back" size={24} color={theme.colors.textPrimary} />
-            </Pressable>
-
-            <Text
-              style={{
-                flex: 1,
-                color: theme.colors.textPrimary,
-                fontSize: 26,
-                fontWeight: '900',
-                fontStyle: 'italic',
-                letterSpacing: -0.9,
-                textTransform: 'uppercase',
-                textAlign: 'center',
-              }}
-            >
-              ClubRun
-            </Text>
-
-            <View style={floatingTopButtonStyle(theme.colors.border, theme.colors.surface)}>
-              <MaterialIcons name="wifi-tethering" size={22} color={theme.colors.accent} />
-            </View>
-          </View>
-
-          {shouldShowPersistentLobbyCard ? (
-            <View
-              style={{
-                borderRadius: 28,
-                padding: 16,
-                backgroundColor: `${theme.colors.panel}F2`,
-                borderWidth: 1,
-                borderColor: theme.colors.border,
-                gap: 14,
-                shadowColor: '#000000',
-                shadowOpacity: 0.22,
-                shadowRadius: 20,
-                shadowOffset: { width: 0, height: 10 },
-                elevation: 8,
-              }}
-              testID="route-planner-stats-card"
-            >
-              <View
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 12,
-                }}
-              >
-                <View style={{ flex: 1, gap: 4 }}>
-                  <Text
-                    style={{
-                      color: theme.colors.accent,
-                      fontSize: 12,
-                      fontWeight: '800',
-                      letterSpacing: 1.8,
-                      textTransform: 'uppercase',
-                    }}
-                  >
-                    Open Lobby
-                  </Text>
-                  <Text
-                    style={{ color: theme.colors.textPrimary, fontSize: 28, fontWeight: '900' }}
-                    testID="text-driver-ready-count"
-                  >
-                    {driverReadinessLabel}
-                  </Text>
-                </View>
-                <View
-                  style={{
-                    minWidth: 120,
-                    paddingHorizontal: 14,
-                    paddingVertical: 10,
-                    borderRadius: 18,
-                    backgroundColor: theme.colors.background,
-                    borderWidth: 1,
-                    borderColor: theme.colors.border,
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: theme.colors.textPrimary,
-                      fontSize: 12,
-                      fontWeight: '800',
-                      letterSpacing: 1.4,
-                      textTransform: 'uppercase',
-                      textAlign: 'center',
-                    }}
-                    testID="text-route-save-state"
-                  >
-                    {routeSaveStateLabel}
-                  </Text>
-                </View>
-              </View>
-
-              <View
-                style={{
-                  flexDirection: 'row',
-                  gap: 10,
-                }}
-              >
-                {routeStats.map((stat) => (
-                  <View
-                    key={stat.key}
-                    style={{
-                      flex: 1,
-                      borderRadius: 20,
-                      backgroundColor: theme.colors.surface,
-                      borderWidth: 1,
-                      borderColor: theme.colors.border,
-                      paddingHorizontal: 12,
-                      paddingVertical: 12,
-                      gap: 4,
-                    }}
-                  >
-                    <Text
-                      style={{
-                        color: theme.colors.textSecondary,
-                        fontSize: 10,
-                        fontWeight: '800',
-                        letterSpacing: 1.4,
-                        textTransform: 'uppercase',
-                      }}
-                    >
-                      {stat.label}
-                    </Text>
-                    <Text
-                      style={{ color: theme.colors.textPrimary, fontSize: 18, fontWeight: '800' }}
-                      testID={
-                        stat.key === 'distance'
-                          ? 'text-route-distance'
-                          : stat.key === 'duration'
-                            ? 'text-route-duration'
-                            : 'text-route-stop-count'
-                      }
-                    >
-                      {stat.value}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-
-              <AppButton
-                disabled={!routePreview || isResolving || isPreviewing || isSaving || isStarting}
-                label={isStarting ? 'Opening Lobby…' : lobbyActionLabel}
-                onPress={handleOpenLobby}
-                testID="button-open-lobby"
-              />
-            </View>
-          ) : null}
+            <MaterialIcons name="arrow-back" size={24} color={theme.colors.textPrimary} />
+          </Pressable>
         </View>
 
         <View
@@ -1068,7 +912,7 @@ export default function RoutePlanningScreen() {
                 position: 'absolute',
                 left: 16,
                 right: 16,
-                bottom: 16,
+                bottom: floatingSheetBottom,
                 borderRadius: 28,
                 backgroundColor: `${theme.colors.panel}F5`,
                 borderWidth: 1,
@@ -1129,20 +973,19 @@ export default function RoutePlanningScreen() {
             onPress={restoreSheetFromSummary}
             style={{
               position: 'absolute',
-              left: 16,
-              right: 16,
-              bottom: 16,
-              borderRadius: 26,
-              backgroundColor: `${theme.colors.panel}F2`,
+              alignSelf: 'center',
+              bottom: floatingSheetBottom,
+              borderRadius: 999,
+              backgroundColor: `${theme.colors.panel}E8`,
               borderWidth: 1,
               borderColor: theme.colors.border,
               paddingHorizontal: 18,
-              paddingVertical: 14,
+              paddingVertical: 12,
               shadowColor: '#000000',
-              shadowOpacity: 0.2,
-              shadowRadius: 18,
-              shadowOffset: { width: 0, height: 10 },
-              elevation: 8,
+              shadowOpacity: 0.16,
+              shadowRadius: 14,
+              shadowOffset: { width: 0, height: 8 },
+              elevation: 6,
             }}
             testID="route-summary-chip"
           >
@@ -1150,17 +993,25 @@ export default function RoutePlanningScreen() {
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                justifyContent: 'space-between',
                 gap: 12,
               }}
             >
+              <MaterialIcons name="route" size={18} color={theme.colors.accent} />
               {routeStats.map((stat) => (
-                <View key={stat.key} style={{ flex: 1, gap: 2 }}>
-                  <Text style={{ color: theme.colors.textSecondary, fontSize: 11, fontWeight: '700' }}>
+                <View key={stat.key} style={{ gap: 2 }}>
+                  <Text
+                    style={{
+                      color: theme.colors.textSecondary,
+                      fontSize: 10,
+                      fontWeight: '800',
+                      letterSpacing: 1,
+                      textTransform: 'uppercase',
+                    }}
+                  >
                     {stat.label}
                   </Text>
                   <Text
-                    style={{ color: theme.colors.textPrimary, fontSize: 15, fontWeight: '800' }}
+                    style={{ color: theme.colors.textPrimary, fontSize: 14, fontWeight: '800' }}
                     testID={
                       stat.key === 'distance'
                         ? 'text-route-summary-distance'
@@ -1181,7 +1032,7 @@ export default function RoutePlanningScreen() {
               position: 'absolute',
               left: 16,
               right: 16,
-              bottom: 16,
+              bottom: floatingSheetBottom,
               borderRadius: 34,
               backgroundColor: `${theme.colors.backgroundAlt}F2`,
               borderWidth: 1,
@@ -1806,7 +1657,7 @@ export default function RoutePlanningScreen() {
           </View>
         )}
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -2240,24 +2091,6 @@ function floatingMapButtonStyle(borderColor: string, backgroundColor: string) {
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 8 },
     elevation: 6,
-  };
-}
-
-function floatingTopButtonStyle(borderColor: string, backgroundColor: string) {
-  return {
-    width: 54,
-    height: 54,
-    borderRadius: 18,
-    backgroundColor,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    borderWidth: 1,
-    borderColor,
-    shadowColor: '#000000',
-    shadowOpacity: 0.18,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 4,
   };
 }
 

@@ -17,7 +17,7 @@ const TAB_CONFIG: Array<{
   icon: keyof typeof MaterialIcons.glyphMap;
   path: '/drive' | '/friends' | '/profile';
 }> = [
-  { key: 'runs', label: 'Runs', icon: 'speed', path: '/' },
+  { key: 'start', label: 'Start', icon: 'speed', path: '/' },
   { key: 'drive', label: 'Drive', icon: 'explore', path: '/drive' },
   { key: 'friends', label: 'Friends', icon: 'groups', path: '/friends' },
   { key: 'profile', label: 'Profile', icon: 'person', path: '/profile' },
@@ -119,7 +119,7 @@ export function MainTabBar({ activeTab }: { activeTab: AppShellTab }) {
 
 export function resolveShellTabForPathname(pathname: string | null | undefined): AppShellTab | null {
   if (pathname === '/') {
-    return 'runs';
+    return 'start';
   }
 
   if (pathname === '/drive') {

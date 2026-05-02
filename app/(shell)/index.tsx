@@ -174,7 +174,7 @@ export default function HomeScreen() {
   ];
 
   return (
-    <ShellScreen activeTab="runs" testID="screen-home">
+    <ShellScreen activeTab="start" testID="screen-home">
       <View style={{ gap: 10 }}>
         <Text
           style={{
@@ -195,7 +195,7 @@ export default function HomeScreen() {
             letterSpacing: -1.6,
           }}
         >
-          Runs
+          Start
         </Text>
         <Text style={{ color: theme.colors.textSecondary, fontSize: 17, lineHeight: 25 }}>
           Launch a new convoy, rejoin a live lobby, or reopen the routes worth running again.

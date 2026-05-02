@@ -36,6 +36,7 @@ import ProfileScreen from '@/app/(shell)/profile';
 import RunMapScreen from '@/app/run/[id]/map';
 import RunSummaryScreen from '@/app/run/[id]/summary';
 import SettingsScreen from '@/app/settings';
+import * as authLib from '@/lib/auth';
 import { loadAdminRunHistory } from '@/lib/adminRunHistory';
 import { listRecentCrewWithFirebase } from '@/lib/recentCrewService';
 import { loadInvitedRunsForUserWithFirebase } from '@/lib/scheduledRunService';
@@ -50,10 +51,10 @@ describe('ClubRun app shell', () => {
     (loadAdminRunHistory as jest.Mock).mockResolvedValue([]);
   });
 
-  it('renders the runs dashboard branding and primary actions', async () => {
+  it('renders the start dashboard branding and primary actions', async () => {
     const screen = renderWithProviders(<HomeScreen />);
 
-    await waitFor(() => expect(screen.getAllByText('Runs').length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getAllByText('Start').length).toBeGreaterThan(0));
     expect(screen.getByTestId('shell-brand-wordmark')).toHaveTextContent('CLUBRUN');
     expect(screen.getByTestId('button-new-run')).toBeTruthy();
     expect(screen.getByTestId('button-join-run-hero')).toBeTruthy();
@@ -107,7 +108,7 @@ describe('ClubRun app shell', () => {
     expect(shellScreen.getByText('screen:drive')).toBeTruthy();
     expect(shellScreen.getByText('screen:friends')).toBeTruthy();
     expect(shellScreen.getByText('screen:profile')).toBeTruthy();
-    await waitFor(() => expect(shellScreen.getByTestId('tab-runs')).toBeTruthy());
+    await waitFor(() => expect(shellScreen.getByTestId('tab-start')).toBeTruthy());
     expect(shellScreen.getByTestId('tab-drive')).toBeTruthy();
     expect(shellScreen.getByTestId('tab-friends')).toBeTruthy();
     expect(shellScreen.getByTestId('tab-profile')).toBeTruthy();
@@ -156,7 +157,27 @@ describe('ClubRun app shell', () => {
     expect(screen.getByTestId('button-open-sign-in')).toBeTruthy();
   });
 
-  it('renders a denser drive control surface for planning runs', () => {
+  it('lets guests request a password reset inline from sign-in mode', async () => {
+    const resetSpy = jest
+      .spyOn(authLib, 'sendPasswordResetEmailWithFirebase')
+      .mockResolvedValue(undefined);
+
+    const screen = renderWithProviders(<ProfileScreen />);
+
+    await waitFor(() => expect(screen.getByTestId('button-open-sign-in')).toBeTruthy());
+    fireEvent.press(screen.getByTestId('button-open-sign-in'));
+    fireEvent.changeText(screen.getByTestId('input-account-email'), 'jamie@example.com');
+    fireEvent.press(screen.getByTestId('button-forgot-password'));
+
+    await waitFor(() => {
+      expect(resetSpy).toHaveBeenCalledWith('jamie@example.com');
+    });
+    expect(screen.getByTestId('text-account-auth-notice')).toHaveTextContent(
+      'Check your inbox for a password reset link.'
+    );
+  });
+
+  it('renders a focused drive control surface for the current run', () => {
     useRunSessionStore.getState().setSession({
       runId: 'run_drive',
       driverId: 'driver_admin',
@@ -177,10 +198,10 @@ describe('ClubRun app shell', () => {
 
     const screen = renderWithProviders(<DriveScreen />);
 
-    expect(screen.getByText('Resume convoy')).toBeTruthy();
-    expect(screen.getByText('Quick actions')).toBeTruthy();
+    expect(screen.getByText('Current convoy')).toBeTruthy();
     expect(screen.getByText('Planning')).toBeTruthy();
     expect(screen.getByText('23.5 km loaded')).toBeTruthy();
+    expect(screen.queryByText('Quick actions')).toBeNull();
 
     fireEvent.press(screen.getByTestId('button-open-drive-primary'));
     expect(
@@ -194,7 +215,7 @@ describe('ClubRun app shell', () => {
       params: { runId: 'run_drive' },
     });
 
-    fireEvent.press(screen.getByTestId('button-open-drive-map'));
+    fireEvent.press(screen.getByTestId('button-open-drive-secondary'));
     expect(
       (
         globalThis as {
@@ -204,7 +225,7 @@ describe('ClubRun app shell', () => {
     ).toHaveBeenCalledWith('/run/run_drive/map');
   });
 
-  it('keeps the runs tab on the dashboard even when a live session exists', async () => {
+  it('keeps the start tab on the dashboard even when a live session exists', async () => {
     useRunSessionStore.getState().setSession({
       runId: 'run_live',
       driverId: 'driver_admin',
@@ -216,7 +237,7 @@ describe('ClubRun app shell', () => {
 
     const screen = renderWithProviders(<HomeScreen />);
 
-    await waitFor(() => expect(screen.getAllByText('Runs').length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getAllByText('Start').length).toBeGreaterThan(0));
     expect(screen.getByTestId('screen-home')).toBeTruthy();
     expect(
       (
@@ -227,7 +248,7 @@ describe('ClubRun app shell', () => {
     ).not.toHaveBeenCalledWith('/drive');
   });
 
-  it('shows launch actions and the next scheduled run when there is no live convoy', () => {
+  it('shows a single return path to Start when there is no live convoy', () => {
     useRunSessionStore.getState().setScheduledRunHero({
       runId: 'run_scheduled',
       name: 'Coastal Dawn',
@@ -237,11 +258,12 @@ describe('ClubRun app shell', () => {
 
     const screen = renderWithProviders(<DriveScreen />);
 
-    expect(screen.getAllByText('Ready to roll').length).toBeGreaterThan(0);
-    expect(screen.getByText('Next up')).toBeTruthy();
-    expect(screen.getByText('Coastal Dawn')).toBeTruthy();
-    expect(screen.getByTestId('button-start-new-run')).toBeTruthy();
-    expect(screen.getByTestId('button-join-run-drive')).toBeTruthy();
+    expect(screen.getByText('No active convoy')).toBeTruthy();
+    expect(screen.getByTestId('button-drive-go-start')).toBeTruthy();
+    expect(screen.queryByText('Next up')).toBeNull();
+    expect(screen.queryByText('Coastal Dawn')).toBeNull();
+    expect(screen.queryByTestId('button-start-new-run')).toBeNull();
+    expect(screen.queryByTestId('button-join-run-drive')).toBeNull();
   });
 
   it('shows incoming invites on the runs dashboard when the user has invited runs', async () => {

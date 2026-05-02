@@ -5,7 +5,7 @@ import { MainTabBar, resolveShellTabForPathname } from '@/components/shell/MainT
 
 export default function ShellLayout() {
   const pathname = usePathname();
-  const activeShellTab = resolveShellTabForPathname(pathname) ?? 'runs';
+  const activeShellTab = resolveShellTabForPathname(pathname) ?? 'start';
 
   return (
     <View style={{ flex: 1 }}>

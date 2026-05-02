@@ -7,6 +7,7 @@ import {
   getAuth,
   initializeAuth,
   linkWithCredential,
+  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signInAnonymously,
   signOut,
@@ -216,6 +217,17 @@ export async function signInWithEmailPassword(email: string, password: string, e
         email: result.user.email,
       }
     : null;
+}
+
+export async function sendPasswordResetEmailWithFirebase(email: string, env: EnvMap = runtimeEnv) {
+  const trimmedEmail = email.trim();
+
+  if (!trimmedEmail) {
+    throw new Error('Enter your email to reset your password.');
+  }
+
+  const auth = getFirebaseAuth(env);
+  await sendPasswordResetEmail(auth, trimmedEmail);
 }
 
 export async function linkAnonymousAccountWithFirebase(

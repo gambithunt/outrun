@@ -158,12 +158,13 @@ describe('RoutePlanningScreen', () => {
     expect(screen.getByTestId('text-route-save-state')).toHaveTextContent('Saved');
 
     fireEvent.press(screen.getByTestId('button-minimize-route-sheet'));
-    await waitFor(() => expect(screen.getByTestId('route-planner-stats-card')).toBeTruthy());
-    expect(screen.getByTestId('text-driver-ready-count')).toHaveTextContent('1/3 ready');
-    expect(screen.getByTestId('button-open-lobby')).toBeTruthy();
+    await waitFor(() => expect(screen.getByTestId('route-summary-chip')).toBeTruthy());
+    expect(screen.queryByTestId('route-planner-stats-card')).toBeNull();
+    expect(screen.queryByTestId('button-open-lobby')).toBeNull();
 
     fireEvent.press(screen.getByTestId('route-summary-chip'));
 
+    expect(screen.getByTestId('button-open-lobby')).toBeTruthy();
     fireEvent.press(screen.getByTestId('button-add-stop-inline'));
     expect(screen.getByTestId('route-flow-stop-waypoint-1')).toBeTruthy();
     expect(screen.getByTestId('button-open-lobby')).toHaveTextContent('Save + Open Lobby');

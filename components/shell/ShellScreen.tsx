@@ -32,8 +32,6 @@ export function ShellScreen({
     {
       flexGrow: 1,
       paddingHorizontal: 20,
-      paddingTop: 10,
-      paddingBottom: 32,
       gap: 20,
     },
     contentContainerStyle,
@@ -72,8 +70,7 @@ export function ShellScreen({
         <View
           style={{
             paddingHorizontal: 20,
-            paddingTop: 8,
-            paddingBottom: 10,
+            paddingBottom: 6,
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'space-between',

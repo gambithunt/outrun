@@ -18,13 +18,12 @@ export function Screen({
   testID,
 }: ScreenProps) {
   const { theme } = useAppTheme();
+  const contentTestID = testID ? `${testID}-content` : undefined;
   const sharedStyle: StyleProp<ViewStyle> = [
     {
       flexGrow: 1,
       backgroundColor: theme.colors.background,
       paddingHorizontal: 20,
-      paddingTop: 20,
-      paddingBottom: 24,
     },
     contentContainerStyle,
   ];
@@ -32,9 +31,13 @@ export function Screen({
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.background }} testID={testID}>
       {scrollable ? (
-        <ScrollView contentContainerStyle={sharedStyle}>{children}</ScrollView>
+        <ScrollView contentContainerStyle={sharedStyle} testID={contentTestID}>
+          {children}
+        </ScrollView>
       ) : (
-        <View style={sharedStyle}>{children}</View>
+        <View style={sharedStyle} testID={contentTestID}>
+          {children}
+        </View>
       )}
       {footer}
     </SafeAreaView>

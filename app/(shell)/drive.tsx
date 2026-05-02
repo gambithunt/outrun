@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { Pressable, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 
 import { ShellScreen } from '@/components/shell/ShellScreen';
 import { AppButton } from '@/components/ui/AppButton';
@@ -18,7 +18,6 @@ export default function DriveScreen() {
     runId,
     runName,
     route,
-    scheduledRunHero,
     status,
   } = useRunSessionStore();
 
@@ -52,6 +51,15 @@ export default function DriveScreen() {
     router.push(`/run/${runId}/map`);
   }
 
+  function handleSecondaryAction() {
+    if (drivePhase === 'planning') {
+      handleOpenMap();
+      return;
+    }
+
+    router.push('/');
+  }
+
   return (
     <ShellScreen activeTab="drive" testID="screen-drive">
       <View style={{ gap: 10 }}>
@@ -74,40 +82,44 @@ export default function DriveScreen() {
             letterSpacing: -1.4,
           }}
         >
-          {hasLiveContext ? 'Resume convoy' : 'Ready to roll'}
+          {hasLiveContext ? 'Current convoy' : 'Drive'}
         </Text>
         <Text style={{ color: theme.colors.textSecondary, fontSize: 17, lineHeight: 25 }}>
           {hasLiveContext
-            ? 'Map, lobby, and route controls stay one tap away while the crew is moving.'
-            : 'Keep the next run close, then jump back into the map when the route is ready.'}
+            ? 'Status, route, and crew controls stay focused on the convoy you are in right now.'
+            : 'Drive becomes your mission control once a convoy is underway.'}
         </Text>
-      </View>
-
-      <View style={{ flexDirection: 'row', gap: 10 }}>
-        <TelemetryCard
-          detail={labelForConnectivity(connectivityStatus)}
-          label="Connection"
-          theme={theme}
-          value={connectivityStatus === 'offline' ? 'Offline' : connectivityStatus === 'reconnecting' ? 'Syncing' : 'Live'}
-        />
-        <TelemetryCard
-          detail={joinCode ? `Code ${joinCode}` : 'Waiting on crew'}
-          label="Run State"
-          theme={theme}
-          value={
-            drivePhase === 'planning'
-              ? 'Draft'
-              : drivePhase === 'lobby'
-                ? 'Lobby'
-                : drivePhase === 'live'
-                  ? 'Live'
-                  : 'Idle'
-          }
-        />
       </View>
 
       {hasLiveContext && drivePhase ? (
         <>
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <TelemetryCard
+              detail={labelForConnectivity(connectivityStatus)}
+              label="Connection"
+              theme={theme}
+              value={
+                connectivityStatus === 'offline'
+                  ? 'Offline'
+                  : connectivityStatus === 'reconnecting'
+                    ? 'Syncing'
+                    : 'Live'
+              }
+            />
+            <TelemetryCard
+              detail={joinCode ? `Code ${joinCode}` : 'Waiting on crew'}
+              label="Run State"
+              theme={theme}
+              value={
+                drivePhase === 'planning'
+                  ? 'Draft'
+                  : drivePhase === 'lobby'
+                    ? 'Lobby'
+                    : 'Live'
+              }
+            />
+          </View>
+
           <AppCard>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
               <StatusPill label={labelForPhase(drivePhase)} tone="accent" />
@@ -135,96 +147,33 @@ export default function DriveScreen() {
                 testID="button-open-drive-primary"
               />
               <AppButton
-                label="Open Map"
-                onPress={handleOpenMap}
+                label={drivePhase === 'planning' ? 'Open Map' : 'Go to Start'}
+                onPress={handleSecondaryAction}
                 variant="secondary"
-                testID="button-open-drive-map"
+                testID="button-open-drive-secondary"
               />
             </View>
           </AppCard>
-
-          <View style={{ gap: 12 }}>
-            <Text style={{ color: theme.colors.textPrimary, fontSize: 30, fontWeight: '900', fontStyle: 'italic', textTransform: 'uppercase' }}>
-              Quick actions
-            </Text>
-            <View style={{ flexDirection: 'row', gap: 10 }}>
-              <ActionTile
-                label="Runs"
-                detail="Dashboard and history"
-                onPress={() => router.push('/')}
-              />
-              <ActionTile
-                label="Friends"
-                detail="Recent crew"
-                onPress={() => router.push('/friends')}
-              />
-              <ActionTile
-                label="Profile"
-                detail="Garage and account"
-                onPress={() => router.push('/profile')}
-              />
-            </View>
-          </View>
         </>
       ) : (
         <AppCard>
-          <StatusPill label="Drive shell" tone="neutral" />
-          <Text style={{ color: theme.colors.textPrimary, fontSize: 34, fontWeight: '900', fontStyle: 'italic', textTransform: 'uppercase' }}>
-            Ready to roll
+          <StatusPill label="No active drive" tone="neutral" />
+          <Text
+            style={{
+              color: theme.colors.textPrimary,
+              fontSize: 34,
+              fontWeight: '900',
+              fontStyle: 'italic',
+              textTransform: 'uppercase',
+            }}
+          >
+            No active convoy
           </Text>
           <Text style={{ color: theme.colors.textSecondary, fontSize: 16, lineHeight: 23 }}>
-            Start a route from the Runs tab, or join an active session and this drive deck will turn into mission control.
+            Create, join, and browse sessions from Start. Come back here once a convoy is planned, in lobby, or live on the map.
           </Text>
 
-          <View style={{ gap: 10 }}>
-            <AppButton
-              label="Start New Run"
-              onPress={() => router.push('/create')}
-              testID="button-start-new-run"
-            />
-            <AppButton
-              label="Join Run"
-              onPress={() => router.push('/join')}
-              variant="secondary"
-              testID="button-join-run-drive"
-            />
-          </View>
-
-          {scheduledRunHero ? (
-            <View style={{ gap: 12 }}>
-              <Text style={{ color: theme.colors.textPrimary, fontSize: 30, fontWeight: '900', fontStyle: 'italic', textTransform: 'uppercase' }}>
-                Next up
-              </Text>
-              <View
-                style={{
-                  borderRadius: 24,
-                  borderWidth: 1,
-                  borderColor: theme.colors.border,
-                  backgroundColor: theme.colors.surfaceElevated,
-                  padding: 18,
-                  gap: 8,
-                }}
-              >
-                <Text
-                  style={{
-                    color: theme.colors.textSecondary,
-                    fontSize: 12,
-                    fontWeight: '800',
-                    letterSpacing: 1.8,
-                    textTransform: 'uppercase',
-                  }}
-                >
-                  {scheduledRunHero.visibility === 'club' ? 'Club Run' : 'Scheduled Run'}
-                </Text>
-                <Text style={{ color: theme.colors.textPrimary, fontSize: 26, fontWeight: '900' }}>
-                  {scheduledRunHero.name}
-                </Text>
-                <Text style={{ color: theme.colors.textSecondary }}>
-                  {new Date(scheduledRunHero.scheduledFor).toLocaleString()}
-                </Text>
-              </View>
-            </View>
-          ) : null}
+          <AppButton label="Go to Start" onPress={() => router.push('/')} testID="button-drive-go-start" />
         </AppCard>
       )}
     </ShellScreen>
@@ -389,40 +338,5 @@ function MetricTile({ label, value }: { label: string; value: string }) {
         {value}
       </Text>
     </View>
-  );
-}
-
-function ActionTile({
-  detail,
-  label,
-  onPress,
-}: {
-  detail: string;
-  label: string;
-  onPress: () => void;
-}) {
-  const { theme } = useAppTheme();
-
-  return (
-    <Pressable
-      accessibilityRole="button"
-      onPress={onPress}
-      style={({ pressed }) => ({
-        flex: 1,
-        borderRadius: 24,
-        backgroundColor: pressed ? theme.colors.surfaceElevated : theme.colors.panel,
-        borderWidth: 1,
-        borderColor: theme.colors.border,
-        padding: 16,
-        gap: 8,
-      })}
-    >
-      <Text style={{ color: theme.colors.textPrimary, fontSize: 18, fontWeight: '900' }}>
-        {label}
-      </Text>
-      <Text style={{ color: theme.colors.textSecondary, fontSize: 14, lineHeight: 20 }}>
-        {detail}
-      </Text>
-    </Pressable>
   );
 }

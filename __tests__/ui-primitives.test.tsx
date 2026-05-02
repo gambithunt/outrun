@@ -6,6 +6,7 @@ import { AppButton } from '@/components/ui/AppButton';
 import { AppCard } from '@/components/ui/AppCard';
 import { AppTextInput } from '@/components/ui/AppTextInput';
 import { BottomSheetSurface } from '@/components/ui/BottomSheetSurface';
+import { Screen } from '@/components/Screen';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { Toast } from '@/components/ui/Toast';
 import { renderWithProviders } from '@/test-utils/render';
@@ -51,5 +52,18 @@ describe('UI primitives', () => {
     expect(screen.getByTestId('toast-test')).toBeTruthy();
     expect(screen.getByText('Card content')).toBeTruthy();
     expect(screen.getByText('Sheet')).toBeTruthy();
+  });
+
+  it('does not add default top and bottom gutter inside the shared screen wrapper', () => {
+    const screen = renderWithProviders(
+      <Screen testID="screen-wrapper-test">
+        <Text>Edge to edge content</Text>
+      </Screen>
+    );
+
+    expect(screen.getByTestId('screen-wrapper-test-content')).not.toHaveStyle({
+      paddingTop: 20,
+      paddingBottom: 24,
+    });
   });
 });

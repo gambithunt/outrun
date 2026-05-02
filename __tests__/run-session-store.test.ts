@@ -5,6 +5,10 @@ describe('runSessionStore', () => {
     useRunSessionStore.getState().clearSession();
   });
 
+  it('defaults the shell to the start tab', () => {
+    expect(useRunSessionStore.getState().currentTab).toBe('start');
+  });
+
   it('stores and clears the current session', () => {
     useRunSessionStore.getState().setSession({
       runId: 'run_123',
@@ -87,5 +91,6 @@ describe('runSessionStore', () => {
     expect(useRunSessionStore.getState().route).toBeNull();
     expect(useRunSessionStore.getState().account).toBeNull();
     expect(useRunSessionStore.getState().scheduledRunHero).toBeNull();
+    expect(useRunSessionStore.getState().currentTab).toBe('start');
   });
 });

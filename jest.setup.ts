@@ -171,6 +171,7 @@ jest.mock('firebase/auth', () => ({
       user: mockFirebaseAuth.currentUser,
     };
   }),
+  sendPasswordResetEmail: jest.fn(async () => undefined),
   signInWithEmailAndPassword: jest.fn(async (_auth, email: string) => {
     mockFirebaseAuth.currentUser = {
       uid: `signed-in-${email}`,

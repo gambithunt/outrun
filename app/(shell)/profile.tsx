@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
 import { ShellScreen } from '@/components/shell/ShellScreen';
@@ -10,6 +10,7 @@ import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { useAuthSession } from '@/contexts/AuthContext';
 import { useAppTheme } from '@/contexts/ThemeContext';
 import {
+  sendPasswordResetEmailWithFirebase,
   signInWithEmailPassword,
   signOutToGuestOrSignedOutStateWithFirebase,
   signUpWithEmailPassword,
@@ -40,6 +41,7 @@ export default function ProfileScreen() {
   const [garage, setGarage] = useState<GarageCar[]>([]);
   const [isBusy, setIsBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const isSignedIn = Boolean(auth.userId && !auth.isAnonymous);
 
@@ -87,6 +89,7 @@ export default function ProfileScreen() {
   async function handleSignUp() {
     setIsBusy(true);
     setError(null);
+    setNotice(null);
 
     try {
       const user = await signUpWithEmailPassword(email, password);
@@ -109,6 +112,7 @@ export default function ProfileScreen() {
   async function handleSignIn() {
     setIsBusy(true);
     setError(null);
+    setNotice(null);
 
     try {
       await signInWithEmailPassword(email, password);
@@ -116,6 +120,21 @@ export default function ProfileScreen() {
       setMode('idle');
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : 'Unable to sign in.');
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function handleForgotPassword() {
+    setIsBusy(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      await sendPasswordResetEmailWithFirebase(email);
+      setNotice('Check your inbox for a password reset link.');
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : 'Unable to send a password reset email.');
     } finally {
       setIsBusy(false);
     }
@@ -209,14 +228,22 @@ export default function ProfileScreen() {
             <View style={{ flex: 1 }}>
               <AppButton
                 label="Sign Up"
-                onPress={() => setMode('sign-up')}
+                onPress={() => {
+                  setMode('sign-up');
+                  setError(null);
+                  setNotice(null);
+                }}
                 testID="button-open-sign-up"
               />
             </View>
             <View style={{ flex: 1 }}>
               <AppButton
                 label="Sign In"
-                onPress={() => setMode('sign-in')}
+                onPress={() => {
+                  setMode('sign-in');
+                  setError(null);
+                  setNotice(null);
+                }}
                 variant="secondary"
                 testID="button-open-sign-in"
               />
@@ -260,6 +287,31 @@ export default function ProfileScreen() {
                 placeholder="••••••••"
                 testID="input-account-password"
               />
+              {mode === 'sign-in' ? (
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Pressable
+                    accessibilityRole="button"
+                    disabled={isBusy}
+                    onPress={handleForgotPassword}
+                    style={({ pressed }) => ({
+                      paddingVertical: 4,
+                      opacity: isBusy ? 0.5 : pressed ? 0.7 : 1,
+                    })}
+                    testID="button-forgot-password"
+                  >
+                    <Text
+                      style={{
+                        color: theme.colors.accent,
+                        fontSize: 13,
+                        fontWeight: '800',
+                        letterSpacing: 0.3,
+                      }}
+                    >
+                      Forgot password?
+                    </Text>
+                  </Pressable>
+                </View>
+              ) : null}
               <AppButton
                 label={mode === 'sign-up' ? 'Create Account' : 'Sign In'}
                 onPress={mode === 'sign-up' ? handleSignUp : handleSignIn}
@@ -366,6 +418,11 @@ export default function ProfileScreen() {
       )}
 
       {isBusy ? <LoadingSpinner /> : null}
+      {notice ? (
+        <Text style={{ color: theme.colors.success }} testID="text-account-auth-notice">
+          {notice}
+        </Text>
+      ) : null}
       {error ? <Text style={{ color: theme.colors.danger }}>{error}</Text> : null}
     </ShellScreen>
   );
