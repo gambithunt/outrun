@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>API_KEY</key>
+	<string>AIzaSyATE2sMFVO-wf6DdSR0GNra_s3ECgIVf90</string>
+	<key>GCM_SENDER_ID</key>
+	<string>379880519180</string>
+	<key>PLIST_VERSION</key>
+	<string>1</string>
+	<key>BUNDLE_ID</key>
+	<string>com.8bitbot.clubrun</string>
+	<key>PROJECT_ID</key>
+	<string>outrun-9c9db</string>
+	<key>STORAGE_BUCKET</key>
+	<string>outrun-9c9db.firebasestorage.app</string>
+	<key>IS_ADS_ENABLED</key>
+	<false></false>
+	<key>IS_ANALYTICS_ENABLED</key>
+	<false></false>
+	<key>IS_APPINVITE_ENABLED</key>
+	<true></true>
+	<key>IS_GCM_ENABLED</key>
+	<true></true>
+	<key>IS_SIGNIN_ENABLED</key>
+	<true></true>
+	<key>GOOGLE_APP_ID</key>
+	<string>1:379880519180:ios:c309e69b3da28740946029</string>
+	<key>DATABASE_URL</key>
+	<string>https://outrun-9c9db-default-rtdb.firebaseio.com</string>
+</dict>
+</plist>

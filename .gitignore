@@ -11,6 +11,10 @@ expo-env.d.ts
 app-shell/
 
 # Native
+native-ios/DerivedData/
+native-ios/Home/
+native-ios/SwiftPMCache/
+native-ios/SwiftPMConfig/
 *.orig.*
 *.jks
 *.p8

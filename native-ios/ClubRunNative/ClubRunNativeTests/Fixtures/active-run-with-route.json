@@ -1,0 +1,63 @@
+{
+  "adminId": "uid_admin_1",
+  "createdAt": 1710000000000,
+  "drivers": {
+    "uid_driver_1": {
+      "joinedAt": 1710000002000,
+      "leftAt": null,
+      "location": {
+        "accuracy": 5,
+        "heading": 180,
+        "lat": -26.2041,
+        "lng": 28.0473,
+        "speed": 12.4,
+        "timestamp": 1710000003000
+      },
+      "profile": {
+        "carMake": "Porsche",
+        "carModel": "911",
+        "fuelType": "petrol",
+        "name": "Alex Driver"
+      }
+    }
+  },
+  "driveStartedAt": 1710000002500,
+  "endedAt": null,
+  "hazards": {
+    "hazard_1": {
+      "dismissed": false,
+      "lat": -26.18,
+      "lng": 28.05,
+      "reportCount": 1,
+      "reportedBy": "uid_driver_1",
+      "reporterName": "Alex Driver",
+      "timestamp": 1710000004000,
+      "type": "pothole"
+    }
+  },
+  "joinCode": "123456",
+  "maxDrivers": 15,
+  "name": "Sunday Run",
+  "route": {
+    "distanceMetres": 54000,
+    "durationSeconds": 3600,
+    "points": [
+      [-26.2041, 28.0473],
+      [-25.7479, 28.2293]
+    ],
+    "source": "drawn",
+    "stops": [
+      {
+        "id": "start",
+        "kind": "start",
+        "label": "Start",
+        "lat": -26.2041,
+        "lng": 28.0473,
+        "source": "coordinates"
+      }
+    ]
+  },
+  "startedAt": 1710000001000,
+  "status": "active"
+}
+

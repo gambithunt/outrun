@@ -1,0 +1,11 @@
+{
+  "adminId": "uid_admin_1",
+  "createdAt": 1710000000000,
+  "endedAt": null,
+  "joinCode": "123456",
+  "maxDrivers": 15,
+  "name": "Sunday Run",
+  "startedAt": null,
+  "status": "draft"
+}
+
