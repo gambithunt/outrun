@@ -12,6 +12,8 @@ app-shell/
 
 # Native
 native-ios/DerivedData/
+native-ios/.home/
+native-ios/SourcePackages/
 native-ios/Home/
 native-ios/SwiftPMCache/
 native-ios/SwiftPMConfig/

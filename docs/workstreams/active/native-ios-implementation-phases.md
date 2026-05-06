@@ -201,52 +201,52 @@ Goal: replace anonymous-only participation with simple account registration, log
 
 ### Red
 
-- [ ] Add failing tests for registration input validation.
-- [ ] Add failing tests for login input validation.
-- [ ] Add failing tests for password reset email validation.
-- [ ] Add failing tests for profile validation: display name, car make, car model.
-- [ ] Add failing tests for badge generation from display name and/or car initials.
-- [ ] Add failing repository tests for writing `/users/{uid}`.
-- [ ] Add failing repository tests for reading `/users/{uid}`.
-- [ ] Add failing auth-state routing tests: signed out, signed in incomplete profile, signed in complete profile.
+- [x] Add failing tests for registration input validation.
+- [x] Add failing tests for login input validation.
+- [x] Add failing tests for password reset email validation.
+- [x] Add failing tests for profile validation: display name, car make, car model.
+- [x] Add failing tests for badge generation from display name and/or car initials.
+- [x] Add failing repository tests for writing `/users/{uid}`.
+- [x] Add failing repository tests for reading `/users/{uid}`.
+- [x] Add failing auth-state routing tests: signed out, signed in incomplete profile, signed in complete profile.
 
 ### Green
 
-- [ ] Extend `AuthServicing` to support email/password sign-up.
-- [ ] Extend `AuthServicing` to support email/password login.
-- [ ] Add password reset method.
-- [ ] Add sign-out method.
-- [ ] Add current-user/session observation.
-- [ ] Add `UserProfileRepository`.
-- [ ] Build Auth Gate view model.
-- [ ] Build Login screen.
-- [ ] Build Register screen.
-- [ ] Build Forgot Password screen.
-- [ ] Build Profile Setup/Edit Profile form.
-- [ ] Generate and persist badge color/text during profile creation.
-- [ ] Cache profile locally for fast launch, with backend as source of truth.
+- [x] Extend `AuthServicing` to support email/password sign-up.
+- [x] Extend `AuthServicing` to support email/password login.
+- [x] Add password reset method.
+- [x] Add sign-out method.
+- [x] Add current-user/session observation.
+- [x] Add `UserProfileRepository`.
+- [x] Build Auth Gate view model.
+- [x] Build Login screen.
+- [x] Build Register screen.
+- [x] Build Forgot Password screen.
+- [x] Build Profile Setup/Edit Profile form.
+- [x] Generate and persist badge color/text during profile creation.
+- [x] Cache profile locally for fast launch, with backend as source of truth.
 
 ### Refactor
 
-- [ ] Keep FirebaseAuth SDK out of SwiftUI views.
-- [ ] Keep profile validation pure and testable.
-- [ ] Use reusable form components only after duplication appears.
-- [ ] Keep account errors user-actionable.
+- [x] Keep FirebaseAuth SDK out of SwiftUI views.
+- [x] Keep profile validation pure and testable.
+- [x] Use reusable form components only after duplication appears.
+- [x] Keep account errors user-actionable.
 
 ### Verify
 
-- [ ] Register account on emulator or controlled Firebase project.
-- [ ] Login works.
-- [ ] Password reset sends successfully.
-- [ ] App routes signed-out users to Login.
-- [ ] App routes incomplete users to Profile Setup.
-- [ ] App routes complete users to Home Hub.
-- [ ] Unit tests pass.
-- [ ] UI tests cover Login/Register happy path where practical.
+- [x] Register account on emulator or controlled Firebase project.
+- [x] Login works.
+- [x] Password reset sends successfully.
+- [x] App routes signed-out users to Login.
+- [x] App routes incomplete users to Profile Setup.
+- [x] App routes complete users to Home Hub.
+- [x] Unit tests pass.
+- [x] UI tests cover Login/Register happy path where practical.
 
 ### Done
 
-- [ ] Users can create an account, sign in, reset password, and maintain the required driver profile.
+- [x] Users can create an account, sign in, reset password, and maintain the required driver profile.
 
 ## Phase 3: Home Hub And Session Restore
 
@@ -254,29 +254,29 @@ Goal: build the first post-login experience and restore active runs without bloc
 
 ### Red
 
-- [ ] Add failing tests for Home Hub view model with no active run.
-- [ ] Add failing tests for Home Hub with one active run card.
-- [ ] Add failing tests for active run role classification: admin vs driver.
-- [ ] Add failing tests for stored active run id validation.
-- [ ] Add failing UI test proving Create Run and Join Run are visible after login/profile.
+- [x] Add failing tests for Home Hub view model with no active run.
+- [x] Add failing tests for Home Hub with one active run card.
+- [x] Add failing tests for active run role classification: admin vs driver.
+- [x] Add failing tests for stored active run id validation.
+- [x] Add failing UI test proving Create Run and Join Run are visible after login/profile.
 
 ### Green
 
-- [ ] Build Home Hub screen.
-- [ ] Add identity row with display name, generated badge, car make/model.
-- [ ] Add primary Create Run action.
-- [ ] Add primary Join Run action.
-- [ ] Add compact active run card showing run name and status.
-- [ ] Make active run card tappable without needing "Resume" wording.
-- [ ] Add settings/profile entry.
-- [ ] Add local active-session persistence.
-- [ ] Add app router/navigation state for auth/home/create/join/lobby/live/summary.
+- [x] Build Home Hub screen.
+- [x] Add identity row with display name, generated badge, car make/model.
+- [x] Add primary Create Run action.
+- [x] Add primary Join Run action.
+- [x] Add compact active run card showing run name and status.
+- [x] Make active run card tappable without needing "Resume" wording.
+- [x] Add settings/profile entry.
+- [x] Add local active-session persistence.
+- [x] Add app router/navigation state for auth/home/create/join/lobby/live/summary.
 
 ### Refactor
 
-- [ ] Keep navigation decisions in a coordinator/router.
-- [ ] Keep Home Hub visual surface clean and operational.
-- [ ] Avoid dashboard cards beyond the active run card.
+- [x] Keep navigation decisions in a coordinator/router.
+- [x] Keep Home Hub visual surface clean and operational.
+- [x] Avoid dashboard cards beyond the active run card.
 
 ### Verify
 
@@ -295,32 +295,32 @@ Goal: admin can create a named run and arrive at the admin lobby.
 
 ### Red
 
-- [ ] Add failing tests for run name validation.
-- [ ] Add failing tests for optional description validation.
-- [ ] Add failing tests for unique join code generation and collision retry.
-- [ ] Add failing tests for `/runs/{runId}` write payload.
-- [ ] Add failing tests for `/joinCodes/{joinCode}` write payload.
-- [ ] Add failing tests for create-run failure states.
-- [ ] Add failing UI test for create run form validation.
+- [x] Add failing tests for run name validation.
+- [x] Add failing tests for optional description validation.
+- [x] Add failing tests for unique join code generation and collision retry.
+- [x] Add failing tests for `/runs/{runId}` write payload.
+- [x] Add failing tests for `/joinCodes/{joinCode}` write payload.
+- [x] Add failing tests for create-run failure states.
+- [x] Add failing UI test for create run form validation.
 
 ### Green
 
-- [ ] Build Create Run sheet or compact full-screen form.
-- [ ] Fields: run name, optional short description.
-- [ ] Default max drivers to 15.
-- [ ] Create run as `draft`.
-- [ ] Generate six-digit join code.
-- [ ] Write `/runs/{runId}`.
-- [ ] Write `/joinCodes/{joinCode}`.
-- [ ] Store active session as admin.
-- [ ] Navigate to Admin Lobby after success.
-- [ ] Show loading and recoverable error states.
+- [x] Build Create Run sheet or compact full-screen form.
+- [x] Fields: run name, optional short description.
+- [x] Default max drivers to 15.
+- [x] Create run as `draft`.
+- [x] Generate six-digit join code.
+- [x] Write `/runs/{runId}`.
+- [x] Write `/joinCodes/{joinCode}`.
+- [x] Store active session as admin.
+- [x] Navigate to Admin Lobby after success.
+- [x] Show loading and recoverable error states.
 
 ### Refactor
 
-- [ ] Keep create-run service pure around payload construction.
-- [ ] Keep repository write sequencing clear.
-- [ ] Avoid route setup fields in create-run form.
+- [x] Keep create-run service pure around payload construction.
+- [x] Keep repository write sequencing clear.
+- [x] Avoid route setup fields in create-run form.
 
 ### Verify
 
@@ -340,32 +340,32 @@ Goal: driver can enter a code, resolve the run, join with their profile snapshot
 
 ### Red
 
-- [ ] Add failing tests for six-digit code formatting.
-- [ ] Add failing tests for paste handling/normalization.
-- [ ] Add failing tests for missing join code.
-- [ ] Add failing tests for ended run behavior.
-- [ ] Add failing tests for driver profile snapshot payload.
-- [ ] Add failing tests for driver join write.
-- [ ] Add failing tests for post-join routing: lobby vs live drive.
+- [x] Add failing tests for six-digit code formatting.
+- [x] Add failing tests for paste handling/normalization.
+- [x] Add failing tests for missing join code.
+- [x] Add failing tests for ended run behavior.
+- [x] Add failing tests for driver profile snapshot payload.
+- [x] Add failing tests for driver join write.
+- [x] Add failing tests for post-join routing: lobby vs live drive.
 
 ### Green
 
-- [ ] Build full Join Run code-entry screen.
-- [ ] Add large, focused six-digit input.
-- [ ] Support paste.
-- [ ] Resolve `/joinCodes/{joinCode}`.
-- [ ] Read `/runs/{runId}`.
-- [ ] Show run name once resolved.
-- [ ] Write `/runs/{runId}/drivers/{uid}` with profile snapshot.
-- [ ] Store active session as driver.
-- [ ] Route to Driver Lobby for draft/ready.
-- [ ] Route to Live Drive if active joining is allowed.
-- [ ] Show clear invalid/expired code states.
+- [x] Build full Join Run code-entry screen.
+- [x] Add large, focused six-digit input.
+- [x] Support paste.
+- [x] Resolve `/joinCodes/{joinCode}`.
+- [x] Read `/runs/{runId}`.
+- [x] Show run name once resolved.
+- [x] Write `/runs/{runId}/drivers/{uid}` with profile snapshot.
+- [x] Store active session as driver.
+- [x] Route to Driver Lobby for draft/ready.
+- [x] Route to Live Drive if active joining is allowed.
+- [x] Show clear invalid/expired code states.
 
 ### Refactor
 
-- [ ] Keep code normalization pure.
-- [ ] Keep driver snapshot creation reusable for reconnect/update flows.
+- [x] Keep code normalization pure.
+- [x] Keep driver snapshot creation reusable for reconnect/update flows.
 
 ### Verify
 
@@ -384,35 +384,35 @@ Goal: create role-specific lobbies that organize run setup without crowding the 
 
 ### Red
 
-- [ ] Add failing view model tests for admin lobby no-route state.
-- [ ] Add failing view model tests for route-ready state.
-- [ ] Add failing tests for start-drive readiness labels.
-- [ ] Add failing tests for solo-start confirmation requirement.
-- [ ] Add failing tests for driver count/waiting count summaries.
-- [ ] Add failing tests for driver presence/stale classification.
-- [ ] Add failing UI test for admin lobby showing code/share/start/route/drivers/status.
-- [ ] Add failing UI test for driver lobby not showing admin controls.
+- [x] Add failing view model tests for admin lobby no-route state.
+- [x] Add failing view model tests for route-ready state.
+- [x] Add failing tests for start-drive readiness labels.
+- [x] Add failing tests for solo-start confirmation requirement.
+- [x] Add failing tests for driver count/waiting count summaries.
+- [x] Add failing tests for driver presence/stale classification.
+- [x] Add failing UI test for admin lobby showing code/share/start/route/drivers/status.
+- [x] Add failing UI test for driver lobby not showing admin controls.
 
 ### Green
 
-- [ ] Build Admin Lobby screen.
-- [ ] Header: run name, join code, share, copy, start drive, readiness label.
-- [ ] Route row: not set or distance/duration/stop/source summary.
-- [ ] Drivers row: joined count, waiting count, badge cluster.
-- [ ] Drivers sheet with badge, display name, car make/model, status.
-- [ ] Run status row with plain explanation.
-- [ ] Build Driver Lobby screen.
-- [ ] Driver lobby shows run name, admin, route summary, driver count, waiting state, route details entry, driver list entry.
-- [ ] Add ShareLink/share sheet for join code.
-- [ ] Add copy-code affordance if share alone is insufficient.
-- [ ] Implement presence updates for lobby entry/exit.
-- [ ] Implement start-drive status transition once route exists.
+- [x] Build Admin Lobby screen.
+- [x] Header: run name, join code, share, copy, start drive, readiness label.
+- [x] Route row: not set or distance/duration/stop/source summary.
+- [x] Drivers row: joined count, waiting count, badge cluster.
+- [x] Drivers sheet with badge, display name, car make/model, status.
+- [x] Run status row with plain explanation.
+- [x] Build Driver Lobby screen.
+- [x] Driver lobby shows run name, admin, route summary, driver count, waiting state, route details entry, driver list entry.
+- [x] Add ShareLink/share sheet for join code.
+- [x] Add copy-code affordance if share alone is insufficient.
+- [x] Implement presence updates for lobby entry/exit.
+- [x] Implement start-drive status transition once route exists.
 
 ### Refactor
 
-- [ ] Keep admin/driver lobby components shared only where it stays clear.
-- [ ] Keep start-drive rules in a testable policy.
-- [ ] Keep presence policy separate from UI.
+- [x] Keep admin/driver lobby components shared only where it stays clear.
+- [x] Keep start-drive rules in a testable policy.
+- [x] Keep presence policy separate from UI.
 
 ### Verify
 
@@ -432,39 +432,39 @@ Goal: admin can create a route by choosing start, destination, and optional wayp
 
 ### Red
 
-- [ ] Add failing tests for route stop validation.
-- [ ] Add failing tests for start/destination required.
-- [ ] Add failing tests for waypoint add/remove/reorder.
-- [ ] Add failing tests for route recalculation trigger policy.
-- [ ] Add failing tests for MapKit route request construction.
-- [ ] Add failing tests for Apple Maps route response normalization.
-- [ ] Add failing tests for route save payload.
-- [ ] Add failing view model tests for route summary.
-- [ ] Add failing UI test for opening Route Setup from lobby.
+- [x] Add failing tests for route stop validation.
+- [x] Add failing tests for start/destination required.
+- [x] Add failing tests for waypoint add/remove/reorder.
+- [x] Add failing tests for route recalculation trigger policy.
+- [x] Add failing tests for MapKit route request construction.
+- [x] Add failing tests for Apple Maps route response normalization.
+- [x] Add failing tests for route save payload.
+- [x] Add failing view model tests for route summary.
+- [x] Add failing UI test for opening Route Setup from lobby.
 
 ### Green
 
-- [ ] Build full-screen Route Setup map.
-- [ ] Add compact bottom route editor panel.
-- [ ] Add start row.
-- [ ] Add waypoint rows.
-- [ ] Add destination row.
-- [ ] Add search flow for stops.
-- [ ] Add current location option for start.
-- [ ] Add pin-drop/move-pin flow.
+- [x] Build full-screen Route Setup map.
+- [x] Add compact bottom route editor panel.
+- [x] Add start row.
+- [x] Add waypoint rows.
+- [x] Add destination row.
+- [x] Add search flow for stops.
+- [x] Add current location option for start.
+- [x] Add pin-drop/move-pin flow.
 - [ ] Add waypoint drag reorder.
-- [ ] Recalculate route when stops change.
-- [ ] Show route polyline.
-- [ ] Show distance/duration summary.
-- [ ] Save route to `/runs/{runId}/route`.
-- [ ] Transition run to `ready` when route is saved.
-- [ ] Return to Admin Lobby.
+- [x] Recalculate route when stops change.
+- [x] Show route polyline.
+- [x] Show distance/duration summary.
+- [x] Save route to `/runs/{runId}/route`.
+- [x] Transition run to `ready` when route is saved.
+- [x] Return to Admin Lobby.
 
 ### Refactor
 
-- [ ] Keep MapKit types out of Firebase models.
-- [ ] Keep routing provider behind a protocol.
-- [ ] Validate whether SwiftUI `Map` is sufficient or route editor needs a small `MKMapView` bridge.
+- [x] Keep MapKit types out of Firebase models.
+- [x] Keep routing provider behind a protocol.
+- [x] Validate whether SwiftUI `Map` is sufficient or route editor needs a small `MKMapView` bridge.
 
 ### Verify
 
@@ -486,28 +486,28 @@ Goal: admin can import a GPX route as the secondary route creation method.
 
 ### Red
 
-- [ ] Add failing GPX fixture tests for valid GPX.
-- [ ] Add failing tests for invalid XML.
-- [ ] Add failing tests for missing track points.
-- [ ] Add failing tests for oversized GPX rejection.
-- [ ] Add failing tests for GPX distance calculation.
-- [ ] Add failing tests for GPX route save payload with `source: gpx`.
+- [x] Add failing GPX fixture tests for valid GPX.
+- [x] Add failing tests for invalid XML.
+- [x] Add failing tests for missing track points.
+- [x] Add failing tests for oversized GPX rejection.
+- [x] Add failing tests for GPX distance calculation.
+- [x] Add failing tests for GPX route save payload with `source: gpx`.
 
 ### Green
 
-- [ ] Add secondary GPX import affordance in Route Setup.
-- [ ] Use document picker for GPX.
-- [ ] Parse GPX into route points.
-- [ ] Preview imported route on map.
-- [ ] Show distance summary.
-- [ ] Save or discard.
-- [ ] Save imported route using same backend route shape.
+- [x] Add secondary GPX import affordance in Route Setup.
+- [x] Use document picker for GPX.
+- [x] Parse GPX into route points.
+- [x] Preview imported route on map.
+- [x] Show distance summary.
+- [x] Save or discard.
+- [x] Save imported route using same backend route shape.
 
 ### Refactor
 
-- [ ] Keep GPX parser pure and fixture-driven.
-- [ ] Do not add GPX editing in v1.
-- [ ] Share route preview rendering with Apple Maps routes.
+- [x] Keep GPX parser pure and fixture-driven.
+- [x] Do not add GPX editing in v1.
+- [x] Share route preview rendering with Apple Maps routes.
 
 ### Verify
 
@@ -527,32 +527,32 @@ Goal: render the active drive map from run state before enabling full tracking c
 
 ### Red
 
-- [ ] Add failing map view model tests for route rendering state.
-- [ ] Add failing tests for driver marker models.
-- [ ] Add failing tests for stale/offline/current driver states.
-- [ ] Add failing tests for hazard marker models.
-- [ ] Add failing tests for top status overlay text.
-- [ ] Add failing tests for next waypoint/distance label.
+- [x] Add failing map view model tests for route rendering state.
+- [x] Add failing tests for driver marker models.
+- [x] Add failing tests for stale/offline/current driver states.
+- [x] Add failing tests for hazard marker models.
+- [x] Add failing tests for top status overlay text.
+- [x] Add failing tests for next waypoint/distance label.
 
 ### Green
 
-- [ ] Build full-screen Live Drive screen.
-- [ ] Render MapKit route polyline.
-- [ ] Render own location marker.
-- [ ] Render other driver generated badges/colors.
-- [ ] Do not show live speed for other drivers.
-- [ ] Render hazards at reported locations.
-- [ ] Add top glass status overlay with run name/status and next waypoint/distance.
-- [ ] Add bottom controls: recenter, route overview, lobby/details.
-- [ ] Add bottom-right hazard button.
-- [ ] Add admin end-drive control.
-- [ ] Add driver marker tap details: display name, car make/model, location freshness.
+- [x] Build full-screen Live Drive screen.
+- [x] Render MapKit route polyline.
+- [x] Render own location marker.
+- [x] Render other driver generated badges/colors.
+- [x] Do not show live speed for other drivers.
+- [x] Render hazards at reported locations.
+- [x] Add top glass status overlay with run name/status and next waypoint/distance.
+- [x] Add bottom controls: recenter, route overview, lobby/details.
+- [x] Add bottom-right hazard button.
+- [x] Add admin end-drive control.
+- [x] Add driver marker tap details: display name, car make/model, location freshness.
 
 ### Refactor
 
-- [ ] Keep annotation view models independent of MapKit rendering.
-- [ ] Keep overlays large and glanceable.
-- [ ] Avoid dense panels while driving.
+- [x] Keep annotation view models independent of MapKit rendering.
+- [x] Keep overlays large and glanceable.
+- [x] Avoid dense panels while driving.
 
 ### Verify
 
@@ -928,4 +928,3 @@ Goal: prove the app behaves correctly outside the simulator.
 - [ ] Decide if nearby-driver hazard confirmation ships in v1.5.
 - [ ] Decide if GPX route import requires size limits beyond initial parser protections.
 - [ ] Decide if route search needs fallback beyond MapKit search.
-

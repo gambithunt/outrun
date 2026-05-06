@@ -3,6 +3,7 @@ import XCTest
 
 final class BackendPathsTests: XCTestCase {
     func testCentralizesFirebasePaths() {
+        XCTAssertEqual(BackendPaths.user("uid_1"), "users/uid_1")
         XCTAssertEqual(BackendPaths.joinCode("123456"), "joinCodes/123456")
         XCTAssertEqual(BackendPaths.run("run_1"), "runs/run_1")
         XCTAssertEqual(BackendPaths.runStatus("run_1"), "runs/run_1/status")
@@ -14,4 +15,3 @@ final class BackendPathsTests: XCTestCase {
         XCTAssertEqual(BackendPaths.trackPoint("run_1", uid: "uid_1", pointId: "point_1"), "tracks/run_1/uid_1/point_1")
     }
 }
-

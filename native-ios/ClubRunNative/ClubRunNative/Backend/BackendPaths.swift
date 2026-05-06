@@ -1,6 +1,10 @@
 import Foundation
 
 enum BackendPaths {
+    static func user(_ uid: String) -> String {
+        "users/\(uid)"
+    }
+
     static func joinCode(_ code: String) -> String {
         "joinCodes/\(code)"
     }
@@ -37,4 +41,3 @@ enum BackendPaths {
         "tracks/\(runId)/\(uid)/\(pointId)"
     }
 }
-

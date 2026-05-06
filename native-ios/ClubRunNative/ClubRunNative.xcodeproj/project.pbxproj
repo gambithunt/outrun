@@ -11,12 +11,29 @@
 		10000000000000000000A002 /* AppEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000102 /* AppEnvironment.swift */; };
 		10000000000000000000A003 /* DriveView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000103 /* DriveView.swift */; };
 		10000000000000000000A004 /* DriveViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000104 /* DriveViewModel.swift */; };
+		10000000000000000000A01D /* LiveDriveFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000131 /* LiveDriveFlow.swift */; };
 		10000000000000000000A005 /* ClubRunModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000105 /* ClubRunModels.swift */; };
 		10000000000000000000A006 /* BackendPaths.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000106 /* BackendPaths.swift */; };
 		10000000000000000000A007 /* FirebaseClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000107 /* FirebaseClient.swift */; };
+		10000000000000000000A00F /* UserProfileRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000120 /* UserProfileRepository.swift */; };
+		10000000000000000000A010 /* AuthFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000121 /* AuthFlow.swift */; };
+		10000000000000000000A012 /* HomeHub.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000123 /* HomeHub.swift */; };
+		10000000000000000000A014 /* CreateRunFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000125 /* CreateRunFlow.swift */; };
+		10000000000000000000A015 /* JoinRunFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000126 /* JoinRunFlow.swift */; };
+		10000000000000000000A017 /* LobbyFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000128 /* LobbyFlow.swift */; };
+		10000000000000000000A019 /* RouteSetupFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000012A /* RouteSetupFlow.swift */; };
+		10000000000000000000A01B /* GPXRouteParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000012C /* GPXRouteParser.swift */; };
 		10000000000000000000A008 /* DomainSerializationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000108 /* DomainSerializationTests.swift */; };
 		10000000000000000000A009 /* BackendPathsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000109 /* BackendPathsTests.swift */; };
 		10000000000000000000A00A /* FirebaseRepositoryContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000010A /* FirebaseRepositoryContractTests.swift */; };
+		10000000000000000000A00E /* FirebaseBootstrapTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000010F /* FirebaseBootstrapTests.swift */; };
+		10000000000000000000A011 /* AuthProfileTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000122 /* AuthProfileTests.swift */; };
+		10000000000000000000A013 /* HomeHubTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000124 /* HomeHubTests.swift */; };
+		10000000000000000000A016 /* JoinRunTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000127 /* JoinRunTests.swift */; };
+		10000000000000000000A018 /* LobbyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000129 /* LobbyTests.swift */; };
+		10000000000000000000A01A /* RouteSetupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000012B /* RouteSetupTests.swift */; };
+		10000000000000000000A01C /* GPXImportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000012D /* GPXImportTests.swift */; };
+		10000000000000000000A01E /* LiveDriveTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000132 /* LiveDriveTests.swift */; };
 		10000000000000000000A00B /* minimal-draft-run.json in Resources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000010B /* minimal-draft-run.json */; };
 		10000000000000000000A00C /* active-run-with-route.json in Resources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000010C /* active-run-with-route.json */; };
 		10000000000000000000A00D /* ClubRunNativeUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000010D /* ClubRunNativeUITests.swift */; };
@@ -48,14 +65,34 @@
 		100000000000000000000102 /* AppEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEnvironment.swift; sourceTree = "<group>"; };
 		100000000000000000000103 /* DriveView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveView.swift; sourceTree = "<group>"; };
 		100000000000000000000104 /* DriveViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveViewModel.swift; sourceTree = "<group>"; };
+		100000000000000000000131 /* LiveDriveFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveDriveFlow.swift; sourceTree = "<group>"; };
 		100000000000000000000105 /* ClubRunModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClubRunModels.swift; sourceTree = "<group>"; };
 		100000000000000000000106 /* BackendPaths.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendPaths.swift; sourceTree = "<group>"; };
 		100000000000000000000107 /* FirebaseClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirebaseClient.swift; sourceTree = "<group>"; };
+		100000000000000000000120 /* UserProfileRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserProfileRepository.swift; sourceTree = "<group>"; };
+		100000000000000000000121 /* AuthFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthFlow.swift; sourceTree = "<group>"; };
+		100000000000000000000122 /* AuthProfileTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthProfileTests.swift; sourceTree = "<group>"; };
+		100000000000000000000123 /* HomeHub.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeHub.swift; sourceTree = "<group>"; };
+		100000000000000000000124 /* HomeHubTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeHubTests.swift; sourceTree = "<group>"; };
+		100000000000000000000125 /* CreateRunFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreateRunFlow.swift; sourceTree = "<group>"; };
+		100000000000000000000126 /* JoinRunFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JoinRunFlow.swift; sourceTree = "<group>"; };
+		100000000000000000000127 /* JoinRunTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JoinRunTests.swift; sourceTree = "<group>"; };
+		100000000000000000000128 /* LobbyFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LobbyFlow.swift; sourceTree = "<group>"; };
+		100000000000000000000129 /* LobbyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LobbyTests.swift; sourceTree = "<group>"; };
+		10000000000000000000012A /* RouteSetupFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteSetupFlow.swift; sourceTree = "<group>"; };
+		10000000000000000000012B /* RouteSetupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteSetupTests.swift; sourceTree = "<group>"; };
+		10000000000000000000012C /* GPXRouteParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPXRouteParser.swift; sourceTree = "<group>"; };
+		10000000000000000000012D /* GPXImportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GPXImportTests.swift; sourceTree = "<group>"; };
+		100000000000000000000132 /* LiveDriveTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveDriveTests.swift; sourceTree = "<group>"; };
 		100000000000000000000108 /* DomainSerializationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DomainSerializationTests.swift; sourceTree = "<group>"; };
 		100000000000000000000109 /* BackendPathsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendPathsTests.swift; sourceTree = "<group>"; };
 		10000000000000000000010A /* FirebaseRepositoryContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirebaseRepositoryContractTests.swift; sourceTree = "<group>"; };
+		10000000000000000000010F /* FirebaseBootstrapTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirebaseBootstrapTests.swift; sourceTree = "<group>"; };
 		10000000000000000000010B /* minimal-draft-run.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "minimal-draft-run.json"; sourceTree = "<group>"; };
 		10000000000000000000010C /* active-run-with-route.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = "active-run-with-route.json"; sourceTree = "<group>"; };
+		10000000000000000000012E /* valid-route.gpx */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = "valid-route.gpx"; sourceTree = "<group>"; };
+		10000000000000000000012F /* invalid-route.gpx */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = "invalid-route.gpx"; sourceTree = "<group>"; };
+		100000000000000000000130 /* missing-track-points.gpx */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = "missing-track-points.gpx"; sourceTree = "<group>"; };
 		10000000000000000000010D /* ClubRunNativeUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClubRunNativeUITests.swift; sourceTree = "<group>"; };
 		10000000000000000000010E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		100000000000000000000111 /* ClubRunNative.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ClubRunNative.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -130,6 +167,7 @@
 			children = (
 				100000000000000000000106 /* BackendPaths.swift */,
 				100000000000000000000107 /* FirebaseClient.swift */,
+				100000000000000000000120 /* UserProfileRepository.swift */,
 			);
 			path = Backend;
 			sourceTree = "<group>";
@@ -145,7 +183,13 @@
 		100000000000000000000014 /* Features */ = {
 			isa = PBXGroup;
 			children = (
+				100000000000000000000017 /* Auth */,
+				100000000000000000000019 /* CreateRun */,
 				100000000000000000000016 /* Drive */,
+				100000000000000000000018 /* Home */,
+				10000000000000000000001A /* JoinRun */,
+				10000000000000000000001B /* Lobby */,
+				10000000000000000000001C /* RouteSetup */,
 			);
 			path = Features;
 			sourceTree = "<group>";
@@ -163,8 +207,58 @@
 			children = (
 				100000000000000000000103 /* DriveView.swift */,
 				100000000000000000000104 /* DriveViewModel.swift */,
+				100000000000000000000131 /* LiveDriveFlow.swift */,
 			);
 			path = Drive;
+			sourceTree = "<group>";
+		};
+		100000000000000000000017 /* Auth */ = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000121 /* AuthFlow.swift */,
+			);
+			path = Auth;
+			sourceTree = "<group>";
+		};
+		100000000000000000000018 /* Home */ = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000123 /* HomeHub.swift */,
+			);
+			path = Home;
+			sourceTree = "<group>";
+		};
+		100000000000000000000019 /* CreateRun */ = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000125 /* CreateRunFlow.swift */,
+			);
+			path = CreateRun;
+			sourceTree = "<group>";
+		};
+		10000000000000000000001A /* JoinRun */ = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000126 /* JoinRunFlow.swift */,
+			);
+			path = JoinRun;
+			sourceTree = "<group>";
+		};
+		10000000000000000000001B /* Lobby */ = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000128 /* LobbyFlow.swift */,
+			);
+			path = Lobby;
+			sourceTree = "<group>";
+		};
+		10000000000000000000001C /* RouteSetup */ = {
+			isa = PBXGroup;
+			children = (
+				10000000000000000000012A /* RouteSetupFlow.swift */,
+				10000000000000000000012C /* GPXRouteParser.swift */,
+			);
+			path = RouteSetup;
 			sourceTree = "<group>";
 		};
 		100000000000000000000020 /* ClubRunNativeTests */ = {
@@ -174,6 +268,14 @@
 				100000000000000000000108 /* DomainSerializationTests.swift */,
 				100000000000000000000109 /* BackendPathsTests.swift */,
 				10000000000000000000010A /* FirebaseRepositoryContractTests.swift */,
+				10000000000000000000010F /* FirebaseBootstrapTests.swift */,
+				100000000000000000000122 /* AuthProfileTests.swift */,
+				100000000000000000000124 /* HomeHubTests.swift */,
+				100000000000000000000127 /* JoinRunTests.swift */,
+				100000000000000000000129 /* LobbyTests.swift */,
+				10000000000000000000012B /* RouteSetupTests.swift */,
+				10000000000000000000012D /* GPXImportTests.swift */,
+				100000000000000000000132 /* LiveDriveTests.swift */,
 			);
 			path = ClubRunNativeTests;
 			sourceTree = "<group>";
@@ -183,6 +285,9 @@
 			children = (
 				10000000000000000000010B /* minimal-draft-run.json */,
 				10000000000000000000010C /* active-run-with-route.json */,
+				10000000000000000000012E /* valid-route.gpx */,
+				10000000000000000000012F /* invalid-route.gpx */,
+				100000000000000000000130 /* missing-track-points.gpx */,
 			);
 			path = Fixtures;
 			sourceTree = "<group>";
@@ -360,9 +465,18 @@
 				10000000000000000000A002 /* AppEnvironment.swift in Sources */,
 				10000000000000000000A003 /* DriveView.swift in Sources */,
 				10000000000000000000A004 /* DriveViewModel.swift in Sources */,
+				10000000000000000000A01D /* LiveDriveFlow.swift in Sources */,
 				10000000000000000000A005 /* ClubRunModels.swift in Sources */,
 				10000000000000000000A006 /* BackendPaths.swift in Sources */,
 				10000000000000000000A007 /* FirebaseClient.swift in Sources */,
+				10000000000000000000A00F /* UserProfileRepository.swift in Sources */,
+				10000000000000000000A010 /* AuthFlow.swift in Sources */,
+				10000000000000000000A012 /* HomeHub.swift in Sources */,
+				10000000000000000000A014 /* CreateRunFlow.swift in Sources */,
+				10000000000000000000A015 /* JoinRunFlow.swift in Sources */,
+				10000000000000000000A017 /* LobbyFlow.swift in Sources */,
+				10000000000000000000A019 /* RouteSetupFlow.swift in Sources */,
+				10000000000000000000A01B /* GPXRouteParser.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -373,6 +487,14 @@
 				10000000000000000000A008 /* DomainSerializationTests.swift in Sources */,
 				10000000000000000000A009 /* BackendPathsTests.swift in Sources */,
 				10000000000000000000A00A /* FirebaseRepositoryContractTests.swift in Sources */,
+				10000000000000000000A00E /* FirebaseBootstrapTests.swift in Sources */,
+				10000000000000000000A011 /* AuthProfileTests.swift in Sources */,
+				10000000000000000000A013 /* HomeHubTests.swift in Sources */,
+				10000000000000000000A016 /* JoinRunTests.swift in Sources */,
+				10000000000000000000A018 /* LobbyTests.swift in Sources */,
+				10000000000000000000A01A /* RouteSetupTests.swift in Sources */,
+				10000000000000000000A01C /* GPXImportTests.swift in Sources */,
+				10000000000000000000A01E /* LiveDriveTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="ClubRunNativeTests">
+  <trk>
+    <name>Chapman Drive</name>
+    <trkseg>
+      <trkpt lat="-33.908900" lon="18.366100">
+        <ele>14.0</ele>
+      </trkpt>
+      <trkpt lat="-33.913600" lon="18.372500">
+        <ele>24.0</ele>
+      </trkpt>
+      <trkpt lat="-33.920200" lon="18.382100">
+        <ele>31.0</ele>
+      </trkpt>
+    </trkseg>
+  </trk>
+</gpx>

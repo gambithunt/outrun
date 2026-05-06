@@ -11,6 +11,16 @@
 - shared personal skills and references are provided through the configured skills system
 - all native-ios docs should be save in the native-ios dir in docs
 
+## Deferred Todos
+- Use `docs/workstreams/active/native-ios-deferred-todos.md` to track native iOS work that is intentionally postponed.
+- When deferring a non-blocking native iOS task, add a todo to that file instead of leaving it only in chat.
+- Each deferred todo must include a copy-ready prompt wrapped with clear `START PROMPT` and `END PROMPT` markers.
+- Keep deferred prompts self-contained: include relevant docs to read, the goal, constraints, verification commands, and done criteria.
+- Do not implement deferred todos unless the user explicitly asks for that todo or names the deferred todos workstream.
+
+## Errors
+- when addressing errors and fixing them, be very specific about focusing that error only and not changing any code that is working fine
+
 ## Workstream usage
 Only use workstreams from:
 docs/workstreams/active/
