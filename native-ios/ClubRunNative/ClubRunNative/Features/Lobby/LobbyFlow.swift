@@ -287,6 +287,7 @@ struct AdminLobbyView: View {
     let router: AppRouter
     let routeProvider: RouteProviding
     let routePersisting: RoutePersisting
+    @State private var showsRouteSetup = false
 
     var body: some View {
         List {
@@ -326,15 +327,8 @@ struct AdminLobbyView: View {
             }
 
             Section {
-                NavigationLink {
-                    RouteSetupView(
-                        viewModel: RouteSetupViewModel(
-                            runId: viewModel.runId,
-                            routeProvider: routeProvider,
-                            repository: routePersisting,
-                            router: router
-                        )
-                    )
+                Button {
+                    showsRouteSetup = true
                 } label: {
                     LabeledContent("Route", value: viewModel.routeSummary)
                 }
@@ -359,6 +353,18 @@ struct AdminLobbyView: View {
         }
         .sheet(isPresented: $viewModel.showsDriversSheet) {
             DriversSheetView(rows: viewModel.driverRows)
+        }
+        .fullScreenCover(isPresented: $showsRouteSetup) {
+            RouteSetupView(
+                viewModel: RouteSetupViewModel(
+                    runId: viewModel.runId,
+                    routeProvider: routeProvider,
+                    repository: routePersisting,
+                    router: router
+                )
+            )
+            .ignoresSafeArea(.all)
+            .presentationBackground(.clear)
         }
         .confirmationDialog("Start without other drivers?", isPresented: $viewModel.showsSoloStartConfirmation) {
             Button("Start Solo", role: .destructive) {

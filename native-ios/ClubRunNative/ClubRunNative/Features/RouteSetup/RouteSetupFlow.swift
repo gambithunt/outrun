@@ -8,6 +8,7 @@ enum RouteSetupError: Error, Equatable {
     case missingDestination
     case invalidStop
     case routeUnavailable
+    case routeLegUnavailable(from: String, to: String)
 
     var userMessage: String {
         switch self {
@@ -18,7 +19,9 @@ enum RouteSetupError: Error, Equatable {
         case .invalidStop:
             "Each stop needs a name and location."
         case .routeUnavailable:
-            "Unable to calculate a route."
+            "Unable to calculate a route. Move pinned stops closer to a road and try again."
+        case let .routeLegUnavailable(from, to):
+            "No driving route found from \(from) to \(to). Move that stop closer to a road and try again."
         }
     }
 }
@@ -26,6 +29,31 @@ enum RouteSetupError: Error, Equatable {
 struct RouteCoordinate: Equatable, Sendable {
     let lat: Double
     let lng: Double
+}
+
+enum RoutePreferredUnits: String, CaseIterable, Identifiable {
+    case kilometres
+    case miles
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .kilometres:
+            "Kilometres"
+        case .miles:
+            "Miles"
+        }
+    }
+
+    var distanceLabel: String {
+        switch self {
+        case .kilometres:
+            "km"
+        case .miles:
+            "mi"
+        }
+    }
 }
 
 struct GeneratedRoute: Equatable, Sendable {
@@ -59,8 +87,40 @@ struct RouteStopSearchResult: Identifiable, Equatable, Sendable {
     }
 }
 
+struct PendingRouteStopConfirmation: Equatable, Sendable {
+    let kind: RouteStopKind
+    let result: RouteStopSearchResult
+}
+
+struct RouteMapFocusRequest: Identifiable, Equatable, Sendable {
+    let id = UUID()
+    let coordinate: RouteCoordinate
+    let span: Double
+
+    static func == (lhs: RouteMapFocusRequest, rhs: RouteMapFocusRequest) -> Bool {
+        lhs.id == rhs.id
+    }
+}
+
 protocol RouteStopSearching: Sendable {
     func search(_ query: String) async throws -> [RouteStopSearchResult]
+}
+
+protocol RoutePinNaming: Sendable {
+    func name(for coordinate: RouteCoordinate, kind: RouteStopKind, existingStops: [RouteStopDraft]) async -> String
+}
+
+enum RoutePinFallbackName {
+    static func name(for kind: RouteStopKind, existingStops: [RouteStopDraft]) -> String {
+        switch kind {
+        case .start:
+            "Pinned Start"
+        case .waypoint:
+            "Waypoint \(existingStops.filter { $0.kind == .waypoint }.count + 1)"
+        case .destination:
+            "Pinned Finish"
+        }
+    }
 }
 
 enum RouteStopValidator {
@@ -129,6 +189,30 @@ struct RouteStopEditor {
         waypoints.move(fromOffsets: source, toOffset: destination)
     }
 
+    mutating func moveWaypoint(id: String, beforeWaypointID destinationID: String?) {
+        guard let sourceIndex = waypoints.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+
+        let moved = waypoints.remove(at: sourceIndex)
+        guard let destinationID, let destinationIndex = waypoints.firstIndex(where: { $0.id == destinationID }) else {
+            waypoints.append(moved)
+            return
+        }
+
+        waypoints.insert(moved, at: destinationIndex)
+    }
+
+    mutating func moveWaypoint(id: String, toWaypointIndex destinationIndex: Int) {
+        guard let sourceIndex = waypoints.firstIndex(where: { $0.id == id }) else {
+            return
+        }
+
+        let moved = waypoints.remove(at: sourceIndex)
+        let boundedDestination = min(max(destinationIndex, 0), waypoints.count)
+        waypoints.insert(moved, at: boundedDestination)
+    }
+
     private func normalized(_ stop: RouteStopDraft, kind: RouteStopKind) -> RouteStopDraft {
         RouteStopDraft(id: stop.id, kind: kind, order: stop.order, label: stop.label, lat: stop.lat, lng: stop.lng, source: stop.source, placeId: stop.placeId)
     }
@@ -184,7 +268,15 @@ struct AppleMapsRouteProvider: RouteProviding {
         var duration = 0.0
 
         for pair in zip(validated.dropLast(), validated.dropFirst()) {
-            let route = try await routeLeg(from: pair.0, to: pair.1)
+            let route: MKRoute
+            do {
+                route = try await routeLeg(from: pair.0, to: pair.1)
+            } catch {
+                #if DEBUG
+                print("Route leg calculation failed from \(pair.0.label) to \(pair.1.label): \(error)")
+                #endif
+                throw RouteSetupError.routeLegUnavailable(from: pair.0.label, to: pair.1.label)
+            }
             let legPoints = route.polyline.coordinates.map {
                 RouteCoordinate(lat: $0.latitude, lng: $0.longitude)
             }
@@ -223,6 +315,14 @@ struct AppleMapsRouteProvider: RouteProviding {
 }
 
 struct MapKitRouteStopSearchService: RouteStopSearching {
+    let centerCoordinate: RouteCoordinate?
+    let preferredCountryCode: String?
+
+    init(centerCoordinate: RouteCoordinate? = nil, preferredCountryCode: String? = nil) {
+        self.centerCoordinate = centerCoordinate
+        self.preferredCountryCode = preferredCountryCode
+    }
+
     func search(_ query: String) async throws -> [RouteStopSearchResult] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
@@ -231,18 +331,100 @@ struct MapKitRouteStopSearchService: RouteStopSearching {
 
         let request = MKLocalSearch.Request()
         request.naturalLanguageQuery = trimmed
+        if let centerCoordinate {
+            request.region = MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude: centerCoordinate.lat, longitude: centerCoordinate.lng),
+                span: MKCoordinateSpan(latitudeDelta: 4, longitudeDelta: 4)
+            )
+        }
+
         let response = try await MKLocalSearch(request: request).start()
-        return response.mapItems.prefix(8).map { item in
+        let preferredCountryCode = try await resolvedPreferredCountryCode()
+        let mapItems = filteredMapItems(response.mapItems, preferredCountryCode: preferredCountryCode)
+
+        return mapItems.prefix(8).map { item in
             let coordinate = item.location.coordinate
             let title = item.name ?? trimmed
             return RouteStopSearchResult(
                 id: "\(title).\(coordinate.latitude).\(coordinate.longitude)",
                 title: title,
-                subtitle: "",
+                subtitle: subtitle(for: item),
                 coordinate: RouteCoordinate(lat: coordinate.latitude, lng: coordinate.longitude),
-                placeId: nil
+                placeId: item.identifier?.rawValue
             )
         }
+    }
+
+    private func resolvedPreferredCountryCode() async throws -> String? {
+        if let preferredCountryCode {
+            return preferredCountryCode.uppercased()
+        }
+
+        guard let centerCoordinate else {
+            return nil
+        }
+
+        let location = CLLocation(latitude: centerCoordinate.lat, longitude: centerCoordinate.lng)
+        let mapItems = try await MKReverseGeocodingRequest(location: location)?.mapItems
+        return mapItems?.first?.addressRepresentations?.__regionCode?.uppercased()
+    }
+
+    private func filteredMapItems(_ mapItems: [MKMapItem], preferredCountryCode: String?) -> [MKMapItem] {
+        guard let preferredCountryCode else {
+            return mapItems
+        }
+
+        let sameCountryItems = mapItems.filter { item in
+            item.addressRepresentations?.__regionCode?.uppercased() == preferredCountryCode
+        }
+        return sameCountryItems.isEmpty ? mapItems : sameCountryItems
+    }
+
+    private func subtitle(for item: MKMapItem) -> String {
+        item.addressRepresentations?.cityWithContext(.full) ??
+            item.addressRepresentations?.fullAddress(includingRegion: true, singleLine: true) ??
+            ""
+    }
+}
+
+struct MapKitRoutePinNamer: RoutePinNaming {
+    func name(for coordinate: RouteCoordinate, kind: RouteStopKind, existingStops: [RouteStopDraft]) async -> String {
+        let fallback = RoutePinFallbackName.name(for: kind, existingStops: existingStops)
+        let location = CLLocation(latitude: coordinate.lat, longitude: coordinate.lng)
+
+        do {
+            let mapItems = try await MKReverseGeocodingRequest(location: location)?.mapItems ?? []
+            return resolvedName(from: mapItems) ?? fallback
+        } catch {
+            return fallback
+        }
+    }
+
+    private func resolvedName(from mapItems: [MKMapItem]) -> String? {
+        for item in mapItems {
+            if let name = cleaned(item.name), !isCoordinateLike(name) {
+                return name
+            }
+
+            if let address = cleaned(item.addressRepresentations?.fullAddress(includingRegion: false, singleLine: true)) {
+                return address
+            }
+
+            if let city = cleaned(item.addressRepresentations?.cityWithContext(.short)) {
+                return city
+            }
+        }
+
+        return nil
+    }
+
+    private func cleaned(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private func isCoordinateLike(_ value: String) -> Bool {
+        value.range(of: #"^-?\d+(\.\d+)?,\s*-?\d+(\.\d+)?$"#, options: .regularExpression) != nil
     }
 }
 
@@ -257,51 +439,82 @@ final class RouteSetupViewModel: ObservableObject {
     @Published private(set) var isGPXPreview = false
     @Published private(set) var activeStopSelectionKind: RouteStopKind?
     @Published private(set) var pinDropKind: RouteStopKind?
+    @Published private(set) var pendingStopConfirmation: PendingRouteStopConfirmation?
+    @Published private(set) var mapFocusRequest: RouteMapFocusRequest?
+    @Published private(set) var routeNeedsRecalculation = false
 
     private let runId: String
     private let routeProvider: RouteProviding
     private let repository: RoutePersisting
     private let router: AppRouter
     private let gpxParser: GPXRouteParser
+    private let pinNamer: RoutePinNaming
     private var editor = RouteStopEditor()
     private var recalculationPolicy = RouteRecalculationPolicy()
 
-    init(runId: String, routeProvider: RouteProviding, repository: RoutePersisting, router: AppRouter, gpxParser: GPXRouteParser = GPXRouteParser()) {
+    init(
+        runId: String,
+        routeProvider: RouteProviding,
+        repository: RoutePersisting,
+        router: AppRouter,
+        gpxParser: GPXRouteParser = GPXRouteParser(),
+        pinNamer: RoutePinNaming = MapKitRoutePinNamer()
+    ) {
         self.runId = runId
         self.routeProvider = routeProvider
         self.repository = repository
         self.router = router
         self.gpxParser = gpxParser
+        self.pinNamer = pinNamer
     }
 
     func setStart(_ stop: RouteStopDraft) {
         clearImportedPreview()
         editor.setStart(stop)
         stops = editor.orderedStops
+        markRouteStaleIfNeeded()
     }
 
     func setDestination(_ stop: RouteStopDraft) {
         clearImportedPreview()
         editor.setDestination(stop)
         stops = editor.orderedStops
+        markRouteStaleIfNeeded()
     }
 
     func addWaypoint(_ stop: RouteStopDraft) {
         clearImportedPreview()
         editor.addWaypoint(stop)
         stops = editor.orderedStops
+        markRouteStaleIfNeeded()
     }
 
     func removeWaypoint(id: String) {
         clearImportedPreview()
         editor.removeWaypoint(id: id)
         stops = editor.orderedStops
+        markRouteStaleIfNeeded()
     }
 
     func moveWaypoint(fromOffsets source: IndexSet, toOffset destination: Int) {
         clearImportedPreview()
         editor.moveWaypoint(fromOffsets: source, toOffset: destination)
         stops = editor.orderedStops
+        markRouteStaleIfNeeded()
+    }
+
+    func moveWaypoint(id: String, beforeWaypointID destinationID: String?) {
+        clearImportedPreview()
+        editor.moveWaypoint(id: id, beforeWaypointID: destinationID)
+        stops = editor.orderedStops
+        markRouteStaleIfNeeded()
+    }
+
+    func moveWaypoint(id: String, toWaypointIndex destinationIndex: Int) {
+        clearImportedPreview()
+        editor.moveWaypoint(id: id, toWaypointIndex: destinationIndex)
+        stops = editor.orderedStops
+        markRouteStaleIfNeeded()
     }
 
     func beginStopSelection(_ kind: RouteStopKind) {
@@ -313,12 +526,44 @@ final class RouteSetupViewModel: ObservableObject {
     }
 
     func applySearchResult(_ result: RouteStopSearchResult) {
+        previewSearchResult(result)
+        confirmPendingSearchResult(at: result.coordinate)
+    }
+
+    func previewSearchResult(_ result: RouteStopSearchResult) {
         guard let kind = activeStopSelectionKind else {
             return
         }
 
-        applyStop(result.routeStop(kind: kind), kind: kind)
+        pendingStopConfirmation = PendingRouteStopConfirmation(kind: kind, result: result)
+        mapFocusRequest = RouteMapFocusRequest(coordinate: result.coordinate, span: 0.01)
         activeStopSelectionKind = nil
+    }
+
+    func cancelPendingSearchResult() {
+        pendingStopConfirmation = nil
+    }
+
+    func confirmPendingSearchResult(at coordinate: RouteCoordinate) {
+        guard let pendingStopConfirmation else {
+            return
+        }
+
+        let result = pendingStopConfirmation.result
+        applyStop(
+            RouteStopDraft(
+                id: UUID().uuidString,
+                kind: pendingStopConfirmation.kind,
+                order: nil,
+                label: result.title,
+                lat: coordinate.lat,
+                lng: coordinate.lng,
+                source: .search,
+                placeId: result.placeId
+            ),
+            kind: pendingStopConfirmation.kind
+        )
+        self.pendingStopConfirmation = nil
     }
 
     func beginPinDrop(_ kind: RouteStopKind? = nil) {
@@ -331,17 +576,18 @@ final class RouteSetupViewModel: ObservableObject {
         pinDropKind = nil
     }
 
-    func confirmPinDrop(at coordinate: RouteCoordinate) {
+    func confirmPinDrop(at coordinate: RouteCoordinate) async {
         guard let kind = pinDropKind else {
             return
         }
 
+        let label = await pinNamer.name(for: coordinate, kind: kind, existingStops: stops)
         applyStop(
             RouteStopDraft(
                 id: UUID().uuidString,
                 kind: kind,
                 order: nil,
-                label: pinLabel(for: kind),
+                label: label,
                 lat: coordinate.lat,
                 lng: coordinate.lng,
                 source: .pin
@@ -365,11 +611,15 @@ final class RouteSetupViewModel: ObservableObject {
             let routeData = RouteResponseNormalizer.routeData(from: generated, stops: validated)
             self.routeData = routeData
             isGPXPreview = false
+            routeNeedsRecalculation = false
             summaryText = summary(for: routeData)
             message = nil
         } catch let error as RouteSetupError {
             message = error.userMessage
         } catch {
+            #if DEBUG
+            print("Route calculation failed: \(error)")
+            #endif
             message = "Unable to calculate a route."
         }
     }
@@ -380,6 +630,7 @@ final class RouteSetupViewModel: ObservableObject {
             self.routeData = routeData
             stops = routeData.stops ?? []
             isGPXPreview = true
+            routeNeedsRecalculation = false
             summaryText = summary(for: routeData)
             message = nil
         } catch let error as GPXImportError {
@@ -406,6 +657,10 @@ final class RouteSetupViewModel: ObservableObject {
     func saveRoute() async {
         guard let routeData else {
             message = "Calculate a route before saving."
+            return
+        }
+        guard !routeNeedsRecalculation else {
+            message = "Recalculate the route before saving."
             return
         }
 
@@ -440,17 +695,6 @@ final class RouteSetupViewModel: ObservableObject {
         }
     }
 
-    private func pinLabel(for kind: RouteStopKind) -> String {
-        switch kind {
-        case .start:
-            "Pinned Start"
-        case .waypoint:
-            "Pinned Waypoint"
-        case .destination:
-            "Pinned Finish"
-        }
-    }
-
     private func summary(for route: RouteData) -> String {
         let kilometres = route.distanceMetres / 1_000
         let minutes = Int((route.durationSeconds ?? 0) / 60)
@@ -464,8 +708,15 @@ final class RouteSetupViewModel: ObservableObject {
         if isGPXPreview {
             routeData = nil
             isGPXPreview = false
+            routeNeedsRecalculation = false
             summaryText = "Add start and destination"
             message = nil
+        }
+    }
+
+    private func markRouteStaleIfNeeded() {
+        if routeData != nil, !isGPXPreview {
+            routeNeedsRecalculation = true
         }
     }
 }
@@ -473,77 +724,106 @@ final class RouteSetupViewModel: ObservableObject {
 struct RouteSetupView: View {
     @StateObject var viewModel: RouteSetupViewModel
     @State private var isImportingGPX = false
-    @State private var isPanelExpanded = false
+    @State private var isSettingsPresented = false
+    @State private var panelState: RoutePanelState = .compact
+    @State private var preferredUnits: RoutePreferredUnits = .kilometres
     @State private var mapPosition: MapCameraPosition = .automatic
     @State private var mapCenter = RouteCoordinate(lat: -33.9249, lng: 18.4241)
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            RoutePreviewMap(
-                routeData: viewModel.routeData,
-                stops: viewModel.stops,
-                mapPosition: $mapPosition,
-                onCenterChanged: { mapCenter = $0 }
-            )
-                .ignoresSafeArea()
+        GeometryReader { proxy in
+            ZStack(alignment: .top) {
+                RoutePreviewMap(
+                    routeData: viewModel.routeData,
+                    stops: viewModel.stops,
+                    mapPosition: $mapPosition,
+                    onCenterChanged: { mapCenter = $0 }
+                )
+                .frame(width: proxy.size.width, height: proxy.size.height)
                 .accessibilityIdentifier("routeSetup.map")
 
-            VStack {
-                HStack {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "chevron.left")
-                            .font(.title2.weight(.semibold))
-                            .frame(width: 52, height: 52)
-                            .background(.regularMaterial, in: Circle())
-                    }
-                    .accessibilityLabel("Back")
+                RouteSetupTopBar(
+                    topInset: proxy.safeAreaInsets.top,
+                    onBack: { dismiss() },
+                    onLocate: { focusMap(on: mapCenter, span: 0.025) },
+                    onSettings: { isSettingsPresented = true }
+                )
 
-                    Spacer()
-
-                    Text("Route Setup")
-                        .font(.headline)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .background(.regularMaterial, in: Capsule())
-
-                    Spacer()
-
-                    Color.clear.frame(width: 52, height: 52)
+                if let pendingStopConfirmation = viewModel.pendingStopConfirmation {
+                    PinDropOverlay(
+                        title: "Confirm \(pendingStopConfirmation.result.title)",
+                        subtitle: "Move map to refine this \(stopKindLabel(pendingStopConfirmation.kind).lowercased()).",
+                        coordinate: mapCenter,
+                        confirmTitle: "Use Place",
+                        onCancel: { viewModel.cancelPendingSearchResult() },
+                        onConfirm: { viewModel.confirmPendingSearchResult(at: mapCenter) }
+                    )
+                } else if let pinDropKind = viewModel.pinDropKind {
+                    PinDropOverlay(
+                        title: pinTitle(for: pinDropKind),
+                        subtitle: nil,
+                        coordinate: mapCenter,
+                        confirmTitle: "Use Pin",
+                        onCancel: { viewModel.cancelPinDrop() },
+                        onConfirm: {
+                            Task {
+                                await viewModel.confirmPinDrop(at: mapCenter)
+                            }
+                        }
+                    )
+                } else {
+                    RouteEditorPanel(
+                        viewModel: viewModel,
+                        panelState: $panelState,
+                        preferredUnits: preferredUnits,
+                        bottomInset: proxy.safeAreaInsets.bottom,
+                        onImportGPX: { isImportingGPX = true }
+                    )
                 }
-                .padding(.horizontal)
-                .padding(.top, 10)
-
-                Spacer()
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+            .background(Color.black)
+        }
+        .ignoresSafeArea(.container, edges: .all)
+        .toolbar(.hidden, for: .navigationBar)
+        .onChange(of: viewModel.pinDropKind) { _, newValue in
+            guard newValue != nil else {
+                return
             }
 
-            if let pinDropKind = viewModel.pinDropKind {
-                PinDropOverlay(
-                    kind: pinDropKind,
-                    coordinate: mapCenter,
-                    onCancel: { viewModel.cancelPinDrop() },
-                    onConfirm: { viewModel.confirmPinDrop(at: mapCenter) }
-                )
-            } else {
-                RouteEditorPanel(
-                    viewModel: viewModel,
-                    isExpanded: $isPanelExpanded,
-                    onImportGPX: { isImportingGPX = true }
-                )
-                .padding(.horizontal, 12)
-                .padding(.bottom, 12)
+            withAnimation(.snappy) {
+                focusMap(on: mapCenter, span: 0.025)
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .toolbar(.hidden, for: .navigationBar)
+        .onChange(of: viewModel.mapFocusRequest) { _, request in
+            guard let request else {
+                return
+            }
+
+            mapCenter = request.coordinate
+            withAnimation(.snappy) {
+                focusMap(on: request.coordinate, span: request.span)
+            }
+        }
         .fileImporter(
             isPresented: $isImportingGPX,
             allowedContentTypes: [.gpx, .xml],
             allowsMultipleSelection: false
         ) { result in
             handleGPXImport(result)
+        }
+        .sheet(isPresented: $isSettingsPresented) {
+            RouteSettingsSheet(
+                preferredUnits: $preferredUnits,
+                canExportGPX: viewModel.routeData != nil,
+                onImportGPX: {
+                    isSettingsPresented = false
+                    isImportingGPX = true
+                }
+            )
+            .presentationDetents([.medium])
+            .presentationBackground(.ultraThinMaterial)
         }
         .sheet(item: Binding(
             get: { viewModel.activeStopSelectionKind.map(RouteStopSelectionSheetItem.init(kind:)) },
@@ -555,11 +835,13 @@ struct RouteSetupView: View {
         )) { item in
             RouteStopSelectionSheet(
                 kind: item.kind,
-                searchService: MapKitRouteStopSearchService(),
+                searchService: MapKitRouteStopSearchService(centerCoordinate: mapCenter),
                 onSelect: { result in
-                    viewModel.applySearchResult(result)
+                    panelState = .compact
+                    viewModel.previewSearchResult(result)
                 },
                 onPinDrop: {
+                    panelState = .compact
                     viewModel.beginPinDrop(item.kind)
                 },
                 onUseDevelopmentCurrentLocation: item.kind == .start ? {
@@ -567,7 +849,39 @@ struct RouteSetupView: View {
                     viewModel.cancelStopSelection()
                 } : nil
             )
+            .presentationDetents([.height(420)])
+            .presentationDragIndicator(.visible)
+            .presentationBackground(.ultraThinMaterial)
         }
+    }
+
+    private func stopKindLabel(_ kind: RouteStopKind) -> String {
+        switch kind {
+        case .start:
+            "Start"
+        case .waypoint:
+            "Waypoint"
+        case .destination:
+            "Finish"
+        }
+    }
+
+    private func pinTitle(for kind: RouteStopKind) -> String {
+        switch kind {
+        case .start:
+            "Move map to choose start"
+        case .waypoint:
+            "Move map to choose waypoint"
+        case .destination:
+            "Move map to choose finish"
+        }
+    }
+
+    private func focusMap(on coordinate: RouteCoordinate, span: CLLocationDegrees) {
+        mapPosition = .region(MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: coordinate.lat, longitude: coordinate.lng),
+            span: MKCoordinateSpan(latitudeDelta: span, longitudeDelta: span)
+        ))
     }
 
     private func handleGPXImport(_ result: Result<[URL], Error>) {
@@ -587,6 +901,99 @@ struct RouteSetupView: View {
         } catch {
             // The view model owns user-facing parser errors.
         }
+    }
+}
+
+private enum RoutePanelState: CaseIterable {
+    case compact
+    case medium
+    case expanded
+
+    mutating func expand() {
+        switch self {
+        case .compact:
+            self = .medium
+        case .medium:
+            self = .expanded
+        case .expanded:
+            break
+        }
+    }
+
+    mutating func collapse() {
+        switch self {
+        case .compact:
+            break
+        case .medium:
+            self = .compact
+        case .expanded:
+            self = .medium
+        }
+    }
+
+    mutating func toggle() {
+        switch self {
+        case .compact:
+            self = .medium
+        case .medium, .expanded:
+            self = .compact
+        }
+    }
+}
+
+private struct RouteSetupTopBar: View {
+    let topInset: CGFloat
+    let onBack: () -> Void
+    let onLocate: () -> Void
+    let onSettings: () -> Void
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 10) {
+            HStack(alignment: .top) {
+                CircleIconButton(systemName: "chevron.left", accessibilityLabel: "Back", action: onBack)
+
+                Spacer()
+
+                CircleIconButton(systemName: "gearshape", accessibilityLabel: "Route Settings", action: onSettings)
+                    .accessibilityIdentifier("routeSetup.settingsButton")
+            }
+            .overlay(alignment: .top) {
+                Text("ROUTE SETUP")
+                    .font(.caption.weight(.heavy))
+                    .tracking(2)
+                    .foregroundStyle(.primary)
+                    .padding(.horizontal, 26)
+                    .padding(.vertical, 15)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .background(Color.white.opacity(0.10), in: Capsule())
+                    .overlay(Capsule().stroke(.white.opacity(0.28), lineWidth: 1))
+            }
+
+            CircleIconButton(systemName: "location.north", accessibilityLabel: "Center Map", action: onLocate)
+                .accessibilityIdentifier("routeSetup.locateButton")
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, max(topInset + 28, 92))
+        .frame(maxWidth: .infinity, alignment: .top)
+    }
+}
+
+private struct CircleIconButton: View {
+    let systemName: String
+    let accessibilityLabel: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.title3.weight(.semibold))
+                .frame(width: 56, height: 56)
+                .background(.ultraThinMaterial, in: Circle())
+                .background(Color.white.opacity(0.10), in: Circle())
+                .overlay(Circle().stroke(.white.opacity(0.28), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(accessibilityLabel)
     }
 }
 
@@ -617,6 +1024,8 @@ private struct RoutePreviewMap: View {
             MapCompass()
             MapScaleView()
         }
+        .mapStyle(.standard(elevation: .realistic, emphasis: .muted))
+        .overlay(Color.black.opacity(0.14).allowsHitTesting(false))
         .onMapCameraChange(frequency: .continuous) { context in
             onCenterChanged(
                 RouteCoordinate(
@@ -625,151 +1034,250 @@ private struct RoutePreviewMap: View {
                 )
             )
         }
+        .ignoresSafeArea(.all)
     }
 }
 
 private struct RouteEditorPanel: View {
     @ObservedObject var viewModel: RouteSetupViewModel
-    @Binding var isExpanded: Bool
+    @Binding var panelState: RoutePanelState
+    let preferredUnits: RoutePreferredUnits
+    let bottomInset: CGFloat
     let onImportGPX: () -> Void
+    @State private var draggingWaypointID: String?
+    @State private var dragStartWaypointIndex: Int?
+    @State private var dragCurrentWaypointIndex: Int?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Route")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                    Text(viewModel.summaryText)
-                        .font(.headline)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.78)
+        VStack {
+            Spacer()
+
+            VStack(alignment: .leading, spacing: panelState == .compact ? 18 : 12) {
+                Capsule()
+                    .fill(.secondary.opacity(0.35))
+                    .frame(width: 58, height: 5)
+                    .frame(maxWidth: .infinity)
+                    .onTapGesture {
+                        withAnimation(.snappy) {
+                            panelState.toggle()
+                        }
+                    }
+                    .gesture(
+                        DragGesture(minimumDistance: 20)
+                            .onEnded { value in
+                                withAnimation(.snappy) {
+                                    if value.translation.height < -20 {
+                                        panelState.expand()
+                                    } else if value.translation.height > 20 {
+                                        panelState.collapse()
+                                    }
+                                }
+                            }
+                    )
+
+                if panelState != .compact {
+                    routeHeader
+
+                    if panelState == .expanded {
+                        stopsContent
+                        routeMetrics
+                    } else {
+                        compactStopsSummary
+                        routeMetrics
+                    }
                 }
 
-                Spacer(minLength: 12)
+                if viewModel.isGPXPreview {
+                    gpxPreviewControls
+                } else {
+                    routeStopActions
+                    if panelState != .compact {
+                        primaryRouteAction
+                    }
+                }
 
+                if let message = viewModel.message, panelState != .compact {
+                    Text(message)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .lineLimit(2)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 10)
+            .padding(.bottom, panelState == .compact ? max(bottomInset + 46, 62) : max(bottomInset + 18, 26))
+            .frame(maxWidth: .infinity)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 32))
+            .background(Color.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 32))
+            .clipShape(RoundedRectangle(cornerRadius: 32))
+            .overlay(RoundedRectangle(cornerRadius: 32).stroke(.white.opacity(0.28), lineWidth: 1))
+            .shadow(color: .black.opacity(0.12), radius: 18, y: 8)
+            .offset(y: panelState == .compact ? max(bottomInset + 8, 30) : 0)
+            .accessibilityIdentifier("routeSetup.bottomSheet")
+        }
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+    }
+
+    private var routeHeader: some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Route")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.secondary)
+                Text(viewModel.summaryText)
+                    .font(.title3.weight(.bold))
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.82)
+            }
+            Spacer(minLength: 8)
+
+            if panelState == .expanded {
                 Button {
                     onImportGPX()
                 } label: {
                     Label("GPX", systemImage: "doc.badge.plus")
-                        .labelStyle(.titleAndIcon)
+                        .font(.subheadline.weight(.semibold))
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
                 .accessibilityIdentifier("routeSetup.importGPXButton")
             }
+        }
+    }
 
-            if isExpanded || viewModel.stops.isEmpty || viewModel.isGPXPreview {
-                stopsContent
-            } else {
-                compactStopsSummary
+    private var routeStopActions: some View {
+        HStack(spacing: 18) {
+            RouteSetupStopButton(title: "START", icon: "location.north.fill", isPrimary: !viewModel.stops.contains(where: { $0.kind == .start })) {
+                viewModel.beginStopSelection(.start)
             }
-
-            if viewModel.isGPXPreview {
-                HStack {
-                    Label("Preview-only GPX route", systemImage: "eye")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Button(role: .destructive) {
-                        viewModel.discardGPXPreview()
-                    } label: {
-                        Label("Discard", systemImage: "xmark.circle")
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .accessibilityIdentifier("routeSetup.discardGPXButton")
-                }
-            } else {
-                if isExpanded || viewModel.stops.isEmpty {
-                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
-                        RouteEditorActionButton(title: "Start", icon: "location.fill") {
-                            viewModel.beginStopSelection(.start)
-                        }
-                        RouteEditorActionButton(title: "Waypoint", icon: "mappin.and.ellipse") {
-                            viewModel.beginStopSelection(.waypoint)
-                        }
-                        RouteEditorActionButton(title: "Finish", icon: "flag.checkered") {
-                            viewModel.beginStopSelection(.destination)
-                        }
-                        RouteEditorActionButton(title: "Pin", icon: "pin.fill") {
-                            viewModel.beginPinDrop()
-                        }
-                    }
-                }
-
-                HStack(spacing: 10) {
-                    Button {
-                        withAnimation(.snappy) {
-                            isExpanded.toggle()
-                        }
-                    } label: {
-                        Label(isExpanded ? "Hide" : "Edit", systemImage: isExpanded ? "chevron.down" : "slider.horizontal.3")
-                    }
-                    .buttonStyle(.bordered)
-                    .frame(maxWidth: .infinity)
-
-                    Button {
-                        Task {
-                            await viewModel.recalculateRoute()
-                        }
-                    } label: {
-                        Label("Calculate", systemImage: "point.topleft.down.curvedto.point.bottomright.up")
-                    }
-                    .buttonStyle(.bordered)
-                    .frame(maxWidth: .infinity)
-                    .disabled(viewModel.isCalculating)
-
-                    Button {
-                        Task {
-                            await viewModel.saveRoute()
-                        }
-                    } label: {
-                        Label("Save Route", systemImage: "checkmark.circle.fill")
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .frame(maxWidth: .infinity)
-                    .disabled(viewModel.isSaving)
-                }
+            RouteSetupStopButton(title: "WAYPOINT", icon: "mappin.and.ellipse", isPrimary: false) {
+                viewModel.beginStopSelection(.waypoint)
             }
-
-            if viewModel.isGPXPreview {
-                Button {
-                    Task {
-                        await viewModel.saveRoute()
-                    }
-                } label: {
-                    Label("Save Route", systemImage: "checkmark.circle.fill")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(viewModel.isSaving)
-            }
-
-            if let message = viewModel.message {
-                Text(message)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .lineLimit(2)
+            RouteSetupStopButton(title: "FINISH", icon: "flag.fill", isPrimary: !viewModel.stops.contains(where: { $0.kind == .destination })) {
+                viewModel.beginStopSelection(.destination)
             }
         }
-        .padding(14)
-        .frame(maxWidth: 380)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .frame(maxWidth: .infinity)
+    }
+
+    @ViewBuilder
+    private var primaryRouteAction: some View {
+        if (viewModel.routeData == nil && hasStartAndDestination) || viewModel.routeNeedsRecalculation {
+            Button {
+                Task {
+                    await viewModel.recalculateRoute()
+                }
+            } label: {
+                Label(routeActionTitle, systemImage: "point.topleft.down.curvedto.point.bottomright.up")
+                    .font(.headline.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(viewModel.routeNeedsRecalculation ? .orange : .accentColor)
+            .disabled(viewModel.isCalculating)
+            .accessibilityIdentifier("routeSetup.calculateButton")
+        } else if viewModel.routeData == nil {
+            EmptyView()
+        } else {
+            Button {
+                Task {
+                    await viewModel.saveRoute()
+                }
+            } label: {
+                Label(viewModel.isSaving ? "Saving" : "Save Route", systemImage: "checkmark.circle.fill")
+                    .font(.headline.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(viewModel.isSaving)
+            .accessibilityIdentifier("routeSetup.saveButton")
+        }
+    }
+
+    private var routeActionTitle: String {
+        if viewModel.isCalculating {
+            return "Calculating"
+        }
+        return viewModel.routeNeedsRecalculation ? "Recalculate Route" : "Calculate Route"
+    }
+
+    private var hasStartAndDestination: Bool {
+        viewModel.stops.contains { $0.kind == .start } &&
+            viewModel.stops.contains { $0.kind == .destination }
+    }
+
+    private var gpxPreviewControls: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("Preview-only GPX route", systemImage: "eye")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button(role: .destructive) {
+                    viewModel.discardGPXPreview()
+                } label: {
+                    Label("Discard", systemImage: "xmark.circle")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .accessibilityIdentifier("routeSetup.discardGPXButton")
+            }
+
+            Button {
+                Task {
+                    await viewModel.saveRoute()
+                }
+            } label: {
+                Label(viewModel.isSaving ? "Saving" : "Save Route", systemImage: "checkmark.circle.fill")
+                    .font(.headline.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(viewModel.isSaving)
+            .accessibilityIdentifier("routeSetup.saveGPXButton")
+        }
+    }
+
+    @ViewBuilder
+    private var routeMetrics: some View {
+        if let routeData = viewModel.routeData {
+            HStack(spacing: 8) {
+                RouteMetricPill(title: "Distance", value: distanceText(for: routeData))
+                RouteMetricPill(title: "Time", value: durationText(for: routeData))
+                RouteMetricPill(title: "Source", value: routeData.source == .gpx ? "GPX" : "Maps")
+            }
+        }
+    }
+
+    private func distanceText(for route: RouteData) -> String {
+        switch preferredUnits {
+        case .kilometres:
+            "\(String(format: "%.1f", route.distanceMetres / 1_000)) km"
+        case .miles:
+            "\(String(format: "%.1f", route.distanceMetres / 1_609.344)) mi"
+        }
+    }
+
+    private func durationText(for route: RouteData) -> String {
+        let minutes = Int((route.durationSeconds ?? 0) / 60)
+        if minutes < 60 {
+            return "\(minutes) min"
+        }
+        return "\(minutes / 60) hr \(minutes % 60) min"
     }
 
     private var compactStopsSummary: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 10) {
             Image(systemName: "mappin.and.ellipse")
                 .foregroundStyle(.secondary)
             Text("\(viewModel.stops.count) stop\(viewModel.stops.count == 1 ? "" : "s") selected")
                 .font(.subheadline.weight(.semibold))
             Spacer()
         }
-        .padding(10)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .padding(12)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18))
+        .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 18))
     }
 
     @ViewBuilder
@@ -782,75 +1290,248 @@ private struct RouteEditorPanel: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("No stops yet")
                         .font(.subheadline.weight(.semibold))
-                    Text("Add a start and finish, or import a GPX file.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
                 }
                 Spacer()
             }
-            .padding(10)
-            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
+            .padding(12)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18))
+            .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 18))
             .accessibilityIdentifier("routeSetup.emptyStopsState")
         } else {
-            VStack(spacing: 6) {
-                ForEach(viewModel.stops, id: \.id) { stop in
-                    HStack(spacing: 8) {
-                        Image(systemName: icon(for: stop.kind))
-                            .font(.footnote.weight(.semibold))
-                            .frame(width: 20)
+            ScrollView {
+                VStack(spacing: 6) {
+                    if waypointStops.count > 1 {
+                        Text("Drag waypoints to reorder")
+                            .font(.caption2.weight(.semibold))
                             .foregroundStyle(.secondary)
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(stop.label)
-                                .font(.subheadline.weight(.semibold))
-                                .lineLimit(1)
-                            Text(stop.kind.rawValue.capitalized)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        if stop.kind == .waypoint {
-                            Image(systemName: "line.3.horizontal")
-                                .font(.caption)
-                                .foregroundStyle(.tertiary)
-                        }
+                            .frame(maxWidth: .infinity, alignment: .trailing)
                     }
-                    .padding(.vertical, 6)
-                    .padding(.horizontal, 8)
-                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8))
+
+                    if let start = viewModel.stops.first(where: { $0.kind == .start }) {
+                        RouteStopListRow(stop: start, icon: icon(for: start.kind), isReorderable: false)
+                    }
+
+                    ForEach(Array(waypointStops.enumerated()), id: \.element.id) { index, stop in
+                        RouteStopListRow(
+                            stop: stop,
+                            icon: icon(for: stop.kind),
+                            isReorderable: true,
+                            isDragging: draggingWaypointID == stop.id,
+                            dragGesture: waypointDragGesture(for: stop, currentIndex: index)
+                        )
+                    }
+
+                    if let destination = viewModel.stops.first(where: { $0.kind == .destination }) {
+                        RouteStopListRow(stop: destination, icon: icon(for: destination.kind), isReorderable: false)
+                    }
+                }
+                .padding(.bottom, 12)
+            }
+            .frame(maxHeight: min(CGFloat(max(viewModel.stops.count, 1)) * 60 + 28, 260))
+            .scrollIndicators(.visible)
+        }
+    }
+
+    private var waypointStops: [RouteStopDraft] {
+        viewModel.stops.filter { $0.kind == .waypoint }
+    }
+
+    private func waypointDragGesture(for stop: RouteStopDraft, currentIndex: Int) -> AnyGesture<DragGesture.Value> {
+        AnyGesture(DragGesture(minimumDistance: 4)
+            .onChanged { value in
+                if draggingWaypointID != stop.id {
+                    draggingWaypointID = stop.id
+                    dragStartWaypointIndex = currentIndex
+                    dragCurrentWaypointIndex = currentIndex
+                }
+
+                guard let dragStartWaypointIndex else {
+                    return
+                }
+
+                let rowStride: CGFloat = 64
+                let indexOffset = Int((value.translation.height / rowStride).rounded())
+                let proposedIndex = min(max(dragStartWaypointIndex + indexOffset, 0), max(waypointStops.count - 1, 0))
+
+                guard proposedIndex != dragCurrentWaypointIndex else {
+                    return
+                }
+
+                dragCurrentWaypointIndex = proposedIndex
+                withAnimation(.snappy) {
+                    viewModel.moveWaypoint(id: stop.id, toWaypointIndex: proposedIndex)
                 }
             }
-            .frame(maxHeight: 138)
-        }
+            .onEnded { _ in
+                draggingWaypointID = nil
+                dragStartWaypointIndex = nil
+                dragCurrentWaypointIndex = nil
+            }
+        )
     }
 
     private func icon(for kind: RouteStopKind) -> String {
         switch kind {
         case .start:
-            "location.fill"
+            "location.north.fill"
         case .waypoint:
-            "circle"
+            "mappin.and.ellipse"
         case .destination:
-            "flag.checkered"
+            "flag.fill"
         }
     }
 }
 
-private struct RouteEditorActionButton: View {
+private struct RouteStopListRow: View {
+    let stop: RouteStopDraft
+    let icon: String
+    let isReorderable: Bool
+    var isDragging = false
+    var dragGesture: AnyGesture<DragGesture.Value>?
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.footnote.weight(.semibold))
+                .frame(width: 22)
+                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(stop.label)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                Text(stop.kind.rawValue.capitalized)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            if isReorderable {
+                Image(systemName: isDragging ? "hand.draw.fill" : "line.3.horizontal")
+                    .font(.caption)
+                    .frame(width: 44, height: 32)
+                    .foregroundStyle(isDragging ? Color.accentColor : Color.secondary)
+                    .contentShape(Rectangle())
+                    .modifier(OptionalGestureModifier(gesture: dragGesture))
+                    .accessibilityLabel("Drag to reorder")
+                    .accessibilityIdentifier("routeSetup.waypointDragHandle")
+            }
+        }
+        .padding(.vertical, 7)
+        .padding(.horizontal, 12)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 16))
+        .scaleEffect(isDragging ? 1.015 : 1)
+    }
+}
+
+private struct OptionalGestureModifier: ViewModifier {
+    let gesture: AnyGesture<DragGesture.Value>?
+
+    func body(content: Content) -> some View {
+        if let gesture {
+            content.gesture(gesture)
+        } else {
+            content
+        }
+    }
+}
+
+private struct RouteSetupStopButton: View {
     let title: String
     let icon: String
+    let isPrimary: Bool
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Label(title, systemImage: icon)
+            VStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.title2.weight(.semibold))
+                    .frame(width: 58, height: 58)
+                    .background(isPrimary ? Color.white.opacity(0.96) : Color.white.opacity(0.72), in: Circle())
+                    .foregroundStyle(isPrimary ? Color.accentColor : Color.primary)
+                Text(title)
+                    .font(.caption.weight(.heavy))
+                    .tracking(1.2)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("routeSetup.\(title.lowercased())Button")
+    }
+}
+
+private struct RouteMetricPill: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.secondary)
+            Text(value)
                 .font(.subheadline.weight(.semibold))
                 .lineLimit(1)
-                .minimumScaleFactor(0.8)
-                .frame(maxWidth: .infinity)
+                .minimumScaleFactor(0.78)
         }
-        .buttonStyle(.bordered)
-        .controlSize(.small)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 16))
+    }
+}
+
+private struct RouteSettingsSheet: View {
+    @Binding var preferredUnits: RoutePreferredUnits
+    let canExportGPX: Bool
+    let onImportGPX: () -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section("Preferred Units") {
+                    Picker("Distance", selection: $preferredUnits) {
+                        ForEach(RoutePreferredUnits.allCases) { units in
+                            Text(units.label).tag(units)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityIdentifier("routeSettings.preferredUnitsPicker")
+                }
+
+                Section("GPX") {
+                    Button {
+                        onImportGPX()
+                    } label: {
+                        Label("Import GPX", systemImage: "square.and.arrow.down")
+                    }
+                    .accessibilityIdentifier("routeSettings.importGPXButton")
+
+                    HStack {
+                        Label("Export GPX", systemImage: "square.and.arrow.up")
+                        Spacer()
+                        Text(canExportGPX ? "Later" : "No route")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .foregroundStyle(.secondary)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel(canExportGPX ? "Export GPX coming later" : "Export GPX unavailable without a route")
+                }
+            }
+            .navigationTitle("Route Settings")
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -935,6 +1616,8 @@ private struct RouteStopSelectionSheet: View {
                     }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(Color.clear)
             .navigationTitle(title)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -997,8 +1680,10 @@ private struct RouteStopSelectionSheet: View {
 }
 
 private struct PinDropOverlay: View {
-    let kind: RouteStopKind
+    let title: String
+    let subtitle: String?
     let coordinate: RouteCoordinate
+    let confirmTitle: String
     let onCancel: () -> Void
     let onConfirm: () -> Void
 
@@ -1010,49 +1695,51 @@ private struct PinDropOverlay: View {
                 .shadow(radius: 3)
                 .accessibilityHidden(true)
 
-            VStack {
-                Spacer()
+            GeometryReader { proxy in
+                VStack {
+                    Spacer()
 
-                VStack(alignment: .leading, spacing: 10) {
-                    Text(pinTitle)
-                        .font(.headline)
-                    Text(String(format: "%.5f, %.5f", coordinate.lat, coordinate.lng))
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-
-                    HStack {
-                        Button("Cancel", role: .cancel) {
-                            onCancel()
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text(title)
+                            .font(.headline)
+                        if let subtitle {
+                            Text(subtitle)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
-                        .buttonStyle(.bordered)
-                        .frame(maxWidth: .infinity)
+                        Text(String(format: "%.5f, %.5f", coordinate.lat, coordinate.lng))
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
 
-                        Button {
-                            onConfirm()
-                        } label: {
-                            Label("Use Pin", systemImage: "checkmark.circle.fill")
+                        HStack(spacing: 16) {
+                            Button("Cancel", role: .cancel) {
+                                onCancel()
+                            }
+                            .buttonStyle(.bordered)
+                            .frame(maxWidth: .infinity)
+
+                            Button {
+                                onConfirm()
+                            } label: {
+                                Label(confirmTitle, systemImage: "checkmark.circle.fill")
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.borderedProminent)
-                        .frame(maxWidth: .infinity)
+                        .padding(.top, 2)
                     }
+                    .padding(.horizontal, 18)
+                    .padding(.top, 20)
+                    .padding(.bottom, max(proxy.safeAreaInsets.bottom + 42, 62))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 32))
+                    .background(Color.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 32))
+                    .overlay(RoundedRectangle(cornerRadius: 32).stroke(.white.opacity(0.28), lineWidth: 1))
+                    .shadow(color: .black.opacity(0.12), radius: 18, y: 8)
+                    .offset(y: max(proxy.safeAreaInsets.bottom + 16, 36))
                 }
-                .padding(14)
-                .frame(maxWidth: 380)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
-                .padding(.horizontal, 12)
-                .padding(.bottom, 12)
+                .ignoresSafeArea(.container, edges: .bottom)
             }
-        }
-    }
-
-    private var pinTitle: String {
-        switch kind {
-        case .start:
-            "Move map to choose start"
-        case .waypoint:
-            "Move map to choose waypoint"
-        case .destination:
-            "Move map to choose finish"
         }
     }
 }

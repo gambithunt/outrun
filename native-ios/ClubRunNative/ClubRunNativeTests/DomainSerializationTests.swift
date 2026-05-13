@@ -243,7 +243,11 @@ final class DomainSerializationTests: XCTestCase {
     }
 
     private func decodeFixture<T: Decodable>(_ name: String) throws -> T {
-        let url = try XCTUnwrap(Bundle(for: Self.self).url(forResource: name, withExtension: "json"))
+        let bundle = Bundle(for: Self.self)
+        let url = try XCTUnwrap(
+            bundle.url(forResource: name, withExtension: "json") ??
+                bundle.url(forResource: name, withExtension: "json", subdirectory: "Fixtures")
+        )
         let data = try Data(contentsOf: url)
         return try JSONDecoder.clubRunFirebase.decode(T.self, from: data)
     }

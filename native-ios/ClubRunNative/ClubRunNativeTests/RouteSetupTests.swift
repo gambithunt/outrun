@@ -41,6 +41,33 @@ final class RouteSetupTests: XCTestCase {
         XCTAssertEqual(editor.orderedStops.map(\.order), [0, 1, 2])
     }
 
+    func testWaypointReorderByIDKeepsStartAndDestinationFixed() {
+        var editor = RouteStopEditor()
+        editor.setStart(makeStop(id: "start", kind: .start, order: 0, label: "Start"))
+        editor.setDestination(makeStop(id: "finish", kind: .destination, order: 3, label: "Finish"))
+        editor.addWaypoint(makeStop(id: "wp1", kind: .waypoint, order: 1, label: "One"))
+        editor.addWaypoint(makeStop(id: "wp2", kind: .waypoint, order: 2, label: "Two"))
+
+        editor.moveWaypoint(id: "wp2", beforeWaypointID: "wp1")
+
+        XCTAssertEqual(editor.orderedStops.map(\.id), ["start", "wp2", "wp1", "finish"])
+        XCTAssertEqual(editor.orderedStops.map(\.order), [0, 1, 2, 3])
+    }
+
+    func testWaypointReorderByIndexKeepsStartAndDestinationFixed() {
+        var editor = RouteStopEditor()
+        editor.setStart(makeStop(id: "start", kind: .start, order: 0, label: "Start"))
+        editor.setDestination(makeStop(id: "finish", kind: .destination, order: 4, label: "Finish"))
+        editor.addWaypoint(makeStop(id: "wp1", kind: .waypoint, order: 1, label: "One"))
+        editor.addWaypoint(makeStop(id: "wp2", kind: .waypoint, order: 2, label: "Two"))
+        editor.addWaypoint(makeStop(id: "wp3", kind: .waypoint, order: 3, label: "Three"))
+
+        editor.moveWaypoint(id: "wp1", toWaypointIndex: 2)
+
+        XCTAssertEqual(editor.orderedStops.map(\.id), ["start", "wp2", "wp3", "wp1", "finish"])
+        XCTAssertEqual(editor.orderedStops.map(\.order), [0, 1, 2, 3, 4])
+    }
+
     func testRouteRecalculationTriggersWhenStopsChange() {
         var policy = RouteRecalculationPolicy()
         XCTAssertTrue(policy.shouldRecalculate(after: [makeStop(id: "start", kind: .start, order: 0), makeStop(id: "finish", kind: .destination, order: 1)]))
@@ -105,6 +132,23 @@ final class RouteSetupTests: XCTestCase {
         XCTAssertEqual(viewModel.summaryText, "12.3 km · 24 min")
     }
 
+    func testRouteSetupViewModelShowsActionableRouteFailure() async {
+        let viewModel = RouteSetupViewModel(runId: "run_1", routeProvider: FailingRouteProvider(), repository: InMemoryRouteRepository(), router: AppRouter())
+        viewModel.setStart(makeStop(id: "start", kind: .start, order: 0, label: "Big Bay"))
+        viewModel.setDestination(makeStop(id: "finish", kind: .destination, order: 1, label: "Tokai"))
+
+        await viewModel.recalculateRoute()
+
+        XCTAssertEqual(viewModel.message, "No driving route found from Big Bay to Tokai. Move that stop closer to a road and try again.")
+    }
+
+    func testPreferredUnitsExposeReadableLabels() {
+        XCTAssertEqual(RoutePreferredUnits.kilometres.label, "Kilometres")
+        XCTAssertEqual(RoutePreferredUnits.kilometres.distanceLabel, "km")
+        XCTAssertEqual(RoutePreferredUnits.miles.label, "Miles")
+        XCTAssertEqual(RoutePreferredUnits.miles.distanceLabel, "mi")
+    }
+
     func testSearchResultCreatesStopForSelectionKind() {
         let result = RouteStopSearchResult(
             id: "place_1",
@@ -127,30 +171,130 @@ final class RouteSetupTests: XCTestCase {
     func testRouteSetupViewModelAppliesSearchResultToActiveSelection() {
         let viewModel = RouteSetupViewModel(runId: "run_1", routeProvider: StubRouteProvider(), repository: InMemoryRouteRepository(), router: AppRouter())
         viewModel.beginStopSelection(.start)
-        viewModel.applySearchResult(
-            RouteStopSearchResult(
-                id: "start_place",
-                title: "Start Place",
-                subtitle: "Cape Town",
-                coordinate: RouteCoordinate(lat: -33.9, lng: 18.4),
-                placeId: "start_place"
-            )
+        let result = RouteStopSearchResult(
+            id: "start_place",
+            title: "Start Place",
+            subtitle: "Cape Town",
+            coordinate: RouteCoordinate(lat: -33.9, lng: 18.4),
+            placeId: "start_place"
         )
 
+        viewModel.previewSearchResult(result)
+
+        XCTAssertNil(viewModel.activeStopSelectionKind)
+        XCTAssertEqual(viewModel.pendingStopConfirmation?.result, result)
+        XCTAssertEqual(viewModel.pendingStopConfirmation?.kind, .start)
+        XCTAssertEqual(viewModel.mapFocusRequest?.coordinate, result.coordinate)
+    }
+
+    func testRouteSetupViewModelConfirmsSearchResultAtAdjustedCoordinate() {
+        let viewModel = RouteSetupViewModel(runId: "run_1", routeProvider: StubRouteProvider(), repository: InMemoryRouteRepository(), router: AppRouter())
+        viewModel.beginStopSelection(.start)
+        viewModel.previewSearchResult(RouteStopSearchResult(
+            id: "start_place",
+            title: "Start Place",
+            subtitle: "Cape Town",
+            coordinate: RouteCoordinate(lat: -33.9, lng: 18.4),
+            placeId: "start_place"
+        ))
+        viewModel.confirmPendingSearchResult(at: RouteCoordinate(lat: -33.95, lng: 18.45))
+
+        XCTAssertNil(viewModel.pendingStopConfirmation)
         XCTAssertNil(viewModel.activeStopSelectionKind)
         XCTAssertEqual(viewModel.stops.map(\.label), ["Start Place"])
         XCTAssertEqual(viewModel.stops.map(\.kind), [.start])
+        XCTAssertEqual(viewModel.stops.first?.lat, -33.95)
+        XCTAssertEqual(viewModel.stops.first?.lng, 18.45)
+        XCTAssertEqual(viewModel.stops.first?.source, .search)
+        XCTAssertEqual(viewModel.stops.first?.placeId, "start_place")
     }
 
-    func testRouteSetupViewModelAppliesPinnedCoordinateAndExitsPinMode() {
+    func testRouteSetupViewModelMarksRouteStaleWhenStopsChangeAfterCalculation() async {
         let viewModel = RouteSetupViewModel(runId: "run_1", routeProvider: StubRouteProvider(), repository: InMemoryRouteRepository(), router: AppRouter())
+        viewModel.setStart(makeStop(id: "start", kind: .start, order: 0))
+        viewModel.setDestination(makeStop(id: "finish", kind: .destination, order: 1))
+        await viewModel.recalculateRoute()
+
+        viewModel.addWaypoint(makeStop(id: "wp1", kind: .waypoint, order: 1))
+
+        XCTAssertTrue(viewModel.routeNeedsRecalculation)
+        XCTAssertNotNil(viewModel.routeData)
+    }
+
+    func testRouteSetupViewModelRecalculatesStaleRouteInStopOrder() async {
+        let provider = RecordingRouteProvider()
+        let viewModel = RouteSetupViewModel(runId: "run_1", routeProvider: provider, repository: InMemoryRouteRepository(), router: AppRouter())
+        viewModel.setStart(makeStop(id: "start", kind: .start, order: 0))
+        viewModel.setDestination(makeStop(id: "finish", kind: .destination, order: 1))
+        await viewModel.recalculateRoute()
+
+        viewModel.addWaypoint(makeStop(id: "wp1", kind: .waypoint, order: 1, label: "Middle"))
+        await viewModel.recalculateRoute()
+
+        XCTAssertFalse(viewModel.routeNeedsRecalculation)
+        XCTAssertEqual(provider.recordedStops.last?.map(\.id), ["start", "wp1", "finish"])
+    }
+
+    func testRouteSetupViewModelMarksRouteStaleWhenWaypointOrderChangesAfterCalculation() async {
+        let viewModel = RouteSetupViewModel(runId: "run_1", routeProvider: StubRouteProvider(), repository: InMemoryRouteRepository(), router: AppRouter())
+        viewModel.setStart(makeStop(id: "start", kind: .start, order: 0))
+        viewModel.addWaypoint(makeStop(id: "wp1", kind: .waypoint, order: 1, label: "One"))
+        viewModel.addWaypoint(makeStop(id: "wp2", kind: .waypoint, order: 2, label: "Two"))
+        viewModel.setDestination(makeStop(id: "finish", kind: .destination, order: 3))
+        await viewModel.recalculateRoute()
+
+        viewModel.moveWaypoint(id: "wp2", beforeWaypointID: "wp1")
+
+        XCTAssertTrue(viewModel.routeNeedsRecalculation)
+        XCTAssertEqual(viewModel.stops.map(\.id), ["start", "wp2", "wp1", "finish"])
+    }
+
+    func testRouteSetupViewModelAppliesPinnedCoordinateAndExitsPinMode() async {
+        let viewModel = RouteSetupViewModel(runId: "run_1", routeProvider: StubRouteProvider(), repository: InMemoryRouteRepository(), router: AppRouter(), pinNamer: FallbackOnlyPinNamer())
         viewModel.beginPinDrop(.waypoint)
-        viewModel.confirmPinDrop(at: RouteCoordinate(lat: -33.93, lng: 18.44))
+        await viewModel.confirmPinDrop(at: RouteCoordinate(lat: -33.93, lng: 18.44))
 
         XCTAssertNil(viewModel.pinDropKind)
         XCTAssertEqual(viewModel.stops.map(\.kind), [.waypoint])
-        XCTAssertEqual(viewModel.stops.first?.label, "Pinned Waypoint")
+        XCTAssertEqual(viewModel.stops.first?.label, "Waypoint 1")
         XCTAssertEqual(viewModel.stops.first?.source, .pin)
+    }
+
+    func testRouteSetupViewModelUsesResolvedPinName() async {
+        let viewModel = RouteSetupViewModel(
+            runId: "run_1",
+            routeProvider: StubRouteProvider(),
+            repository: InMemoryRouteRepository(),
+            router: AppRouter(),
+            pinNamer: FixedPinNamer(name: "Beach Road")
+        )
+
+        viewModel.beginPinDrop(.waypoint)
+        await viewModel.confirmPinDrop(at: RouteCoordinate(lat: -33.93, lng: 18.44))
+
+        XCTAssertEqual(viewModel.stops.map(\.label), ["Beach Road"])
+    }
+
+    func testRouteSetupViewModelNumbersWaypointFallbackByPosition() async {
+        let viewModel = RouteSetupViewModel(runId: "run_1", routeProvider: StubRouteProvider(), repository: InMemoryRouteRepository(), router: AppRouter(), pinNamer: FallbackOnlyPinNamer())
+
+        viewModel.beginPinDrop(.waypoint)
+        await viewModel.confirmPinDrop(at: RouteCoordinate(lat: -33.93, lng: 18.44))
+        viewModel.beginPinDrop(.waypoint)
+        await viewModel.confirmPinDrop(at: RouteCoordinate(lat: -33.94, lng: 18.45))
+
+        XCTAssertEqual(viewModel.stops.map(\.label), ["Waypoint 1", "Waypoint 2"])
+    }
+
+    func testRouteSetupViewModelUsesStartAndFinishFallbackNames() async {
+        let viewModel = RouteSetupViewModel(runId: "run_1", routeProvider: StubRouteProvider(), repository: InMemoryRouteRepository(), router: AppRouter(), pinNamer: FallbackOnlyPinNamer())
+
+        viewModel.beginPinDrop(.start)
+        await viewModel.confirmPinDrop(at: RouteCoordinate(lat: -33.93, lng: 18.44))
+        viewModel.beginPinDrop(.destination)
+        await viewModel.confirmPinDrop(at: RouteCoordinate(lat: -34.00, lng: 18.50))
+
+        XCTAssertEqual(viewModel.stops.map(\.label), ["Pinned Start", "Pinned Finish"])
     }
 
     private func makeStop(id: String, kind: RouteStopKind, order: Int?, label: String? = nil) -> RouteStopDraft {
@@ -170,6 +314,39 @@ final class RouteSetupTests: XCTestCase {
 private struct StubRouteProvider: RouteProviding {
     func route(for stops: [RouteStopDraft]) async throws -> GeneratedRoute {
         GeneratedRoute(
+            points: [RouteCoordinate(lat: -33.9, lng: 18.4), RouteCoordinate(lat: -34.0, lng: 18.5)],
+            distanceMetres: 12_300,
+            durationSeconds: 1_440
+        )
+    }
+}
+
+private struct FailingRouteProvider: RouteProviding {
+    func route(for stops: [RouteStopDraft]) async throws -> GeneratedRoute {
+        throw RouteSetupError.routeLegUnavailable(from: stops[0].label, to: stops[1].label)
+    }
+}
+
+private struct FixedPinNamer: RoutePinNaming {
+    let name: String
+
+    func name(for coordinate: RouteCoordinate, kind: RouteStopKind, existingStops: [RouteStopDraft]) async -> String {
+        name
+    }
+}
+
+private struct FallbackOnlyPinNamer: RoutePinNaming {
+    func name(for coordinate: RouteCoordinate, kind: RouteStopKind, existingStops: [RouteStopDraft]) async -> String {
+        RoutePinFallbackName.name(for: kind, existingStops: existingStops)
+    }
+}
+
+private final class RecordingRouteProvider: RouteProviding, @unchecked Sendable {
+    var recordedStops: [[RouteStopDraft]] = []
+
+    func route(for stops: [RouteStopDraft]) async throws -> GeneratedRoute {
+        recordedStops.append(stops)
+        return GeneratedRoute(
             points: [RouteCoordinate(lat: -33.9, lng: 18.4), RouteCoordinate(lat: -34.0, lng: 18.5)],
             distanceMetres: 12_300,
             durationSeconds: 1_440

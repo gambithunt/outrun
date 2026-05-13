@@ -79,3 +79,66 @@ When done:
 
 END PROMPT
 ```
+
+## Todo: GPX Export From Route Settings
+
+Status: Deferred
+Reason: Route Setup now shows the Route Settings surface with preferred units and GPX import/export placement. GPX import is implemented. GPX export requires a separate file generation/share flow and is not needed to manually validate route creation, GPX import, route save, or lobby/live-drive rendering.
+
+Copy from here:
+
+```text
+START PROMPT
+
+You are working in /Users/delon/Documents/code/projects/outrun.
+
+Read and follow:
+- AGENTS.md
+- docs/workstreams/active/native-ios-app-flow-spec.md
+- docs/workstreams/active/native-ios-implementation-phases.md
+- docs/workstreams/active/native-ios-deferred-todos.md
+- current Route Setup code under native-ios/ClubRunNative/ClubRunNative/Features/RouteSetup/
+
+Goal:
+Implement GPX export from the native iOS Route Settings sheet.
+
+Context:
+- Route Setup has a settings sheet with preferred units and GPX import/export placement.
+- GPX import is already implemented as preview-and-save.
+- GPX export is currently shown as a deferred/unavailable row.
+- Do not change the Firebase `RouteData` shape.
+
+Requirements:
+1. Add a pure GPX exporter that converts saved/current `RouteData.points` into a valid GPX file.
+2. Add fixture-driven unit tests for:
+   - valid GPX XML output
+   - route point count preservation
+   - lat/lng precision
+   - empty route rejection
+   - source-independent export from Apple Maps and GPX routes
+3. Enable the Route Settings "Export GPX" action only when route data exists.
+4. Use a native iOS share/export flow.
+5. Keep SwiftUI views free of Firebase SDK calls.
+6. Keep GPX import behavior unchanged.
+7. Show useful export errors if generation or sharing fails.
+
+Verification:
+Run:
+xcrun --sdk iphonesimulator swiftc -typecheck -parse-as-library -target arm64-apple-ios26.0-simulator -strict-concurrency=complete -warn-concurrency $(rg --files native-ios/ClubRunNative/ClubRunNative -g '*.swift')
+
+Run native tests:
+xcodebuild -project native-ios/ClubRunNative/ClubRunNative.xcodeproj -scheme ClubRunNative -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.4.1' -derivedDataPath native-ios/DerivedData test
+
+Manual verification:
+- Create or import a route.
+- Open Route Settings.
+- Export GPX.
+- Confirm the exported file opens as valid GPX.
+
+When done:
+- Summarize files changed.
+- List verification commands and results.
+- Mark this todo complete in docs/workstreams/active/native-ios-deferred-todos.md.
+
+END PROMPT
+```

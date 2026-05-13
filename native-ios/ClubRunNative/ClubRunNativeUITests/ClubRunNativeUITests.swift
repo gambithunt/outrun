@@ -88,8 +88,9 @@ final class ClubRunNativeUITests: XCTestCase {
         XCTAssertTrue(app.buttons["adminLobby.routeRow"].waitForExistence(timeout: 5))
         app.buttons["adminLobby.routeRow"].tap()
 
-        XCTAssertTrue(app.navigationBars["Route Setup"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["ROUTE SETUP"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.otherElements["routeSetup.map"].exists)
+        XCTAssertTrue(app.buttons["routeSetup.settingsButton"].exists)
     }
 
     func testDriverLobbyDoesNotShowAdminControls() {

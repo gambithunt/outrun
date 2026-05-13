@@ -34,6 +34,7 @@
 		10000000000000000000A01A /* RouteSetupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000012B /* RouteSetupTests.swift */; };
 		10000000000000000000A01C /* GPXImportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000012D /* GPXImportTests.swift */; };
 		10000000000000000000A01E /* LiveDriveTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000132 /* LiveDriveTests.swift */; };
+		10000000000000000000A01F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000133 /* LaunchScreen.storyboard */; };
 		10000000000000000000A00B /* minimal-draft-run.json in Resources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000010B /* minimal-draft-run.json */; };
 		10000000000000000000A00C /* active-run-with-route.json in Resources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000010C /* active-run-with-route.json */; };
 		10000000000000000000A00D /* ClubRunNativeUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000010D /* ClubRunNativeUITests.swift */; };
@@ -95,6 +96,7 @@
 		100000000000000000000130 /* missing-track-points.gpx */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = "missing-track-points.gpx"; sourceTree = "<group>"; };
 		10000000000000000000010D /* ClubRunNativeUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClubRunNativeUITests.swift; sourceTree = "<group>"; };
 		10000000000000000000010E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		100000000000000000000133 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
 		100000000000000000000111 /* ClubRunNative.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ClubRunNative.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		100000000000000000000112 /* ClubRunNativeTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ClubRunNativeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		100000000000000000000113 /* ClubRunNativeUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ClubRunNativeUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -198,6 +200,7 @@
 			isa = PBXGroup;
 			children = (
 				10000000000000000000010E /* Info.plist */,
+				100000000000000000000133 /* LaunchScreen.storyboard */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -434,6 +437,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				10000000000000000000A01F /* LaunchScreen.storyboard in Resources */,
 				78B2926B2FA8EDC9004F5AA2 /* GoogleService-Info.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
