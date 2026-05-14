@@ -189,12 +189,14 @@ final class AdminLobbyViewModel: ObservableObject {
 
     private let uid: String
     private let service: LobbyService
+    private let router: AppRouter?
     private var snapshot: LobbySnapshot?
 
-    init(uid: String, runId: String, service: LobbyService) {
+    init(uid: String, runId: String, service: LobbyService, router: AppRouter? = nil) {
         self.uid = uid
         self.runId = runId
         self.service = service
+        self.router = router
     }
 
     func load() async {
@@ -226,6 +228,7 @@ final class AdminLobbyViewModel: ObservableObject {
             try await service.startDrive(runId: runId)
             await load()
             showsSoloStartConfirmation = false
+            router?.present(.liveDrive(runId: runId, role: .admin))
         } catch {
             message = "Unable to start the drive."
         }
@@ -354,7 +357,11 @@ struct AdminLobbyView: View {
         .sheet(isPresented: $viewModel.showsDriversSheet) {
             DriversSheetView(rows: viewModel.driverRows)
         }
-        .fullScreenCover(isPresented: $showsRouteSetup) {
+        .fullScreenCover(isPresented: $showsRouteSetup, onDismiss: {
+            Task {
+                await viewModel.load()
+            }
+        }) {
             RouteSetupView(
                 viewModel: RouteSetupViewModel(
                     runId: viewModel.runId,

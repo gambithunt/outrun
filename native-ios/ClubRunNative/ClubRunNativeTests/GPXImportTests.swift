@@ -52,6 +52,7 @@ final class GPXImportTests: XCTestCase {
         XCTAssertEqual(repository.savedRoute?.source, .gpx)
         XCTAssertEqual(repository.savedRoute?.points.count, 3)
         XCTAssertEqual(repository.savedStatus, .ready)
+        XCTAssertTrue(viewModel.didSaveRoute)
         XCTAssertEqual(router.presentedRoute, AppRoute.adminLobby(runId: "run_gpx"))
     }
 

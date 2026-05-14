@@ -19,6 +19,7 @@ struct ActiveRunSessionMetadata: Codable, Equatable {
 struct ActiveRunCard: Equatable {
     let runId: String
     let runName: String
+    let status: RunStatus
     let statusText: String
     let role: ActiveRunRole
 }
@@ -136,6 +137,7 @@ enum HomeHubActiveRunResolver {
         return ActiveRunCard(
             runId: runId,
             runName: run.name,
+            status: run.status,
             statusText: statusText(for: run.status),
             role: role
         )
@@ -219,7 +221,11 @@ final class HomeHubViewModel: ObservableObject {
             return
         }
 
-        router.present(.activeRun(runId: activeRunCard.runId, role: activeRunCard.role))
+        if activeRunCard.status == .active {
+            router.present(.liveDrive(runId: activeRunCard.runId, role: activeRunCard.role))
+        } else {
+            router.present(.activeRun(runId: activeRunCard.runId, role: activeRunCard.role))
+        }
     }
 
     func openSettings() {
@@ -359,7 +365,7 @@ struct HomeHubView: View {
         case let .activeRun(runId, role):
             if role == .admin {
                 AdminLobbyView(
-                    viewModel: AdminLobbyViewModel(uid: uid, runId: runId, service: lobbyService),
+                    viewModel: AdminLobbyViewModel(uid: uid, runId: runId, service: lobbyService, router: router),
                     router: router,
                     routeProvider: AppleMapsRouteProvider(),
                     routePersisting: lobbyService
@@ -369,7 +375,7 @@ struct HomeHubView: View {
             }
         case let .adminLobby(runId):
             AdminLobbyView(
-                viewModel: AdminLobbyViewModel(uid: uid, runId: runId, service: lobbyService),
+                viewModel: AdminLobbyViewModel(uid: uid, runId: runId, service: lobbyService, router: router),
                 router: router,
                 routeProvider: AppleMapsRouteProvider(),
                 routePersisting: lobbyService

@@ -47,11 +47,13 @@ final class LobbyTests: XCTestCase {
     }
 
     func testStartDriveTransitionsRunToActiveAfterSoloConfirmation() async {
+        let router = AppRouter()
         let repository = InMemoryLobbyRepository(runs: ["run_1": makeRun(status: .ready, route: makeRoute(), drivers: nil)])
         let viewModel = AdminLobbyViewModel(
             uid: "uid_admin_1",
             runId: "run_1",
-            service: LobbyService(repository: repository, nowMilliseconds: { 1_800_000_002_000 })
+            service: LobbyService(repository: repository, nowMilliseconds: { 1_800_000_002_000 }),
+            router: router
         )
 
         await viewModel.load()
@@ -60,6 +62,7 @@ final class LobbyTests: XCTestCase {
         XCTAssertEqual(repository.runs["run_1"]?.status, .active)
         XCTAssertEqual(repository.runs["run_1"]?.driveStartedAt, 1_800_000_002_000)
         XCTAssertEqual(viewModel.startReadinessLabel, "Drive active.")
+        XCTAssertEqual(router.presentedRoute, .liveDrive(runId: "run_1", role: .admin))
     }
 
     func testDriverCountAndWaitingSummary() async {

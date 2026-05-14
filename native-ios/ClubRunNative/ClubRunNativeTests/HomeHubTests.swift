@@ -38,7 +38,7 @@ final class HomeHubTests: XCTestCase {
 
         XCTAssertEqual(
             viewModel.activeRunCard,
-            ActiveRunCard(runId: "run_1", runName: "Sunday Drive", statusText: "Active", role: .admin)
+            ActiveRunCard(runId: "run_1", runName: "Sunday Drive", status: .active, statusText: "Active", role: .admin)
         )
     }
 
@@ -97,7 +97,7 @@ final class HomeHubTests: XCTestCase {
         XCTAssertEqual(router.presentedRoute, AppRoute.settings)
 
         viewModel.openActiveRun()
-        XCTAssertEqual(router.presentedRoute, AppRoute.activeRun(runId: "run_1", role: .admin))
+        XCTAssertEqual(router.presentedRoute, AppRoute.liveDrive(runId: "run_1", role: .admin))
     }
 
     private func makeProfile() -> UserProfile {

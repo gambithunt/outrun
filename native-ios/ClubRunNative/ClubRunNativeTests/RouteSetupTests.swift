@@ -119,6 +119,7 @@ final class RouteSetupTests: XCTestCase {
 
         XCTAssertEqual(repository.savedRoute?.source, .appleMaps)
         XCTAssertEqual(repository.savedStatus, .ready)
+        XCTAssertTrue(viewModel.didSaveRoute)
         XCTAssertEqual(router.presentedRoute, AppRoute.adminLobby(runId: "run_1"))
     }
 

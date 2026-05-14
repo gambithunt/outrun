@@ -442,6 +442,7 @@ final class RouteSetupViewModel: ObservableObject {
     @Published private(set) var pendingStopConfirmation: PendingRouteStopConfirmation?
     @Published private(set) var mapFocusRequest: RouteMapFocusRequest?
     @Published private(set) var routeNeedsRecalculation = false
+    @Published private(set) var didSaveRoute = false
 
     private let runId: String
     private let routeProvider: RouteProviding
@@ -670,6 +671,7 @@ final class RouteSetupViewModel: ObservableObject {
         do {
             try await repository.saveRoute(routeData, runId: runId)
             try await repository.updateRunStatus(.ready, driveStartedAt: nil, runId: runId)
+            didSaveRoute = true
             router.present(.adminLobby(runId: runId))
         } catch {
             message = "Unable to save the route."
@@ -787,6 +789,11 @@ struct RouteSetupView: View {
         }
         .ignoresSafeArea(.container, edges: .all)
         .toolbar(.hidden, for: .navigationBar)
+        .onChange(of: viewModel.didSaveRoute) { _, didSaveRoute in
+            if didSaveRoute {
+                dismiss()
+            }
+        }
         .onChange(of: viewModel.pinDropKind) { _, newValue in
             guard newValue != nil else {
                 return
