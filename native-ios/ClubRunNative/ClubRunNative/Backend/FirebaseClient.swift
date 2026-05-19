@@ -470,7 +470,7 @@ final class FirebaseAuthService: AuthServicing, @unchecked Sendable {
     }
 }
 
-final class FirebaseRunRepository: RunRepositoring, RunReading, RoutePersisting, @unchecked Sendable {
+final class FirebaseRunRepository: RunRepositoring, RunReading, RoutePersisting, LiveLocationPersisting, HazardPersisting, @unchecked Sendable {
     private let database: DatabaseReference
 
     init(database: DatabaseReference = Database.database().reference()) {
@@ -535,6 +535,30 @@ final class FirebaseRunRepository: RunRepositoring, RunReading, RoutePersisting,
         let data = try JSONEncoder.clubRunFirebase.encode(driver)
         let object = try JSONSerialization.jsonObject(with: data)
         try await database.child(BackendPaths.driver(runId, uid: uid)).setValue(object)
+    }
+
+    func writeLatestLocation(_ location: DriverLocation, runId: String, uid: String) async throws {
+        let data = try JSONEncoder.clubRunFirebase.encode(location)
+        let object = try JSONSerialization.jsonObject(with: data)
+        try await database.child(BackendPaths.driverLocation(runId, uid: uid)).setValue(object)
+    }
+
+    func writeTrackPoint(_ point: TrackPoint, pointId: String, runId: String, uid: String) async throws {
+        let data = try JSONEncoder.clubRunFirebase.encode(point)
+        let object = try JSONSerialization.jsonObject(with: data)
+        try await database.child(BackendPaths.trackPoint(runId, uid: uid, pointId: pointId)).setValue(object)
+    }
+
+    func updatePresence(_ presence: DriverPresence, runId: String, uid: String) async throws {
+        try await database
+            .child(BackendPaths.driver(runId, uid: uid))
+            .updateChildValues(["presence": presence.rawValue])
+    }
+
+    func writeHazard(_ hazard: Hazard, hazardId: String, runId: String) async throws {
+        let data = try JSONEncoder.clubRunFirebase.encode(hazard)
+        let object = try JSONSerialization.jsonObject(with: data)
+        try await database.child(BackendPaths.hazard(runId, hazardId: hazardId)).setValue(object)
     }
 
     func saveRoute(_ route: RouteData, runId: String) async throws {

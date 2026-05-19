@@ -388,7 +388,9 @@ struct HomeHubView: View {
                     uid: uid,
                     runId: runId,
                     role: role,
-                    runReader: runReader
+                    runReader: runReader,
+                    liveLocationRepository: runReader as? LiveLocationPersisting,
+                    hazardRepository: runReader as? HazardPersisting
                 )
             )
         case .settings:

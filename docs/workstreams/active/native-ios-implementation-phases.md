@@ -543,10 +543,12 @@ Goal: render the active drive map from run state before enabling full tracking c
 - [x] Do not show live speed for other drivers.
 - [x] Render hazards at reported locations.
 - [x] Add top glass status overlay with run name/status and next waypoint/distance.
-- [x] Add bottom controls: recenter, route overview, lobby/details.
+- [x] Add bottom controls: recenter and lobby/details.
 - [x] Add bottom-right hazard button.
 - [x] Add admin end-drive control.
 - [x] Add driver marker tap details: display name, car make/model, location freshness.
+- [x] Add reliable current-user marker from app/Firebase location state.
+- [x] Add basic locate/follow camera target for current user.
 
 ### Refactor
 
@@ -562,6 +564,16 @@ Goal: render the active drive map from run state before enabling full tracking c
 - [ ] Hazard markers visible.
 - [ ] Controls do not obscure route-critical content.
 - [ ] Light/dark mode readable.
+
+### Live Drive UI Polish Checkpoint
+
+- [x] Manually inspect Live Drive after foreground location writes are working.
+- [x] Polish Live Drive map layout to the same full-screen standard as Route Setup.
+- [x] Confirm own-location/current-driver marker behavior is visible and useful.
+- [x] Make top status and bottom controls glassy, compact, readable, and not route-blocking.
+- [x] Replace hazard placeholder with v1 hazard reporting rail.
+- [x] Add basic follow mode after tapping locate.
+- [ ] Defer automatic follow-mode disable on manual pan/zoom unless SwiftUI Map support makes it straightforward.
 
 ### Done
 
@@ -656,23 +668,23 @@ Goal: drivers can report and view route hazards in realtime.
 
 ### Red
 
-- [ ] Add failing tests for hazard type enum including police and mobile camera.
-- [ ] Add failing tests for hazard create payload.
+- [x] Add failing tests for hazard type enum including police and mobile camera.
+- [x] Add failing tests for hazard create payload.
 - [ ] Add failing tests for hazard expiry/fade policy.
 - [ ] Add failing tests for report count/confidence behavior.
 - [ ] Add failing tests for admin dismiss.
 - [ ] Add failing tests for confirmation data model: still there, gone.
-- [ ] Add failing UI test for hazard report sheet.
+- [x] Add failing tests for missing-location and write-failure hazard reporting states.
 
 ### Green
 
-- [ ] Add bottom-right hazard button to Live Drive.
-- [ ] Build hazard report bottom sheet.
-- [ ] Hazard types: pothole, roadworks, police, mobile camera, debris, broken-down car.
-- [ ] Tap hazard type writes report and dismisses sheet.
+- [x] Add bottom-right hazard button to Live Drive.
+- [x] Build horizontal hazard rail from the hazard button.
+- [x] Hazard types: pothole, roadworks, police, mobile camera, debris, broken-down car.
+- [x] Tap hazard type writes report and collapses rail.
 - [ ] Show confirmation toast/banner.
-- [ ] Render hazard markers on map.
-- [ ] Tap hazard marker for type, reporter, time ago, report count.
+- [x] Render hazard markers on map.
+- [x] Tap hazard marker for type, reporter, time, report count.
 - [ ] Implement v1 fade/hide timer.
 - [ ] Implement admin dismiss if supported cleanly.
 - [ ] Keep data model ready for later nearby-driver confirmation.
