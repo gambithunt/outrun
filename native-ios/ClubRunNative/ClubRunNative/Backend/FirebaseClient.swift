@@ -470,7 +470,7 @@ final class FirebaseAuthService: AuthServicing, @unchecked Sendable {
     }
 }
 
-final class FirebaseRunRepository: RunRepositoring, RunReading, RoutePersisting, LiveLocationPersisting, HazardPersisting, @unchecked Sendable {
+final class FirebaseRunRepository: RunRepositoring, RunReading, RunObserving, RoutePersisting, LiveLocationPersisting, HazardPersisting, RunEnding, @unchecked Sendable {
     private let database: DatabaseReference
 
     init(database: DatabaseReference = Database.database().reference()) {
@@ -502,6 +502,32 @@ final class FirebaseRunRepository: RunRepositoring, RunReading, RoutePersisting,
                 continuation.resume(throwing: error)
             }
         }
+    }
+
+    @discardableResult
+    func observeRun(
+        runId: String,
+        onChange: @escaping @Sendable (Result<Run?, Error>) -> Void
+    ) -> RunObservation {
+        let reference = database.child(BackendPaths.run(runId))
+        let handle = reference.observe(.value) { snapshot in
+            guard snapshot.exists(), let value = snapshot.value else {
+                onChange(.success(nil))
+                return
+            }
+
+            do {
+                let data = try JSONSerialization.data(withJSONObject: value)
+                let run = try JSONDecoder.clubRunFirebase.decode(Run.self, from: data)
+                onChange(.success(run))
+            } catch {
+                onChange(.failure(error))
+            }
+        } withCancel: { error in
+            onChange(.failure(error))
+        }
+
+        return FirebaseRunObservation(reference: reference, handle: handle)
     }
 
     func writeJoinCode(_ record: JoinCodeRecord, code: String) async throws {
@@ -576,6 +602,27 @@ final class FirebaseRunRepository: RunRepositoring, RunReading, RoutePersisting,
         }
 
         try await database.child(BackendPaths.run(runId)).updateChildValues(updates)
+    }
+
+    func endDrive(runId: String, endedAt: Int64) async throws {
+        try await database.child(BackendPaths.run(runId)).updateChildValues([
+            "status": RunStatus.ended.rawValue,
+            "endedAt": endedAt
+        ])
+    }
+}
+
+private final class FirebaseRunObservation: RunObservation, @unchecked Sendable {
+    private let reference: DatabaseReference
+    private let handle: DatabaseHandle
+
+    init(reference: DatabaseReference, handle: DatabaseHandle) {
+        self.reference = reference
+        self.handle = handle
+    }
+
+    func cancel() {
+        reference.removeObserver(withHandle: handle)
     }
 }
 #endif

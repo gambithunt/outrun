@@ -65,6 +65,65 @@ final class LobbyTests: XCTestCase {
         XCTAssertEqual(router.presentedRoute, .liveDrive(runId: "run_1", role: .admin))
     }
 
+    func testAdminLobbyObservesJoinedDrivers() async {
+        let observer = ManualRunObserver()
+        let viewModel = AdminLobbyViewModel(
+            uid: "uid_admin_1",
+            runId: "run_1",
+            service: LobbyService(repository: InMemoryLobbyRepository(runs: ["run_1": makeRun(status: .ready, route: makeRoute(), drivers: nil)])),
+            runObserver: observer
+        )
+
+        await viewModel.load()
+        viewModel.startObservingRun()
+        observer.emit(makeRun(status: .ready, route: makeRoute(), drivers: [
+            "uid_driver_1": makeDriver(name: "Alex", presence: .online)
+        ]))
+        await Task.yield()
+
+        XCTAssertEqual(viewModel.driverSummary, "1 joined · 1 waiting")
+        XCTAssertEqual(viewModel.driverRows.map(\.displayName), ["Alex"])
+    }
+
+    func testAdminLobbyObservedDriverJoinUpdatesStartPolicy() async {
+        let observer = ManualRunObserver()
+        let viewModel = AdminLobbyViewModel(
+            uid: "uid_admin_1",
+            runId: "run_1",
+            service: LobbyService(repository: InMemoryLobbyRepository(runs: ["run_1": makeRun(status: .ready, route: makeRoute(), drivers: nil)])),
+            runObserver: observer
+        )
+
+        await viewModel.load()
+        await viewModel.startDrive()
+        XCTAssertTrue(viewModel.showsSoloStartConfirmation)
+        viewModel.showsSoloStartConfirmation = false
+
+        viewModel.startObservingRun()
+        observer.emit(makeRun(status: .ready, route: makeRoute(), drivers: [
+            "uid_driver_1": makeDriver(name: "Alex", presence: .online)
+        ]))
+        await Task.yield()
+        await viewModel.startDrive()
+
+        XCTAssertFalse(viewModel.showsSoloStartConfirmation)
+    }
+
+    func testAdminLobbyStopsRunObservation() {
+        let observer = ManualRunObserver()
+        let viewModel = AdminLobbyViewModel(
+            uid: "uid_admin_1",
+            runId: "run_1",
+            service: LobbyService(repository: InMemoryLobbyRepository(runs: ["run_1": makeRun(status: .ready, route: makeRoute())])),
+            runObserver: observer
+        )
+
+        viewModel.startObservingRun()
+        viewModel.stopObservingRun()
+
+        XCTAssertTrue(observer.lastObservation?.isCancelled == true)
+    }
+
     func testDriverCountAndWaitingSummary() async {
         let viewModel = DriverLobbyViewModel(
             uid: "uid_driver_1",
@@ -98,6 +157,60 @@ final class LobbyTests: XCTestCase {
 
         XCTAssertFalse(viewModel.showsAdminControls)
         XCTAssertEqual(viewModel.routeSummary, "12.3 km · 24 min · Apple Maps")
+    }
+
+    func testDriverLobbyRoutesToLiveDriveWhenLoadedRunIsAlreadyActive() async {
+        let router = AppRouter()
+        let viewModel = DriverLobbyViewModel(
+            uid: "uid_driver_1",
+            runId: "run_1",
+            service: LobbyService(repository: InMemoryLobbyRepository(runs: ["run_1": makeRun(status: .active, route: makeRoute(), drivers: [
+                "uid_driver_1": makeDriver(name: "Alex", presence: .online)
+            ])])),
+            router: router
+        )
+
+        await viewModel.load()
+
+        XCTAssertEqual(router.presentedRoute, .liveDrive(runId: "run_1", role: .driver))
+    }
+
+    func testDriverLobbyObservesActiveRunAndRoutesToLiveDrive() async {
+        let router = AppRouter()
+        let observer = ManualRunObserver()
+        let viewModel = DriverLobbyViewModel(
+            uid: "uid_driver_1",
+            runId: "run_1",
+            service: LobbyService(repository: InMemoryLobbyRepository(runs: ["run_1": makeRun(status: .ready, route: makeRoute(), drivers: [
+                "uid_driver_1": makeDriver(name: "Alex", presence: .online)
+            ])])),
+            router: router,
+            runObserver: observer
+        )
+
+        await viewModel.load()
+        viewModel.startObservingRun()
+        observer.emit(makeRun(status: .active, route: makeRoute(), drivers: [
+            "uid_driver_1": makeDriver(name: "Alex", presence: .online)
+        ]))
+        await Task.yield()
+
+        XCTAssertEqual(router.presentedRoute, .liveDrive(runId: "run_1", role: .driver))
+    }
+
+    func testDriverLobbyStopsRunObservation() {
+        let observer = ManualRunObserver()
+        let viewModel = DriverLobbyViewModel(
+            uid: "uid_driver_1",
+            runId: "run_1",
+            service: LobbyService(repository: InMemoryLobbyRepository(runs: ["run_1": makeRun(status: .ready, route: makeRoute())])),
+            runObserver: observer
+        )
+
+        viewModel.startObservingRun()
+        viewModel.stopObservingRun()
+
+        XCTAssertTrue(observer.lastObservation?.isCancelled == true)
     }
 
     private static func makeRun(status: RunStatus, route: RouteData? = nil, drivers: [String: DriverRecord]? = nil) -> Run {
@@ -187,5 +300,32 @@ private final class InMemoryLobbyRepository: RunRepositoring, @unchecked Sendabl
 
     func readJoinCode(code: String) async throws -> JoinCodeRecord? {
         joinCodes[code]
+    }
+}
+
+private final class ManualRunObservation: RunObservation, @unchecked Sendable {
+    var isCancelled = false
+
+    func cancel() {
+        isCancelled = true
+    }
+}
+
+private final class ManualRunObserver: RunObserving, @unchecked Sendable {
+    var lastObservation: ManualRunObservation?
+    private var onChange: (@Sendable (Result<Run?, Error>) -> Void)?
+
+    func observeRun(
+        runId: String,
+        onChange: @escaping @Sendable (Result<Run?, Error>) -> Void
+    ) -> RunObservation {
+        self.onChange = onChange
+        let observation = ManualRunObservation()
+        lastObservation = observation
+        return observation
+    }
+
+    func emit(_ run: Run?) {
+        onChange?(.success(run))
     }
 }

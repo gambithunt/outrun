@@ -1,4 +1,5 @@
 import Foundation
+import AudioToolbox
 import CoreLocation
 import MapKit
 import SwiftUI
@@ -43,12 +44,64 @@ struct LiveDriveHazardMarker: Identifiable, Equatable {
     let type: HazardType
     let title: String
     let detail: String
+    let reportedBy: String
     let reporterName: String
     let reportedAt: Int64
     let reportCount: Int
     let coordinate: RouteCoordinate
     let iconSystemName: String
     let colorHex: String
+}
+
+struct LiveDriveHazardAudioEvent: Equatable {
+    let hazardId: String
+    let type: HazardType
+    let distanceMetres: Double
+}
+
+enum LiveDriveHazardAlertPolicy {
+    static let actionableDistanceMetres = 300.0
+
+    static func actionableRemoteHazards(
+        from hazards: [LiveDriveHazardMarker],
+        currentLocation: RouteCoordinate?,
+        currentUID: String,
+        alertedHazardIds: Set<String>
+    ) -> [LiveDriveHazardAudioEvent] {
+        guard let currentLocation else {
+            return []
+        }
+
+        return hazards.compactMap { hazard in
+            guard hazard.reportedBy != currentUID,
+                  !alertedHazardIds.contains(hazard.id) else {
+                return nil
+            }
+
+            let distance = GPXDistanceCalculator.distanceMetres(
+                for: [currentLocation, hazard.coordinate]
+            )
+            guard distance <= actionableDistanceMetres else {
+                return nil
+            }
+
+            return LiveDriveHazardAudioEvent(
+                hazardId: hazard.id,
+                type: hazard.type,
+                distanceMetres: distance
+            )
+        }
+    }
+}
+
+protocol LiveDriveHazardAudioAlerting: Sendable {
+    func playHazardAlert()
+}
+
+struct SystemLiveDriveHazardAudioAlert: LiveDriveHazardAudioAlerting {
+    func playHazardAlert() {
+        AudioServicesPlaySystemSound(1104)
+    }
 }
 
 struct LiveDriveHazardOption: Identifiable, Equatable {
@@ -103,6 +156,82 @@ struct LiveDriveCameraTarget: Equatable {
     let center: RouteCoordinate
     let heading: Double
     let distanceMetres: Double
+}
+
+enum LiveDriveFollowCameraPolicy {
+    static let movementThresholdMetresPerSecond = 2.0
+    static let interactionResumeDelayMilliseconds: Int64 = 9_000
+
+    static func isMoving(speed: Double) -> Bool {
+        speed > movementThresholdMetresPerSecond
+    }
+
+    static func distanceMetres(for speed: Double?) -> Double {
+        guard let speed else {
+            return 1_100
+        }
+
+        if speed >= 22 {
+            return 1_700
+        }
+
+        if speed >= 8 {
+            return 1_250
+        }
+
+        return 850
+    }
+
+    static func cameraCenter(for coordinate: RouteCoordinate, heading: Double, speed: Double?) -> RouteCoordinate {
+        guard let speed, isMoving(speed: speed) else {
+            return coordinate
+        }
+
+        let lookAheadMetres = min(max(distanceMetres(for: speed) * 0.18, 120), 300)
+        return projectedCoordinate(from: coordinate, bearingDegrees: heading, distanceMetres: lookAheadMetres)
+    }
+
+    static func canResumeAfterInteraction(
+        lastInteractionAt: Int64?,
+        nowMilliseconds: Int64,
+        isMoving: Bool,
+        hasLocation: Bool,
+        hasModalOpen: Bool,
+        runStatus: RunStatus?
+    ) -> Bool {
+        guard let lastInteractionAt,
+              isMoving,
+              hasLocation,
+              !hasModalOpen,
+              runStatus == .active else {
+            return false
+        }
+
+        return nowMilliseconds - lastInteractionAt >= interactionResumeDelayMilliseconds
+    }
+
+    private static func projectedCoordinate(
+        from coordinate: RouteCoordinate,
+        bearingDegrees: Double,
+        distanceMetres: Double
+    ) -> RouteCoordinate {
+        let earthRadiusMetres = 6_371_000.0
+        let bearing = bearingDegrees * .pi / 180
+        let lat1 = coordinate.lat * .pi / 180
+        let lon1 = coordinate.lng * .pi / 180
+        let angularDistance = distanceMetres / earthRadiusMetres
+
+        let lat2 = asin(
+            sin(lat1) * cos(angularDistance) +
+            cos(lat1) * sin(angularDistance) * cos(bearing)
+        )
+        let lon2 = lon1 + atan2(
+            sin(bearing) * sin(angularDistance) * cos(lat1),
+            cos(angularDistance) - sin(lat1) * sin(lat2)
+        )
+
+        return RouteCoordinate(lat: lat2 * 180 / .pi, lng: lon2 * 180 / .pi)
+    }
 }
 
 struct LiveLocationSample: Equatable, Sendable {
@@ -187,6 +316,37 @@ protocol HazardPersisting: Sendable {
     func writeHazard(_ hazard: Hazard, hazardId: String, runId: String) async throws
 }
 
+protocol RunEnding: Sendable {
+    func endDrive(runId: String, endedAt: Int64) async throws
+}
+
+extension RunRepositoring {
+    func endDrive(runId: String, endedAt: Int64) async throws {
+        guard let existingRun = try await readRun(runId: runId) else {
+            return
+        }
+
+        let updatedRun = Run(
+            name: existingRun.name,
+            description: existingRun.description,
+            joinCode: existingRun.joinCode,
+            adminId: existingRun.adminId,
+            status: .ended,
+            createdAt: existingRun.createdAt,
+            startedAt: existingRun.startedAt,
+            driveStartedAt: existingRun.driveStartedAt,
+            endedAt: endedAt,
+            maxDrivers: existingRun.maxDrivers,
+            route: existingRun.route,
+            drivers: existingRun.drivers,
+            hazards: existingRun.hazards,
+            summary: existingRun.summary
+        )
+
+        try await writeRun(updatedRun, runId: runId)
+    }
+}
+
 @MainActor
 final class LiveLocationTrackingController: ObservableObject {
     @Published private(set) var permissionState: LiveLocationPermissionState = .notDetermined
@@ -264,6 +424,7 @@ final class LiveLocationTrackingController: ObservableObject {
 protocol ForegroundLocationServicing: AnyObject {
     var onPermissionChange: ((LiveLocationPermissionState) -> Void)? { get set }
     var onLocation: ((LiveLocationSample) -> Void)? { get set }
+    var currentPermissionState: LiveLocationPermissionState { get }
     func requestWhenInUseAuthorization()
     func startUpdating()
     func stopUpdating()
@@ -282,6 +443,10 @@ final class CoreLocationForegroundLocationService: NSObject, ForegroundLocationS
         manager.desiredAccuracy = kCLLocationAccuracyBest
         manager.distanceFilter = 5
         manager.allowsBackgroundLocationUpdates = false
+    }
+
+    var currentPermissionState: LiveLocationPermissionState {
+        permissionState(for: manager)
     }
 
     func requestWhenInUseAuthorization() {
@@ -406,9 +571,9 @@ enum LiveDriveDriverMarkerFactory {
 }
 
 enum LiveDriveHazardMarkerFactory {
-    static func markers(for run: Run) -> [LiveDriveHazardMarker] {
+    static func markers(for run: Run, nowMilliseconds: Int64) -> [LiveDriveHazardMarker] {
         (run.hazards ?? [:])
-            .filter { !$0.value.dismissed }
+            .filter { LiveDriveHazardExpiryPolicy.isVisible($0.value, nowMilliseconds: nowMilliseconds) }
             .map { id, hazard in marker(id: id, hazard: hazard) }
             .sorted { $0.title < $1.title }
     }
@@ -420,6 +585,7 @@ enum LiveDriveHazardMarkerFactory {
             type: hazard.type,
             title: option.title,
             detail: "Reported by \(hazard.reporterName)",
+            reportedBy: hazard.reportedBy,
             reporterName: hazard.reporterName,
             reportedAt: hazard.timestamp,
             reportCount: hazard.reportCount,
@@ -459,6 +625,18 @@ enum LiveDriveHazardMarkerFactory {
         case .mobileCamera:
             "camera.fill"
         }
+    }
+}
+
+enum LiveDriveHazardExpiryPolicy {
+    static let displayWindowMilliseconds: Int64 = 30 * 60 * 1_000
+
+    static func isVisible(_ hazard: Hazard, nowMilliseconds: Int64) -> Bool {
+        guard !hazard.dismissed else {
+            return false
+        }
+
+        return nowMilliseconds - hazard.timestamp <= displayWindowMilliseconds
     }
 }
 
@@ -564,8 +742,10 @@ final class LiveDriveViewModel: ObservableObject {
     @Published private(set) var statusTitle = "Loading"
     @Published private(set) var nextWaypointText = "Loading route"
     @Published private(set) var message: String?
+    @Published private(set) var hazardConfirmationText: String?
     @Published private(set) var cameraTarget: LiveDriveCameraTarget?
     @Published private(set) var isFollowingCurrentUser = false
+    @Published private(set) var isHazardAudioMuted = false
     @Published var selectedDriver: LiveDriveDriverMarker?
     @Published var selectedHazard: LiveDriveHazardMarker?
 
@@ -576,19 +756,35 @@ final class LiveDriveViewModel: ObservableObject {
     private let uid: String
     private let runId: String
     private let runReader: RunReading
+    private let runObserver: RunObserving?
+    private let runEnding: RunEnding?
+    private let activeRunStore: ActiveRunStoring?
+    private let router: AppRouter?
     private let hazardRepository: HazardPersisting?
+    private let hazardAudioAlert: LiveDriveHazardAudioAlerting?
     private let nowMilliseconds: @Sendable () -> Int64
     private var currentRunStatus: RunStatus?
     private var currentFinishState: DriverFinishState?
+    private var lastLocationSpeed: Double?
+    private var lastMapInteractionAt: Int64?
+    private var isAutoFollowPausedByInteraction = false
     private var reporterName = "Driver"
+    private var runObservation: RunObservation?
+    private var hasLoadedInitialHazardSnapshot = false
+    private var alertedHazardIds = Set<String>()
 
     init(
         uid: String,
         runId: String,
         role: ActiveRunRole,
         runReader: RunReading,
+        runObserver: RunObserving? = nil,
+        runEnding: RunEnding? = nil,
+        activeRunStore: ActiveRunStoring? = nil,
+        router: AppRouter? = nil,
         liveLocationRepository: LiveLocationPersisting? = nil,
         hazardRepository: HazardPersisting? = nil,
+        hazardAudioAlert: LiveDriveHazardAudioAlerting? = SystemLiveDriveHazardAudioAlert(),
         nowMilliseconds: @escaping @Sendable () -> Int64 = {
             Int64(Date().timeIntervalSince1970 * 1_000)
         }
@@ -597,7 +793,12 @@ final class LiveDriveViewModel: ObservableObject {
         self.runId = runId
         self.role = role
         self.runReader = runReader
+        self.runObserver = runObserver
+        self.runEnding = runEnding
+        self.activeRunStore = activeRunStore
+        self.router = router
         self.hazardRepository = hazardRepository
+        self.hazardAudioAlert = hazardAudioAlert
         self.nowMilliseconds = nowMilliseconds
         if let liveLocationRepository {
             self.locationController = LiveLocationTrackingController(runId: runId, uid: uid, repository: liveLocationRepository)
@@ -613,29 +814,38 @@ final class LiveDriveViewModel: ObservableObject {
                 return
             }
 
-            currentRunStatus = run.status
-            currentFinishState = run.drivers?[uid]?.finishState
-            let now = nowMilliseconds()
-            routeCoordinates = (run.route?.points ?? []).compactMap { point in
-                guard point.count >= 2 else {
-                    return nil
-                }
-                return RouteCoordinate(lat: point[0], lng: point[1])
-            }
-            routeEndpointMarkers = LiveDriveRouteEndpointMarkerFactory.markers(for: run.route)
-            driverMarkers = LiveDriveDriverMarkerFactory.markers(for: run, currentUID: uid, nowMilliseconds: now)
-            currentUserMarker = currentUserMarker(from: run.drivers?[uid]?.location)
-            reporterName = reporterName(from: run.drivers?[uid])
-            hazardMarkers = LiveDriveHazardMarkerFactory.markers(for: run)
-            statusTitle = LiveDriveStatusFormatter.statusTitle(for: run)
-            nextWaypointText = LiveDriveStatusFormatter.nextWaypointText(
-                for: run,
-                currentLocation: driverMarkers.first { $0.id == uid }?.coordinate
-            )
-            message = nil
+            applyRun(run)
         } catch {
             message = "Unable to load drive."
         }
+    }
+
+    func startObservingRun() {
+        guard runObservation == nil, let runObserver else {
+            return
+        }
+
+        runObservation = runObserver.observeRun(runId: runId) { [weak self] result in
+            Task { @MainActor in
+                guard let self else {
+                    return
+                }
+
+                switch result {
+                case let .success(run?):
+                    self.applyRun(run)
+                case .success(nil):
+                    self.message = "Unable to load drive."
+                case .failure:
+                    self.message = "Unable to update drive."
+                }
+            }
+        }
+    }
+
+    func stopObservingRun() {
+        runObservation?.cancel()
+        runObservation = nil
     }
 
     func reportHazard(_ type: HazardType) async {
@@ -665,6 +875,7 @@ final class LiveDriveViewModel: ObservableObject {
         do {
             try await hazardRepository.writeHazard(hazard, hazardId: hazardId, runId: runId)
             hazardMarkers.append(LiveDriveHazardMarkerFactory.marker(id: hazardId, hazard: hazard))
+            hazardConfirmationText = "\(LiveDriveHazardOption.option(for: type).title) reported"
             message = nil
         } catch {
             message = "Unable to report hazard."
@@ -680,8 +891,39 @@ final class LiveDriveViewModel: ObservableObject {
         }
 
         isFollowingCurrentUser = true
-        cameraTarget = cameraTarget(for: currentUserMarker)
+        isAutoFollowPausedByInteraction = false
+        lastMapInteractionAt = nil
+        cameraTarget = cameraTarget(for: currentUserMarker, speed: lastLocationSpeed)
         message = nil
+    }
+
+    func recordMapInteraction(nowMilliseconds: Int64? = nil) {
+        guard isFollowingCurrentUser || isAutoFollowPausedByInteraction else {
+            return
+        }
+
+        isFollowingCurrentUser = false
+        isAutoFollowPausedByInteraction = true
+        lastMapInteractionAt = nowMilliseconds ?? self.nowMilliseconds()
+    }
+
+    func resumeFollowAfterInteractionDelay(nowMilliseconds: Int64? = nil) {
+        let now = nowMilliseconds ?? self.nowMilliseconds()
+        guard LiveDriveFollowCameraPolicy.canResumeAfterInteraction(
+            lastInteractionAt: lastMapInteractionAt,
+            nowMilliseconds: now,
+            isMoving: LiveDriveFollowCameraPolicy.isMoving(speed: lastLocationSpeed ?? 0),
+            hasLocation: currentUserMarker != nil,
+            hasModalOpen: selectedDriver != nil || selectedHazard != nil,
+            runStatus: currentRunStatus
+        ), let currentUserMarker else {
+            return
+        }
+
+        isFollowingCurrentUser = true
+        isAutoFollowPausedByInteraction = false
+        lastMapInteractionAt = nil
+        cameraTarget = cameraTarget(for: currentUserMarker, speed: lastLocationSpeed)
     }
 
     func selectDriver(_ marker: LiveDriveDriverMarker) {
@@ -704,6 +946,14 @@ final class LiveDriveViewModel: ObservableObject {
         message = nil
     }
 
+    func clearHazardConfirmation() {
+        hazardConfirmationText = nil
+    }
+
+    func toggleHazardAudioMuted() {
+        isHazardAudioMuted.toggle()
+    }
+
     func updateLocationPermission(_ state: LiveLocationPermissionState) async {
         locationController?.updatePermissionState(state)
         if state == .allowed || state == .reducedAccuracy {
@@ -717,10 +967,13 @@ final class LiveDriveViewModel: ObservableObject {
             heading: sample.heading,
             accuracy: sample.accuracy
         )
+        lastLocationSpeed = sample.speed
         currentUserMarker = marker
-        if isFollowingCurrentUser {
-            cameraTarget = cameraTarget(for: marker)
+        if isFollowingCurrentUser || (!isAutoFollowPausedByInteraction && LiveDriveFollowCameraPolicy.isMoving(speed: sample.speed)) {
+            isFollowingCurrentUser = true
+            cameraTarget = cameraTarget(for: marker, speed: sample.speed)
         }
+        playActionableHazardAlertsIfNeeded()
 
         await locationController?.ingest(
             sample,
@@ -731,6 +984,26 @@ final class LiveDriveViewModel: ObservableObject {
 
     func stopLocationTracking() async {
         await locationController?.stop()
+    }
+
+    func endDrive() async {
+        guard role == .admin else {
+            message = "Only the run admin can end the drive."
+            return
+        }
+
+        guard let runEnding else {
+            message = "Unable to end drive."
+            return
+        }
+
+        do {
+            try await runEnding.endDrive(runId: runId, endedAt: nowMilliseconds())
+            await locationController?.stop()
+            finishDriveLocally()
+        } catch {
+            message = "Unable to end drive."
+        }
     }
 
     private func currentUserMarker(from location: DriverLocation?) -> LiveDriveCurrentUserMarker? {
@@ -745,6 +1018,58 @@ final class LiveDriveViewModel: ObservableObject {
         )
     }
 
+    private func applyRun(_ run: Run) {
+        currentRunStatus = run.status
+        currentFinishState = run.drivers?[uid]?.finishState
+        if run.status == .ended {
+            finishDriveLocally()
+            return
+        }
+
+        let now = nowMilliseconds()
+        routeCoordinates = (run.route?.points ?? []).compactMap { point in
+            guard point.count >= 2 else {
+                return nil
+            }
+            return RouteCoordinate(lat: point[0], lng: point[1])
+        }
+        routeEndpointMarkers = LiveDriveRouteEndpointMarkerFactory.markers(for: run.route)
+        driverMarkers = LiveDriveDriverMarkerFactory.markers(for: run, currentUID: uid, nowMilliseconds: now)
+        currentUserMarker = currentUserMarker(from: run.drivers?[uid]?.location)
+        reporterName = reporterName(from: run.drivers?[uid])
+        hazardMarkers = LiveDriveHazardMarkerFactory.markers(for: run, nowMilliseconds: now)
+        if hasLoadedInitialHazardSnapshot {
+            playActionableHazardAlertsIfNeeded()
+        } else {
+            hasLoadedInitialHazardSnapshot = true
+        }
+        updateSelectionsFromLatestMarkers()
+        statusTitle = LiveDriveStatusFormatter.statusTitle(for: run)
+        nextWaypointText = LiveDriveStatusFormatter.nextWaypointText(
+            for: run,
+            currentLocation: driverMarkers.first { $0.id == uid }?.coordinate
+        )
+        if isFollowingCurrentUser, let currentUserMarker {
+            cameraTarget = cameraTarget(for: currentUserMarker, speed: lastLocationSpeed)
+        }
+        message = nil
+    }
+
+    private func finishDriveLocally() {
+        activeRunStore?.clearActiveRunSession(uid: uid)
+        stopObservingRun()
+        router?.dismissPresentedRoute()
+    }
+
+    private func updateSelectionsFromLatestMarkers() {
+        if let selectedDriver {
+            self.selectedDriver = driverMarkers.first { $0.id == selectedDriver.id }
+        }
+        if let selectedHazard {
+            self.selectedHazard = hazardMarkers.first { $0.id == selectedHazard.id }
+        }
+    }
+
     private func reporterName(from driver: DriverRecord?) -> String {
         guard let driver else {
             return "Driver"
@@ -753,12 +1078,35 @@ final class LiveDriveViewModel: ObservableObject {
         return driver.profile.displayName ?? driver.profile.name
     }
 
-    private func cameraTarget(for marker: LiveDriveCurrentUserMarker) -> LiveDriveCameraTarget {
+    private func cameraTarget(for marker: LiveDriveCurrentUserMarker, speed: Double? = nil) -> LiveDriveCameraTarget {
         LiveDriveCameraTarget(
-            center: marker.coordinate,
+            center: LiveDriveFollowCameraPolicy.cameraCenter(
+                for: marker.coordinate,
+                heading: marker.heading,
+                speed: speed
+            ),
             heading: marker.heading,
-            distanceMetres: 1_100
+            distanceMetres: LiveDriveFollowCameraPolicy.distanceMetres(for: speed)
         )
+    }
+
+    private func playActionableHazardAlertsIfNeeded() {
+        let events = LiveDriveHazardAlertPolicy.actionableRemoteHazards(
+            from: hazardMarkers,
+            currentLocation: currentUserMarker?.coordinate,
+            currentUID: uid,
+            alertedHazardIds: alertedHazardIds
+        )
+        guard !events.isEmpty else {
+            return
+        }
+
+        events.forEach { alertedHazardIds.insert($0.hazardId) }
+        guard !isHazardAudioMuted else {
+            return
+        }
+
+        hazardAudioAlert?.playHazardAlert()
     }
 }
 
@@ -766,8 +1114,11 @@ struct LiveDriveView: View {
     @StateObject var viewModel: LiveDriveViewModel
     @State private var foregroundLocationService = CoreLocationForegroundLocationService()
     @State private var mapPosition: MapCameraPosition = .automatic
-    @State private var showsEndDrivePlaceholder = false
+    @State private var showsEndDriveConfirmation = false
     @State private var isHazardRailExpanded = false
+    @State private var visibleMapHeading = 0.0
+    @State private var hazardConfirmationDismissTask: Task<Void, Never>?
+    @State private var mapInteractionResumeTask: Task<Void, Never>?
 
     var body: some View {
         ZStack {
@@ -775,12 +1126,16 @@ struct LiveDriveView: View {
                 routeCoordinates: viewModel.routeCoordinates,
                 routeEndpointMarkers: viewModel.routeEndpointMarkers,
                 currentUserMarker: viewModel.currentUserMarker,
-                currentMapHeading: viewModel.isFollowingCurrentUser ? viewModel.cameraTarget?.heading ?? 0 : 0,
+                currentMapHeading: visibleMapHeading,
                 driverMarkers: viewModel.driverMarkers,
                 hazardMarkers: viewModel.hazardMarkers,
                 mapPosition: $mapPosition,
                 onDriverTap: viewModel.selectDriver,
-                onHazardTap: viewModel.selectHazard
+                onHazardTap: viewModel.selectHazard,
+                onMapInteraction: handleMapInteraction,
+                onCameraHeadingChange: { heading in
+                    visibleMapHeading = heading
+                }
             )
             .ignoresSafeArea()
             .accessibilityIdentifier("liveDrive.map")
@@ -791,7 +1146,7 @@ struct LiveDriveView: View {
                     subtitle: viewModel.nextWaypointText,
                     role: viewModel.role,
                     onEndDrive: {
-                        showsEndDrivePlaceholder = true
+                        showsEndDriveConfirmation = true
                     }
                 )
                 .padding(.horizontal, 14)
@@ -802,6 +1157,12 @@ struct LiveDriveView: View {
                 ZStack(alignment: .bottom) {
                     LiveDriveBottomControls {
                         viewModel.locateCurrentUser()
+                    }
+
+                    if let confirmationText = viewModel.hazardConfirmationText {
+                        LiveDriveConfirmationToast(text: confirmationText)
+                            .padding(.bottom, 144)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
 
                     HStack(spacing: 8) {
@@ -821,22 +1182,38 @@ struct LiveDriveView: View {
                             }
                             .padding(.trailing, 66)
 
-                            Button {
-                                withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
-                                    isHazardRailExpanded.toggle()
+                            VStack(spacing: 12) {
+                                Button {
+                                    viewModel.toggleHazardAudioMuted()
+                                } label: {
+                                    Image(systemName: viewModel.isHazardAudioMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(viewModel.isHazardAudioMuted ? .secondary : .primary)
+                                        .frame(width: 42, height: 42)
+                                        .background(.thinMaterial, in: Circle())
+                                        .overlay(Circle().stroke(.white.opacity(0.75), lineWidth: 1.5))
+                                        .shadow(color: .black.opacity(0.12), radius: 8, y: 3)
                                 }
-                            } label: {
-                                Image(systemName: "exclamationmark.triangle.fill")
-                                    .font(.title2.weight(.semibold))
-                                    .foregroundStyle(.black)
-                                    .frame(width: 58, height: 58)
-                                    .background(.yellow, in: Circle())
-                                    .overlay(Circle().stroke(.white.opacity(0.85), lineWidth: 2))
-                                    .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
-                                    .rotationEffect(.degrees(isHazardRailExpanded ? 180 : 0))
+                                .accessibilityLabel(viewModel.isHazardAudioMuted ? "Unmute hazard alerts" : "Mute hazard alerts")
+                                .accessibilityIdentifier("liveDrive.hazardMuteButton")
+
+                                Button {
+                                    withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+                                        isHazardRailExpanded.toggle()
+                                    }
+                                } label: {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .font(.title2.weight(.semibold))
+                                        .foregroundStyle(.black)
+                                        .frame(width: 58, height: 58)
+                                        .background(.yellow, in: Circle())
+                                        .overlay(Circle().stroke(.white.opacity(0.85), lineWidth: 2))
+                                        .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
+                                        .rotationEffect(.degrees(isHazardRailExpanded ? 180 : 0))
+                                }
+                                .accessibilityLabel("Report Hazard")
+                                .accessibilityIdentifier("liveDrive.hazardButton")
                             }
-                            .accessibilityLabel("Report Hazard")
-                            .accessibilityIdentifier("liveDrive.hazardButton")
                         }
                     }
                     .padding(.bottom, 76)
@@ -849,14 +1226,37 @@ struct LiveDriveView: View {
         .toolbar(.hidden, for: .navigationBar)
         .task {
             await viewModel.load()
+            viewModel.startObservingRun()
             configureForegroundLocationService()
             foregroundLocationService.requestWhenInUseAuthorization()
             foregroundLocationService.startUpdating()
         }
         .onDisappear {
             foregroundLocationService.stopUpdating()
+            hazardConfirmationDismissTask?.cancel()
+            mapInteractionResumeTask?.cancel()
+            viewModel.stopObservingRun()
             Task {
                 await viewModel.stopLocationTracking()
+            }
+        }
+        .onChange(of: viewModel.hazardConfirmationText) { _, text in
+            hazardConfirmationDismissTask?.cancel()
+            guard text != nil else {
+                return
+            }
+
+            hazardConfirmationDismissTask = Task {
+                try? await Task.sleep(nanoseconds: 1_600_000_000)
+                guard !Task.isCancelled else {
+                    return
+                }
+
+                await MainActor.run {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.9)) {
+                        viewModel.clearHazardConfirmation()
+                    }
+                }
             }
         }
         .sheet(item: $viewModel.selectedDriver) { marker in
@@ -872,8 +1272,15 @@ struct LiveDriveView: View {
 
             mapPosition = .camera(cameraTarget.mapCamera)
         }
-        .alert("End drive will be wired with drive controls.", isPresented: $showsEndDrivePlaceholder) {
-            Button("OK", role: .cancel) {}
+        .confirmationDialog("End this drive?", isPresented: $showsEndDriveConfirmation) {
+            Button("End Drive", role: .destructive) {
+                Task {
+                    await viewModel.endDrive()
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will end the run for every joined driver.")
         }
         .alert(
             "Live Drive",
@@ -903,6 +1310,24 @@ struct LiveDriveView: View {
         foregroundLocationService.onLocation = { sample in
             Task { @MainActor in
                 await viewModel.ingestLocation(sample)
+            }
+        }
+        Task {
+            await viewModel.updateLocationPermission(foregroundLocationService.currentPermissionState)
+        }
+    }
+
+    private func handleMapInteraction() {
+        viewModel.recordMapInteraction()
+        mapInteractionResumeTask?.cancel()
+        mapInteractionResumeTask = Task {
+            try? await Task.sleep(nanoseconds: UInt64(LiveDriveFollowCameraPolicy.interactionResumeDelayMilliseconds) * 1_000_000)
+            guard !Task.isCancelled else {
+                return
+            }
+
+            await MainActor.run {
+                viewModel.resumeFollowAfterInteractionDelay()
             }
         }
     }
@@ -944,6 +1369,22 @@ private struct LiveDriveHazardRail: View {
     }
 }
 
+private struct LiveDriveConfirmationToast: View {
+    let text: String
+
+    var body: some View {
+        Label(text, systemImage: "checkmark.circle.fill")
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.primary)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(.thinMaterial, in: Capsule())
+            .overlay(Capsule().stroke(.white.opacity(0.55), lineWidth: 1))
+            .shadow(color: .black.opacity(0.14), radius: 10, y: 4)
+            .accessibilityIdentifier("liveDrive.hazardConfirmation")
+    }
+}
+
 private struct LiveDriveMap: View {
     let routeCoordinates: [RouteCoordinate]
     let routeEndpointMarkers: [LiveDriveRouteEndpointMarker]
@@ -954,6 +1395,8 @@ private struct LiveDriveMap: View {
     @Binding var mapPosition: MapCameraPosition
     let onDriverTap: (LiveDriveDriverMarker) -> Void
     let onHazardTap: (LiveDriveHazardMarker) -> Void
+    let onMapInteraction: () -> Void
+    let onCameraHeadingChange: (Double) -> Void
 
     var body: some View {
         Map(position: $mapPosition) {
@@ -1006,6 +1449,17 @@ private struct LiveDriveMap: View {
                     .accessibilityLabel("\(marker.title). \(marker.detail)")
                 }
             }
+        }
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 6)
+                .onChanged { _ in onMapInteraction() }
+        )
+        .simultaneousGesture(
+            MagnificationGesture()
+                .onChanged { _ in onMapInteraction() }
+        )
+        .onMapCameraChange(frequency: .continuous) { context in
+            onCameraHeadingChange(context.camera.heading)
         }
     }
 }

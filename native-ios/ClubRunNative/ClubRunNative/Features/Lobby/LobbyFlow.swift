@@ -123,6 +123,10 @@ struct LobbyService: Sendable {
             throw JoinRunError.runNotFound
         }
 
+        return snapshot(run: run, runId: runId)
+    }
+
+    func snapshot(run: Run, runId: String) -> LobbySnapshot {
         let rows = (run.drivers ?? [:])
             .map { uid, record in
                 LobbyDriverRow(
@@ -190,13 +194,22 @@ final class AdminLobbyViewModel: ObservableObject {
     private let uid: String
     private let service: LobbyService
     private let router: AppRouter?
+    private let runObserver: RunObserving?
+    private var runObservation: RunObservation?
     private var snapshot: LobbySnapshot?
 
-    init(uid: String, runId: String, service: LobbyService, router: AppRouter? = nil) {
+    init(
+        uid: String,
+        runId: String,
+        service: LobbyService,
+        router: AppRouter? = nil,
+        runObserver: RunObserving? = nil
+    ) {
         self.uid = uid
         self.runId = runId
         self.service = service
         self.router = router
+        self.runObserver = runObserver
     }
 
     func load() async {
@@ -208,6 +221,35 @@ final class AdminLobbyViewModel: ObservableObject {
         } catch {
             message = "Unable to load lobby."
         }
+    }
+
+    func startObservingRun() {
+        guard runObservation == nil, let runObserver else {
+            return
+        }
+
+        runObservation = runObserver.observeRun(runId: runId) { [weak self] result in
+            Task { @MainActor in
+                guard let self else {
+                    return
+                }
+
+                switch result {
+                case let .success(run?):
+                    self.apply(self.service.snapshot(run: run, runId: self.runId))
+                    self.message = nil
+                case .success(nil):
+                    self.message = "Unable to load lobby."
+                case .failure:
+                    self.message = "Unable to update lobby."
+                }
+            }
+        }
+    }
+
+    func stopObservingRun() {
+        runObservation?.cancel()
+        runObservation = nil
     }
 
     func startDrive() async {
@@ -235,6 +277,7 @@ final class AdminLobbyViewModel: ObservableObject {
     }
 
     private func apply(_ snapshot: LobbySnapshot) {
+        self.snapshot = snapshot
         title = snapshot.run.name
         joinCode = snapshot.run.joinCode
         routeSummary = LobbySummaryFormatter.routeSummary(for: snapshot.run.route)
@@ -260,25 +303,71 @@ final class DriverLobbyViewModel: ObservableObject {
     private let uid: String
     private let runId: String
     private let service: LobbyService
+    private let router: AppRouter?
+    private let runObserver: RunObserving?
+    private var runObservation: RunObservation?
 
-    init(uid: String, runId: String, service: LobbyService) {
+    init(
+        uid: String,
+        runId: String,
+        service: LobbyService,
+        router: AppRouter? = nil,
+        runObserver: RunObserving? = nil
+    ) {
         self.uid = uid
         self.runId = runId
         self.service = service
+        self.router = router
+        self.runObserver = runObserver
     }
 
     func load() async {
         do {
             try await service.updatePresence(runId: runId, uid: uid, presence: .online)
             let snapshot = try await service.snapshot(runId: runId)
-            title = snapshot.run.name
-            routeSummary = LobbySummaryFormatter.routeSummary(for: snapshot.run.route)
-            driverSummary = LobbySummaryFormatter.driverSummary(for: snapshot.run)
-            driverRows = snapshot.driverRows
+            apply(snapshot)
             message = nil
-            _ = uid
         } catch {
             message = "Unable to load lobby."
+        }
+    }
+
+    func startObservingRun() {
+        guard runObservation == nil, let runObserver else {
+            return
+        }
+
+        runObservation = runObserver.observeRun(runId: runId) { [weak self] result in
+            Task { @MainActor in
+                guard let self else {
+                    return
+                }
+
+                switch result {
+                case let .success(run?):
+                    self.apply(self.service.snapshot(run: run, runId: self.runId))
+                case .success(nil):
+                    self.message = "Unable to load lobby."
+                case .failure:
+                    self.message = "Unable to update lobby."
+                }
+            }
+        }
+    }
+
+    func stopObservingRun() {
+        runObservation?.cancel()
+        runObservation = nil
+    }
+
+    private func apply(_ snapshot: LobbySnapshot) {
+        title = snapshot.run.name
+        routeSummary = LobbySummaryFormatter.routeSummary(for: snapshot.run.route)
+        driverSummary = LobbySummaryFormatter.driverSummary(for: snapshot.run)
+        driverRows = snapshot.driverRows
+
+        if snapshot.run.status == .active, snapshot.run.drivers?[uid] != nil {
+            router?.present(.liveDrive(runId: runId, role: .driver))
         }
     }
 }
@@ -353,6 +442,10 @@ struct AdminLobbyView: View {
         .navigationTitle("Admin Lobby")
         .task {
             await viewModel.load()
+            viewModel.startObservingRun()
+        }
+        .onDisappear {
+            viewModel.stopObservingRun()
         }
         .sheet(isPresented: $viewModel.showsDriversSheet) {
             DriversSheetView(rows: viewModel.driverRows)
@@ -413,6 +506,10 @@ struct DriverLobbyView: View {
         .navigationTitle("Driver Lobby")
         .task {
             await viewModel.load()
+            viewModel.startObservingRun()
+        }
+        .onDisappear {
+            viewModel.stopObservingRun()
         }
         .sheet(isPresented: $viewModel.showsDriversSheet) {
             DriversSheetView(rows: viewModel.driverRows)

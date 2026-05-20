@@ -160,7 +160,113 @@ final class LiveDriveTests: XCTestCase {
                 accuracy: 4
             )
         )
-        XCTAssertEqual(viewModel.cameraTarget?.center, RouteCoordinate(lat: -33.91, lng: 18.41))
+        XCTAssertEqual(viewModel.cameraTarget?.center.lat ?? 0, -33.91, accuracy: 0.001)
+        XCTAssertGreaterThan(viewModel.cameraTarget?.center.lng ?? 0, 18.41)
+    }
+
+    func testMovementAboveThresholdStartsFollowModeAutomatically() async {
+        let viewModel = LiveDriveViewModel(
+            uid: "uid_driver_1",
+            runId: "run_1",
+            role: .driver,
+            runReader: InMemoryLiveDriveRunReader(run: makeRun())
+        )
+
+        await viewModel.load()
+        await viewModel.ingestLocation(makeLocationSample(speed: 9, timestamp: 1_800_000_010_000))
+
+        XCTAssertTrue(viewModel.isFollowingCurrentUser)
+        XCTAssertEqual(viewModel.cameraTarget?.distanceMetres, 1_250)
+    }
+
+    func testSlowLocationUpdateDoesNotStartFollowModeAutomatically() async {
+        let viewModel = LiveDriveViewModel(
+            uid: "uid_driver_1",
+            runId: "run_1",
+            role: .driver,
+            runReader: InMemoryLiveDriveRunReader(run: makeRun())
+        )
+
+        await viewModel.load()
+        await viewModel.ingestLocation(makeLocationSample(speed: 1.5, timestamp: 1_800_000_010_000))
+
+        XCTAssertFalse(viewModel.isFollowingCurrentUser)
+        XCTAssertNil(viewModel.cameraTarget)
+    }
+
+    func testManualMapInteractionPausesFollowMode() async {
+        let viewModel = LiveDriveViewModel(
+            uid: "uid_driver_1",
+            runId: "run_1",
+            role: .driver,
+            runReader: InMemoryLiveDriveRunReader(run: makeRun())
+        )
+
+        await viewModel.load()
+        viewModel.locateCurrentUser()
+        viewModel.recordMapInteraction(nowMilliseconds: 1_800_000_010_000)
+        await viewModel.ingestLocation(makeLocationSample(lat: -33.91, lng: 18.41, speed: 10, timestamp: 1_800_000_011_000))
+
+        XCTAssertFalse(viewModel.isFollowingCurrentUser)
+        XCTAssertNotEqual(viewModel.cameraTarget?.center, RouteCoordinate(lat: -33.91, lng: 18.41))
+    }
+
+    func testDelayedFollowResumesAfterNoInteractionWhileMoving() async {
+        let viewModel = LiveDriveViewModel(
+            uid: "uid_driver_1",
+            runId: "run_1",
+            role: .driver,
+            runReader: InMemoryLiveDriveRunReader(run: makeRun())
+        )
+
+        await viewModel.load()
+        await viewModel.ingestLocation(makeLocationSample(speed: 10, timestamp: 1_800_000_010_000))
+        viewModel.recordMapInteraction(nowMilliseconds: 1_800_000_011_000)
+        viewModel.resumeFollowAfterInteractionDelay(nowMilliseconds: 1_800_000_019_999)
+        XCTAssertFalse(viewModel.isFollowingCurrentUser)
+
+        viewModel.resumeFollowAfterInteractionDelay(nowMilliseconds: 1_800_000_020_000)
+
+        XCTAssertTrue(viewModel.isFollowingCurrentUser)
+        XCTAssertEqual(viewModel.cameraTarget?.center.lat ?? 0, -33.9, accuracy: 0.001)
+        XCTAssertGreaterThan(viewModel.cameraTarget?.center.lng ?? 0, 18.4)
+    }
+
+    func testRepeatedMapInteractionResetsDelayedFollow() async {
+        let viewModel = LiveDriveViewModel(
+            uid: "uid_driver_1",
+            runId: "run_1",
+            role: .driver,
+            runReader: InMemoryLiveDriveRunReader(run: makeRun())
+        )
+
+        await viewModel.load()
+        await viewModel.ingestLocation(makeLocationSample(speed: 10, timestamp: 1_800_000_010_000))
+        viewModel.recordMapInteraction(nowMilliseconds: 1_800_000_011_000)
+        viewModel.recordMapInteraction(nowMilliseconds: 1_800_000_017_000)
+        viewModel.resumeFollowAfterInteractionDelay(nowMilliseconds: 1_800_000_025_999)
+        XCTAssertFalse(viewModel.isFollowingCurrentUser)
+
+        viewModel.resumeFollowAfterInteractionDelay(nowMilliseconds: 1_800_000_026_000)
+
+        XCTAssertTrue(viewModel.isFollowingCurrentUser)
+    }
+
+    func testLocateButtonForcesFollowImmediatelyAfterManualInteraction() async {
+        let viewModel = LiveDriveViewModel(
+            uid: "uid_driver_1",
+            runId: "run_1",
+            role: .driver,
+            runReader: InMemoryLiveDriveRunReader(run: makeRun())
+        )
+
+        await viewModel.load()
+        viewModel.locateCurrentUser()
+        viewModel.recordMapInteraction(nowMilliseconds: 1_800_000_010_000)
+        viewModel.locateCurrentUser()
+
+        XCTAssertTrue(viewModel.isFollowingCurrentUser)
+        XCTAssertEqual(viewModel.cameraTarget?.center, RouteCoordinate(lat: -33.9, lng: 18.4))
     }
 
     func testCurrentUserMarkerHeadingIsRelativeToMapHeading() {
@@ -190,6 +296,7 @@ final class LiveDriveTests: XCTestCase {
                 type: .pothole,
                 title: "Pothole",
                 detail: "Reported by Alex",
+                reportedBy: "uid_driver_1",
                 reporterName: "Alex",
                 reportedAt: 1_800_000_003_000,
                 reportCount: 1,
@@ -216,6 +323,214 @@ final class LiveDriveTests: XCTestCase {
         XCTAssertEqual(viewModel.selectedHazard?.reporterName, "Alex")
         XCTAssertEqual(viewModel.selectedHazard?.reportCount, 1)
         XCTAssertEqual(viewModel.selectedHazard?.reportedAt, 1_800_000_003_000)
+    }
+
+    func testHazardMarkersHideExpiredHazardsWithoutDeletingBackendRecord() async {
+        let viewModel = LiveDriveViewModel(
+            uid: "uid_driver_1",
+            runId: "run_1",
+            role: .driver,
+            runReader: InMemoryLiveDriveRunReader(run: Self.makeRun(
+                hazards: [
+                    "fresh_hazard": Hazard(
+                        type: .police,
+                        reportedBy: "uid_driver_1",
+                        reporterName: "Alex",
+                        lat: -33.94,
+                        lng: 18.44,
+                        timestamp: 1_800_000_100_000,
+                        dismissed: false,
+                        reportCount: 1
+                    ),
+                    "expired_hazard": Hazard(
+                        type: .roadworks,
+                        reportedBy: "uid_driver_2",
+                        reporterName: "Sam",
+                        lat: -33.95,
+                        lng: 18.45,
+                        timestamp: 1_799_998_000_000,
+                        dismissed: false,
+                        reportCount: 1
+                    )
+                ]
+            )),
+            nowMilliseconds: { 1_800_000_200_000 }
+        )
+
+        await viewModel.load()
+
+        XCTAssertEqual(viewModel.hazardMarkers.map(\.id), ["fresh_hazard"])
+    }
+
+    func testHazardExpiryPolicyKeepsBoundaryHazardVisible() {
+        let hazard = Hazard(
+            type: .pothole,
+            reportedBy: "uid_driver_1",
+            reporterName: "Alex",
+            lat: -33.94,
+            lng: 18.44,
+            timestamp: 1_800_000_000_000,
+            dismissed: false,
+            reportCount: 1
+        )
+
+        XCTAssertTrue(LiveDriveHazardExpiryPolicy.isVisible(hazard, nowMilliseconds: 1_800_001_800_000))
+        XCTAssertFalse(LiveDriveHazardExpiryPolicy.isVisible(hazard, nowMilliseconds: 1_800_001_800_001))
+    }
+
+    func testHazardAlertPolicyReturnsRemoteHazardsWithinActionableDistance() {
+        let events = LiveDriveHazardAlertPolicy.actionableRemoteHazards(
+            from: [
+                LiveDriveHazardMarkerFactory.marker(
+                    id: "near_remote",
+                    hazard: Hazard(
+                        type: .police,
+                        reportedBy: "uid_driver_2",
+                        reporterName: "Sam",
+                        lat: -33.9005,
+                        lng: 18.4005,
+                        timestamp: 1_800_000_030_000,
+                        dismissed: false,
+                        reportCount: 1
+                    )
+                ),
+                LiveDriveHazardMarkerFactory.marker(
+                    id: "near_own",
+                    hazard: Hazard(
+                        type: .pothole,
+                        reportedBy: "uid_driver_1",
+                        reporterName: "Alex",
+                        lat: -33.9005,
+                        lng: 18.4005,
+                        timestamp: 1_800_000_030_000,
+                        dismissed: false,
+                        reportCount: 1
+                    )
+                ),
+                LiveDriveHazardMarkerFactory.marker(
+                    id: "far_remote",
+                    hazard: Hazard(
+                        type: .roadworks,
+                        reportedBy: "uid_driver_2",
+                        reporterName: "Sam",
+                        lat: -33.96,
+                        lng: 18.46,
+                        timestamp: 1_800_000_030_000,
+                        dismissed: false,
+                        reportCount: 1
+                    )
+                )
+            ],
+            currentLocation: RouteCoordinate(lat: -33.9, lng: 18.4),
+            currentUID: "uid_driver_1",
+            alertedHazardIds: []
+        )
+
+        XCTAssertEqual(events.map(\.hazardId), ["near_remote"])
+        XCTAssertLessThan(events.first?.distanceMetres ?? 999, 300)
+    }
+
+    func testInitialHazardSnapshotDoesNotPlayAlert() async {
+        let audioAlert = RecordingHazardAudioAlert()
+        let viewModel = LiveDriveViewModel(
+            uid: "uid_driver_1",
+            runId: "run_1",
+            role: .driver,
+            runReader: InMemoryLiveDriveRunReader(run: Self.makeRun(hazards: [
+                "near_remote": Hazard(
+                    type: .police,
+                    reportedBy: "uid_driver_2",
+                    reporterName: "Sam",
+                    lat: -33.9005,
+                    lng: 18.4005,
+                    timestamp: 1_800_000_030_000,
+                    dismissed: false,
+                    reportCount: 1
+                )
+            ])),
+            hazardAudioAlert: audioAlert
+        )
+
+        await viewModel.load()
+
+        XCTAssertEqual(audioAlert.playCount, 0)
+    }
+
+    func testObservedRemoteHazardWithinActionableDistancePlaysAlertOnce() async {
+        let observer = ManualRunObserver()
+        let audioAlert = RecordingHazardAudioAlert()
+        let viewModel = LiveDriveViewModel(
+            uid: "uid_driver_1",
+            runId: "run_1",
+            role: .driver,
+            runReader: InMemoryLiveDriveRunReader(run: Self.makeRun(hazards: [:])),
+            runObserver: observer,
+            hazardAudioAlert: audioAlert
+        )
+
+        await viewModel.load()
+        viewModel.startObservingRun()
+        observer.emit(Self.makeRun(hazards: [
+            "near_remote": Hazard(
+                type: .police,
+                reportedBy: "uid_driver_2",
+                reporterName: "Sam",
+                lat: -33.9005,
+                lng: 18.4005,
+                timestamp: 1_800_000_030_000,
+                dismissed: false,
+                reportCount: 1
+            )
+        ]))
+        await Task.yield()
+        observer.emit(Self.makeRun(hazards: [
+            "near_remote": Hazard(
+                type: .police,
+                reportedBy: "uid_driver_2",
+                reporterName: "Sam",
+                lat: -33.9005,
+                lng: 18.4005,
+                timestamp: 1_800_000_030_000,
+                dismissed: false,
+                reportCount: 1
+            )
+        ]))
+        await Task.yield()
+
+        XCTAssertEqual(audioAlert.playCount, 1)
+    }
+
+    func testMutedHazardAudioDoesNotPlayForActionableHazard() async {
+        let observer = ManualRunObserver()
+        let audioAlert = RecordingHazardAudioAlert()
+        let viewModel = LiveDriveViewModel(
+            uid: "uid_driver_1",
+            runId: "run_1",
+            role: .driver,
+            runReader: InMemoryLiveDriveRunReader(run: Self.makeRun(hazards: [:])),
+            runObserver: observer,
+            hazardAudioAlert: audioAlert
+        )
+
+        await viewModel.load()
+        viewModel.toggleHazardAudioMuted()
+        viewModel.startObservingRun()
+        observer.emit(Self.makeRun(hazards: [
+            "near_remote": Hazard(
+                type: .police,
+                reportedBy: "uid_driver_2",
+                reporterName: "Sam",
+                lat: -33.9005,
+                lng: 18.4005,
+                timestamp: 1_800_000_030_000,
+                dismissed: false,
+                reportCount: 1
+            )
+        ]))
+        await Task.yield()
+
+        XCTAssertTrue(viewModel.isHazardAudioMuted)
+        XCTAssertEqual(audioAlert.playCount, 0)
     }
 
     func testHazardOptionsExposeV1Types() {
@@ -283,6 +598,7 @@ final class LiveDriveTests: XCTestCase {
         XCTAssertTrue(viewModel.hazardMarkers.contains {
             $0.id == "hazard_1800000020000_roadworks" && $0.type == .roadworks
         })
+        XCTAssertEqual(viewModel.hazardConfirmationText, "Roadworks reported")
     }
 
     func testReportHazardShowsErrorOnWriteFailure() async {
@@ -298,6 +614,92 @@ final class LiveDriveTests: XCTestCase {
         await viewModel.reportHazard(.debris)
 
         XCTAssertEqual(viewModel.message, "Unable to report hazard.")
+    }
+
+    func testHazardConfirmationCanBeCleared() async {
+        let repository = InMemoryHazardRepository()
+        let viewModel = LiveDriveViewModel(
+            uid: "uid_driver_1",
+            runId: "run_1",
+            role: .driver,
+            runReader: InMemoryLiveDriveRunReader(run: makeRun()),
+            hazardRepository: repository
+        )
+
+        await viewModel.load()
+        await viewModel.reportHazard(.police)
+        viewModel.clearHazardConfirmation()
+
+        XCTAssertNil(viewModel.hazardConfirmationText)
+    }
+
+    func testObservedRunSnapshotRefreshesDriverAndHazardMarkers() async {
+        let observer = ManualRunObserver()
+        let viewModel = LiveDriveViewModel(
+            uid: "uid_driver_1",
+            runId: "run_1",
+            role: .driver,
+            runReader: InMemoryLiveDriveRunReader(run: makeRun()),
+            runObserver: observer,
+            nowMilliseconds: { 1_800_000_010_000 }
+        )
+
+        await viewModel.load()
+        viewModel.startObservingRun()
+        observer.emit(Self.makeRun(
+            samLocation: DriverLocation(lat: -33.96, lng: 18.46, heading: 120, speed: 10, accuracy: 5, timestamp: 1_800_000_009_000),
+            hazards: [
+                "hazard_2": Hazard(
+                    type: .police,
+                    reportedBy: "uid_driver_2",
+                    reporterName: "Sam",
+                    lat: -33.97,
+                    lng: 18.47,
+                    timestamp: 1_800_000_008_000,
+                    dismissed: false,
+                    reportCount: 2
+                )
+            ]
+        ))
+        await Task.yield()
+
+        XCTAssertEqual(viewModel.driverMarkers.first { $0.id == "uid_driver_2" }?.coordinate, RouteCoordinate(lat: -33.96, lng: 18.46))
+        XCTAssertEqual(viewModel.driverMarkers.first { $0.id == "uid_driver_2" }?.state, .live)
+        XCTAssertEqual(viewModel.hazardMarkers.map(\.id), ["hazard_2"])
+        XCTAssertEqual(viewModel.hazardMarkers.first?.type, .police)
+    }
+
+    func testObservedRunFailureShowsRecoverableMessage() async {
+        let observer = ManualRunObserver()
+        let viewModel = LiveDriveViewModel(
+            uid: "uid_driver_1",
+            runId: "run_1",
+            role: .driver,
+            runReader: InMemoryLiveDriveRunReader(run: makeRun()),
+            runObserver: observer
+        )
+
+        viewModel.startObservingRun()
+        observer.fail()
+        await Task.yield()
+
+        XCTAssertEqual(viewModel.message, "Unable to update drive.")
+    }
+
+    func testStoppingRunObservationCancelsActiveListener() {
+        let observer = ManualRunObserver()
+        let viewModel = LiveDriveViewModel(
+            uid: "uid_driver_1",
+            runId: "run_1",
+            role: .driver,
+            runReader: InMemoryLiveDriveRunReader(run: makeRun()),
+            runObserver: observer
+        )
+
+        viewModel.startObservingRun()
+        viewModel.stopObservingRun()
+
+        XCTAssertTrue(observer.lastObservation?.isCancelled == true)
     }
 
     func testTopStatusOverlayText() async {
@@ -369,6 +771,25 @@ final class LiveDriveTests: XCTestCase {
         XCTAssertEqual(repository.trackPoints.map(\.pointId), ["point_1800000001000"])
     }
 
+    func testLiveDriveStartsLocationWritesWhenPermissionAlreadyAllowed() async {
+        let repository = InMemoryLiveLocationRepository()
+        let viewModel = LiveDriveViewModel(
+            uid: "uid_driver_1",
+            runId: "run_1",
+            role: .driver,
+            runReader: InMemoryLiveDriveRunReader(run: makeRun()),
+            liveLocationRepository: repository
+        )
+
+        await viewModel.load()
+        await viewModel.updateLocationPermission(.allowed)
+        await viewModel.ingestLocation(makeLocationSample(timestamp: 1_800_000_030_000))
+
+        XCTAssertEqual(repository.presenceUpdates, [.online])
+        XCTAssertEqual(repository.latestLocations.count, 1)
+        XCTAssertEqual(repository.trackPoints.map(\.pointId), ["point_1800000030000"])
+    }
+
     func testLocationTrackingStopsWritingWhenRunIsNotActiveOrDriverFinished() async {
         let repository = InMemoryLiveLocationRepository()
         let controller = LiveLocationTrackingController(runId: "run_1", uid: "uid_driver_1", repository: repository)
@@ -394,17 +815,73 @@ final class LiveDriveTests: XCTestCase {
         XCTAssertEqual(repository.presenceUpdates, [.online, .offline])
     }
 
-    private static func makeRun(currentDriverLocation: DriverLocation? = DriverLocation(lat: -33.9, lng: 18.4, heading: 90, speed: 18, accuracy: 5, timestamp: 1_800_000_004_000)) -> Run {
+    func testAdminEndDriveWritesEndedStatusClearsActiveSessionAndDismisses() async {
+        let ending = InMemoryRunEnding()
+        let activeRunStore = InMemoryLiveDriveActiveRunStore()
+        let router = AppRouter()
+        activeRunStore.saveActiveRunSession(ActiveRunSessionMetadata(runId: "run_1", role: .admin), uid: "uid_admin_1")
+        router.present(.liveDrive(runId: "run_1", role: .admin))
+        let viewModel = LiveDriveViewModel(
+            uid: "uid_admin_1",
+            runId: "run_1",
+            role: .admin,
+            runReader: InMemoryLiveDriveRunReader(run: makeRun()),
+            runEnding: ending,
+            activeRunStore: activeRunStore,
+            router: router,
+            nowMilliseconds: { 1_800_000_090_000 }
+        )
+
+        await viewModel.endDrive()
+
+        XCTAssertEqual(ending.endedRuns.count, 1)
+        XCTAssertEqual(ending.endedRuns.first?.runId, "run_1")
+        XCTAssertEqual(ending.endedRuns.first?.endedAt, 1_800_000_090_000)
+        XCTAssertNil(activeRunStore.readActiveRunSession(uid: "uid_admin_1"))
+        XCTAssertNil(router.presentedRoute)
+    }
+
+    func testDriverLeavesLiveDriveWhenRunObservationEnds() async {
+        let activeRunStore = InMemoryLiveDriveActiveRunStore()
+        let router = AppRouter()
+        let observer = ManualRunObserver()
+        activeRunStore.saveActiveRunSession(ActiveRunSessionMetadata(runId: "run_1", role: .driver), uid: "uid_driver_1")
+        router.present(.liveDrive(runId: "run_1", role: .driver))
+        let viewModel = LiveDriveViewModel(
+            uid: "uid_driver_1",
+            runId: "run_1",
+            role: .driver,
+            runReader: InMemoryLiveDriveRunReader(run: makeRun()),
+            runObserver: observer,
+            activeRunStore: activeRunStore,
+            router: router
+        )
+
+        viewModel.startObservingRun()
+        observer.emit(Self.makeRun(status: .ended))
+        await Task.yield()
+
+        XCTAssertNil(activeRunStore.readActiveRunSession(uid: "uid_driver_1"))
+        XCTAssertNil(router.presentedRoute)
+        XCTAssertTrue(observer.lastObservation?.isCancelled == true)
+    }
+
+    private static func makeRun(
+        status: RunStatus = .active,
+        currentDriverLocation: DriverLocation? = DriverLocation(lat: -33.9, lng: 18.4, heading: 90, speed: 18, accuracy: 5, timestamp: 1_800_000_004_000),
+        samLocation: DriverLocation? = DriverLocation(lat: -33.93, lng: 18.43, heading: 90, speed: 12, accuracy: 6, timestamp: 1_800_000_000_000),
+        hazards: [String: Hazard]? = nil
+    ) -> Run {
         Run(
             name: "Sunday Run",
             description: nil,
             joinCode: "123456",
             adminId: "uid_admin_1",
-            status: .active,
+            status: status,
             createdAt: 1_800_000_000_000,
             startedAt: nil,
             driveStartedAt: 1_800_000_001_000,
-            endedAt: nil,
+            endedAt: status == .ended ? 1_800_000_090_000 : nil,
             maxDrivers: 15,
             route: RouteData(
                 points: [[-33.9, 18.4], [-33.95, 18.45], [-34.0, 18.5]],
@@ -427,7 +904,7 @@ final class LiveDriveTests: XCTestCase {
                 "uid_driver_2": makeDriver(
                     name: "Sam",
                     badge: DriverBadge(text: "S", colorHex: "#43A047"),
-                    location: DriverLocation(lat: -33.93, lng: 18.43, heading: 90, speed: 12, accuracy: 6, timestamp: 1_800_000_000_000),
+                    location: samLocation,
                     presence: .online
                 ),
                 "uid_driver_3": makeDriver(
@@ -437,7 +914,7 @@ final class LiveDriveTests: XCTestCase {
                     presence: .offline
                 )
             ],
-            hazards: [
+            hazards: hazards ?? [
                 "hazard_1": Hazard(
                     type: .pothole,
                     reportedBy: "uid_driver_1",
@@ -459,9 +936,10 @@ final class LiveDriveTests: XCTestCase {
     private func makeLocationSample(
         lat: Double = -33.9,
         lng: Double = 18.4,
+        speed: Double = 12,
         timestamp: Int64
     ) -> LiveLocationSample {
-        LiveLocationSample(lat: lat, lng: lng, heading: 90, speed: 12, accuracy: 4, timestamp: timestamp)
+        LiveLocationSample(lat: lat, lng: lng, heading: 90, speed: speed, accuracy: 4, timestamp: timestamp)
     }
 
     private static func makeDriver(
@@ -514,9 +992,41 @@ private final class InMemoryHazardRepository: HazardPersisting, @unchecked Senda
     }
 }
 
+private final class RecordingHazardAudioAlert: LiveDriveHazardAudioAlerting, @unchecked Sendable {
+    var playCount = 0
+
+    func playHazardAlert() {
+        playCount += 1
+    }
+}
+
 private struct FailingHazardRepository: HazardPersisting {
     func writeHazard(_ hazard: Hazard, hazardId: String, runId: String) async throws {
         throw NSError(domain: "hazard", code: 1)
+    }
+}
+
+private final class InMemoryRunEnding: RunEnding, @unchecked Sendable {
+    var endedRuns: [(runId: String, endedAt: Int64)] = []
+
+    func endDrive(runId: String, endedAt: Int64) async throws {
+        endedRuns.append((runId, endedAt))
+    }
+}
+
+private final class InMemoryLiveDriveActiveRunStore: ActiveRunStoring, @unchecked Sendable {
+    private var sessions: [String: ActiveRunSessionMetadata] = [:]
+
+    func readActiveRunSession(uid: String) -> ActiveRunSessionMetadata? {
+        sessions[uid]
+    }
+
+    func saveActiveRunSession(_ session: ActiveRunSessionMetadata, uid: String) {
+        sessions[uid] = session
+    }
+
+    func clearActiveRunSession(uid: String) {
+        sessions.removeValue(forKey: uid)
     }
 }
 
@@ -525,5 +1035,36 @@ private struct InMemoryLiveDriveRunReader: RunReading {
 
     func readRun(runId: String) async throws -> Run? {
         run
+    }
+}
+
+private final class ManualRunObservation: RunObservation, @unchecked Sendable {
+    var isCancelled = false
+
+    func cancel() {
+        isCancelled = true
+    }
+}
+
+private final class ManualRunObserver: RunObserving, @unchecked Sendable {
+    var lastObservation: ManualRunObservation?
+    private var onChange: (@Sendable (Result<Run?, Error>) -> Void)?
+
+    func observeRun(
+        runId: String,
+        onChange: @escaping @Sendable (Result<Run?, Error>) -> Void
+    ) -> RunObservation {
+        self.onChange = onChange
+        let observation = ManualRunObservation()
+        lastObservation = observation
+        return observation
+    }
+
+    func emit(_ run: Run?) {
+        onChange?(.success(run))
+    }
+
+    func fail() {
+        onChange?(.failure(NSError(domain: "run-observer", code: 1)))
     }
 }

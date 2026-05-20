@@ -66,6 +66,10 @@ final class AppRouter: ObservableObject {
     func present(_ route: AppRoute) {
         presentedRoute = route
     }
+
+    func dismissPresentedRoute() {
+        presentedRoute = nil
+    }
 }
 
 protocol ActiveRunStoring: Sendable {
@@ -108,6 +112,18 @@ final class UserDefaultsActiveRunStore: ActiveRunStoring, @unchecked Sendable {
 
 protocol RunReading: Sendable {
     func readRun(runId: String) async throws -> Run?
+}
+
+protocol RunObservation: AnyObject, Sendable {
+    func cancel()
+}
+
+protocol RunObserving: Sendable {
+    @discardableResult
+    func observeRun(
+        runId: String,
+        onChange: @escaping @Sendable (Result<Run?, Error>) -> Void
+    ) -> RunObservation
 }
 
 struct EmptyRunReader: RunReading {
@@ -365,23 +381,51 @@ struct HomeHubView: View {
         case let .activeRun(runId, role):
             if role == .admin {
                 AdminLobbyView(
-                    viewModel: AdminLobbyViewModel(uid: uid, runId: runId, service: lobbyService, router: router),
+                    viewModel: AdminLobbyViewModel(
+                        uid: uid,
+                        runId: runId,
+                        service: lobbyService,
+                        router: router,
+                        runObserver: runReader as? RunObserving
+                    ),
                     router: router,
                     routeProvider: AppleMapsRouteProvider(),
                     routePersisting: lobbyService
                 )
             } else {
-                DriverLobbyView(viewModel: DriverLobbyViewModel(uid: uid, runId: runId, service: lobbyService))
+                DriverLobbyView(
+                    viewModel: DriverLobbyViewModel(
+                        uid: uid,
+                        runId: runId,
+                        service: lobbyService,
+                        router: router,
+                        runObserver: runReader as? RunObserving
+                    )
+                )
             }
         case let .adminLobby(runId):
             AdminLobbyView(
-                viewModel: AdminLobbyViewModel(uid: uid, runId: runId, service: lobbyService, router: router),
+                viewModel: AdminLobbyViewModel(
+                    uid: uid,
+                    runId: runId,
+                    service: lobbyService,
+                    router: router,
+                    runObserver: runReader as? RunObserving
+                ),
                 router: router,
                 routeProvider: AppleMapsRouteProvider(),
                 routePersisting: lobbyService
             )
         case let .driverLobby(runId):
-            DriverLobbyView(viewModel: DriverLobbyViewModel(uid: uid, runId: runId, service: lobbyService))
+            DriverLobbyView(
+                viewModel: DriverLobbyViewModel(
+                    uid: uid,
+                    runId: runId,
+                    service: lobbyService,
+                    router: router,
+                    runObserver: runReader as? RunObserving
+                )
+            )
         case let .liveDrive(runId, role):
             LiveDriveView(
                 viewModel: LiveDriveViewModel(
@@ -389,6 +433,10 @@ struct HomeHubView: View {
                     runId: runId,
                     role: role,
                     runReader: runReader,
+                    runObserver: runReader as? RunObserving,
+                    runEnding: runReader as? RunEnding,
+                    activeRunStore: activeRunStore,
+                    router: router,
                     liveLocationRepository: runReader as? LiveLocationPersisting,
                     hazardRepository: runReader as? HazardPersisting
                 )

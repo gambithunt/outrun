@@ -38,15 +38,15 @@ This repository contains the existing Expo/React Native ClubRun app and a separa
 ### Completing Workstreams
 
 1. Treat the named active workstream as the source of truth.
-2. Do not infer requirements from similarly named archived, legacy, or completed files.
-3. When a workstream is complete, move it to the completed directory and update any active references.
+2. Do not infer requirements from similarly named files outside `docs/workstreams/active/`.
+3. When a workstream is complete, update the active workstream status and ask before moving or reorganizing files.
 
 ## Decisions
 
 | Situation | Use | Avoid |
 | --- | --- | --- |
 | Native iOS app work | `native-ios/ClubRunNative/` | `ios/` Expo shell |
-| Native iOS source of truth | Named file in `docs/workstreams/active/` | Archived, legacy, or completed workstreams |
+| Native iOS source of truth | Named file in `docs/workstreams/active/` | Workstream files outside `docs/workstreams/active/` |
 | Native UI work | `ui-design` skill for creation, `ui-review` skill for evaluation/revision | Marketing-style screens for operational flows |
 | SwiftUI architecture | Small state-driven views plus view models/services | Firebase calls directly from SwiftUI views |
 | Backend paths | `BackendPaths` | Raw Firebase path strings in features |
@@ -93,7 +93,7 @@ Keep Firebase-compatible DTO shape explicit. Route points preserve the backend `
 ## Gotchas
 
 - Do not edit `ios/` for native SwiftUI app work. Work in `native-ios/ClubRunNative/` instead.
-- Do not use workstreams from `docs/workstreams/archive/`, `docs/workstreams/archived/`, `docs/workstreams/legacy/`, or `docs/workstreams/completed/` unless the prompt explicitly names one.
+- Do not use workstream files outside `docs/workstreams/active/`.
 - Do not leave native iOS deferred work only in chat. Add it to `docs/workstreams/active/native-ios-deferred-todos.md`.
 - Do not make destructive changes without approval.
 - Do not broad-refactor while fixing an error. Focus on the specific failing behavior and preserve working code.
@@ -137,9 +137,16 @@ npm run test:rules
 ## References
 
 - `native-ios/ClubRunNative/README.md`: read for native app setup and baseline build/test commands.
-- `docs/workstreams/active/native-ios-app-flow-spec.md`: read before changing native iOS product flow, identity, create/join, lobby, route, live drive, or settings behavior.
-- `docs/workstreams/active/native-ios-implementation-phases.md`: read before implementing native iOS backlog tasks or marking phase progress.
-- `docs/workstreams/active/native-ios-verification-checkpoints.md`: read before choosing verification commands or manual simulator/device checks.
-- `docs/workstreams/active/native-ios-deferred-todos.md`: read before deferring or implementing postponed native iOS work.
-- `docs/workstreams/active/native-ios-backend-compatible-app.md`: read before changing backend contract, MapKit direction, location architecture, or native information architecture.
-- `docs/native-ios/foundation-configuration-audit.md`: read before changing Firebase setup, plist inclusion, package products, or app configuration.
+
+## Workstream usage
+Only use workstreams from:
+docs/workstreams/active/
+Do not use workstreams from:
+docs/workstreams/archive/
+docs/workstreams/archived/
+docs/workstreams/legacy/
+docs/workstreams/completed/
+unless the prompt explicitly names one of those files.
+When implementing a task, treat the named workstream file as the source of truth.
+Do not infer requirements from similarly named older workstreams.
+When a workstream is completed move it to the completed dir

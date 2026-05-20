@@ -390,6 +390,8 @@ Goal: create role-specific lobbies that organize run setup without crowding the 
 - [x] Add failing tests for solo-start confirmation requirement.
 - [x] Add failing tests for driver count/waiting count summaries.
 - [x] Add failing tests for driver presence/stale classification.
+- [x] Add failing tests that a driver lobby routes into Live Drive when the run becomes active.
+- [x] Add failing tests that admin lobby updates when drivers join in realtime.
 - [x] Add failing UI test for admin lobby showing code/share/start/route/drivers/status.
 - [x] Add failing UI test for driver lobby not showing admin controls.
 
@@ -407,6 +409,8 @@ Goal: create role-specific lobbies that organize run setup without crowding the 
 - [x] Add copy-code affordance if share alone is insufficient.
 - [x] Implement presence updates for lobby entry/exit.
 - [x] Implement start-drive status transition once route exists.
+- [x] Observe active run status from Driver Lobby and route joined drivers into Live Drive.
+- [x] Observe joined-driver updates while Admin Lobby is open.
 
 ### Refactor
 
@@ -533,6 +537,7 @@ Goal: render the active drive map from run state before enabling full tracking c
 - [x] Add failing tests for hazard marker models.
 - [x] Add failing tests for top status overlay text.
 - [x] Add failing tests for next waypoint/distance label.
+- [x] Add failing tests for observed run snapshots updating live markers.
 
 ### Green
 
@@ -549,6 +554,7 @@ Goal: render the active drive map from run state before enabling full tracking c
 - [x] Add driver marker tap details: display name, car make/model, location freshness.
 - [x] Add reliable current-user marker from app/Firebase location state.
 - [x] Add basic locate/follow camera target for current user.
+- [x] Observe active run updates while Live Drive is open.
 
 ### Refactor
 
@@ -592,6 +598,9 @@ Goal: write live driver location and track points while the app is foregrounded.
 - [ ] Add failing tests for minimum movement filtering.
 - [ ] Add failing tests for presence updates.
 - [ ] Add failing tests for stop-writing after leave/finish/end.
+- [x] Add failing tests for Live Drive follow camera movement threshold and user interaction override.
+- [x] Add failing tests for delayed return to follow mode after map interaction.
+- [x] Add failing tests that Live Drive starts foreground location writes when permission was already granted.
 
 ### Green
 
@@ -603,6 +612,10 @@ Goal: write live driver location and track points while the app is foregrounded.
 - [ ] Update driver presence.
 - [ ] Stop updates when driver leaves/finishes.
 - [ ] Surface denied/restricted/reduced accuracy states.
+- [x] Auto-enter Live Drive follow mode when active movement starts.
+- [x] Pause follow mode on manual map interaction and resume after an idle delay.
+- [x] Start foreground location writes from the current permission state when Live Drive opens.
+- [x] Track visible map camera heading so the current-user arrow remains aligned after pan/zoom.
 
 ### Refactor
 
@@ -670,11 +683,13 @@ Goal: drivers can report and view route hazards in realtime.
 
 - [x] Add failing tests for hazard type enum including police and mobile camera.
 - [x] Add failing tests for hazard create payload.
-- [ ] Add failing tests for hazard expiry/fade policy.
-- [ ] Add failing tests for report count/confidence behavior.
-- [ ] Add failing tests for admin dismiss.
+- [x] Add failing tests for hazard expiry/fade policy.
+- [x] Add failing tests for report count/confidence behavior.
+- [x] Add failing tests for admin dismiss.
 - [ ] Add failing tests for confirmation data model: still there, gone.
 - [x] Add failing tests for missing-location and write-failure hazard reporting states.
+- [x] Add failing tests for realtime observed hazards.
+- [x] Add failing tests for distance-gated remote hazard audio alerts and mute state.
 
 ### Green
 
@@ -682,10 +697,13 @@ Goal: drivers can report and view route hazards in realtime.
 - [x] Build horizontal hazard rail from the hazard button.
 - [x] Hazard types: pothole, roadworks, police, mobile camera, debris, broken-down car.
 - [x] Tap hazard type writes report and collapses rail.
-- [ ] Show confirmation toast/banner.
+- [x] Show confirmation toast/banner.
 - [x] Render hazard markers on map.
 - [x] Tap hazard marker for type, reporter, time, report count.
-- [ ] Implement v1 fade/hide timer.
+- [x] Refresh hazard markers from realtime run updates.
+- [x] Implement v1 fade/hide timer.
+- [x] Play a short hazard alert for new remote hazards within 300 m.
+- [x] Add a compact Live Drive mute toggle for hazard audio.
 - [ ] Implement admin dismiss if supported cleanly.
 - [ ] Keep data model ready for later nearby-driver confirmation.
 
@@ -712,7 +730,8 @@ Goal: support admin group end, individual driver finish/leave, persistent summar
 
 ### Red
 
-- [ ] Add failing tests for admin-only global end.
+- [x] Add failing tests for admin-only global end.
+- [x] Add failing tests for participants leaving Live Drive when a run observation becomes ended.
 - [ ] Add failing tests for driver personal finish.
 - [ ] Add failing tests for destination arrival finish prompt policy.
 - [ ] Add failing tests for stale/offline timeout classification.
@@ -724,12 +743,13 @@ Goal: support admin group end, individual driver finish/leave, persistent summar
 
 ### Green
 
-- [ ] Add admin End Group Drive action with confirmation.
-- [ ] Write global ended status and `endedAt` as admin.
+- [x] Add admin End Group Drive action with confirmation.
+- [x] Write global ended status and `endedAt` as admin.
 - [ ] Let drivers finish/leave their own session.
 - [ ] Stop tracking on personal finish/leave.
 - [ ] Detect arrival at final destination and show finish prompt.
 - [ ] Support admin destination arrival prompt: End Group Drive.
+- [x] Route participants out of Live Drive when the run ends.
 - [ ] Generate personal summaries.
 - [ ] Generate group summary when admin ends.
 - [ ] Persist summaries.
@@ -853,7 +873,7 @@ Goal: harden backend/security/privacy behavior before TestFlight.
 - [ ] Add/update rules tests for join flow.
 - [ ] Add/update rules tests for route write admin-only.
 - [ ] Add/update rules tests for driver location/track writes.
-- [ ] Add/update rules tests for hazards.
+- [x] Add/update rules tests for hazards.
 - [ ] Add/update rules tests for summary writes.
 - [ ] Add privacy checklist.
 - [ ] Add release checklist.

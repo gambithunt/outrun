@@ -44,13 +44,18 @@ final class ClubRunNativeUITests: XCTestCase {
         app.launchEnvironment["CLUBRUN_UI_TEST_PROFILE_COMPLETE"] = "1"
         app.launch()
 
-        XCTAssertTrue(app.buttons["Join Run"].waitForExistence(timeout: 5))
-        app.buttons["Join Run"].tap()
+        let joinRunButton = app.buttons["homeHub.joinRunButton"]
+        XCTAssertTrue(joinRunButton.waitForExistence(timeout: 5))
+        joinRunButton.tap()
 
         XCTAssertTrue(app.navigationBars["Join Run"].waitForExistence(timeout: 5))
-        app.buttons["Find Run"].tap()
+        let resolveButton = app.buttons["joinRun.resolveButton"]
+        XCTAssertTrue(resolveButton.waitForExistence(timeout: 5))
+        resolveButton.tap()
 
-        XCTAssertTrue(app.staticTexts["Enter a six-digit code."].waitForExistence(timeout: 5))
+        let message = app.staticTexts["joinRun.message"]
+        XCTAssertTrue(message.waitForExistence(timeout: 5))
+        XCTAssertEqual(message.label, "Enter a six-digit code.")
     }
 
     func testAdminLobbyShowsAdminControls() {
@@ -98,14 +103,15 @@ final class ClubRunNativeUITests: XCTestCase {
         app.launchEnvironment["CLUBRUN_UI_TEST_PROFILE_COMPLETE"] = "1"
         app.launch()
 
-        XCTAssertTrue(app.buttons["Join Run"].waitForExistence(timeout: 5))
-        app.buttons["Join Run"].tap()
+        let joinRunButton = app.buttons["homeHub.joinRunButton"]
+        XCTAssertTrue(joinRunButton.waitForExistence(timeout: 5))
+        joinRunButton.tap()
         XCTAssertTrue(app.navigationBars["Join Run"].waitForExistence(timeout: 5))
-        app.textFields["Join Code"].tap()
-        app.textFields["Join Code"].typeText("123456")
-        app.buttons["Find Run"].tap()
-        XCTAssertTrue(app.buttons["Join Run"].waitForExistence(timeout: 5))
-        app.buttons["Join Run"].tap()
+        app.textFields["joinRun.codeField"].tap()
+        app.textFields["joinRun.codeField"].typeText("123456")
+        app.buttons["joinRun.resolveButton"].tap()
+        XCTAssertTrue(app.buttons["joinRun.submitButton"].waitForExistence(timeout: 5))
+        app.buttons["joinRun.submitButton"].tap()
 
         XCTAssertTrue(app.navigationBars["Driver Lobby"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["Start Drive"].exists)
