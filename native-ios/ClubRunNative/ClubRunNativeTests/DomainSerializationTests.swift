@@ -182,6 +182,14 @@ final class DomainSerializationTests: XCTestCase {
         }
     }
 
+    func testDecodesLegacyCamelCaseHazardTypes() throws {
+        let mobileCamera = try JSONDecoder.clubRunFirebase.decode(HazardType.self, from: Data(#""mobileCamera""#.utf8))
+        let brokenDownCar = try JSONDecoder.clubRunFirebase.decode(HazardType.self, from: Data(#""brokenDownCar""#.utf8))
+
+        XCTAssertEqual(mobileCamera, .mobileCamera)
+        XCTAssertEqual(brokenDownCar, .brokenDownCar)
+    }
+
     func testEncodesHazardConfidenceExpiryAndConfirmationReadyFields() throws {
         let hazard = makeHazard(
             type: .police,

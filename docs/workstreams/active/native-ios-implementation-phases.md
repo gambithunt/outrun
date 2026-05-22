@@ -597,7 +597,7 @@ Goal: write live driver location and track points while the app is foregrounded.
 - [ ] Add failing tests for throttling interval.
 - [ ] Add failing tests for minimum movement filtering.
 - [ ] Add failing tests for presence updates.
-- [ ] Add failing tests for stop-writing after leave/finish/end.
+- [x] Add failing tests for stop-writing after leave/finish/end.
 - [x] Add failing tests for Live Drive follow camera movement threshold and user interaction override.
 - [x] Add failing tests for delayed return to follow mode after map interaction.
 - [x] Add failing tests that Live Drive starts foreground location writes when permission was already granted.
@@ -610,7 +610,7 @@ Goal: write live driver location and track points while the app is foregrounded.
 - [ ] Write latest location to `/runs/{runId}/drivers/{uid}/location`.
 - [ ] Write track points to `/tracks/{runId}/{uid}/{pointId}` while active.
 - [ ] Update driver presence.
-- [ ] Stop updates when driver leaves/finishes.
+- [x] Stop updates when driver leaves/finishes.
 - [ ] Surface denied/restricted/reduced accuracy states.
 - [x] Auto-enter Live Drive follow mode when active movement starts.
 - [x] Pause follow mode on manual map interaction and resume after an idle delay.
@@ -628,7 +628,7 @@ Goal: write live driver location and track points while the app is foregrounded.
 - [ ] Foreground tracking works on simulator where possible.
 - [ ] Two devices/simulators can observe location updates where practical.
 - [ ] Track writes happen only while run is active.
-- [ ] End/leave stops writes.
+- [x] End/leave stops writes.
 
 ### Done
 
@@ -732,44 +732,44 @@ Goal: support admin group end, individual driver finish/leave, persistent summar
 
 - [x] Add failing tests for admin-only global end.
 - [x] Add failing tests for participants leaving Live Drive when a run observation becomes ended.
-- [ ] Add failing tests for driver personal finish.
-- [ ] Add failing tests for destination arrival finish prompt policy.
+- [x] Add failing tests for driver personal finish.
+- [x] Add failing tests for destination arrival finish prompt policy.
 - [ ] Add failing tests for stale/offline timeout classification.
-- [ ] Add failing tests for summary calculations: distance, moving time, stopped time.
+- [x] Add failing tests for summary calculations: distance, moving time, stopped time.
 - [ ] Add failing tests for max speed and max g-force calculations.
 - [ ] Add failing tests for no ranking by max speed/g-force.
 - [ ] Add failing tests for shareText generation.
-- [ ] Add failing tests for summary persistence paths.
+- [x] Add failing tests for summary persistence paths.
 
 ### Green
 
 - [x] Add admin End Group Drive action with confirmation.
 - [x] Write global ended status and `endedAt` as admin.
-- [ ] Let drivers finish/leave their own session.
-- [ ] Stop tracking on personal finish/leave.
-- [ ] Detect arrival at final destination and show finish prompt.
-- [ ] Support admin destination arrival prompt: End Group Drive.
+- [x] Let drivers finish/leave their own session.
+- [x] Stop tracking on personal finish/leave.
+- [x] Detect arrival at final destination and show finish prompt.
+- [x] Support admin destination arrival prompt: End Group Drive.
 - [x] Route participants out of Live Drive when the run ends.
-- [ ] Generate personal summaries.
-- [ ] Generate group summary when admin ends.
-- [ ] Persist summaries.
-- [ ] Build Summary screen.
+- [x] Generate personal summaries.
+- [x] Generate group summary when admin ends.
+- [x] Persist summaries.
+- [x] Build Summary screen.
 - [ ] Add share/copy summary format.
 - [ ] Add post-drive history entry.
 
 ### Refactor
 
-- [ ] Keep summary calculation pure and fixture-driven.
+- [x] Keep summary calculation pure and fixture-driven.
 - [ ] Keep share text generation independent from UI.
 - [ ] Keep personal stats private by default.
 
 ### Verify
 
-- [ ] Driver can finish independently.
+- [x] Driver can finish independently.
 - [ ] Admin can end group run.
 - [ ] Summary remains available after app restart.
 - [ ] Summary share/copy works.
-- [ ] No location writes after finish/end.
+- [x] No location writes after finish/end.
 
 ### Done
 

@@ -470,7 +470,7 @@ final class FirebaseAuthService: AuthServicing, @unchecked Sendable {
     }
 }
 
-final class FirebaseRunRepository: RunRepositoring, RunReading, RunObserving, RoutePersisting, LiveLocationPersisting, HazardPersisting, RunEnding, @unchecked Sendable {
+final class FirebaseRunRepository: RunRepositoring, RunReading, RunObserving, RoutePersisting, LiveLocationPersisting, HazardPersisting, RunEnding, RunSummaryPersisting, DriverDriveSessionUpdating, @unchecked Sendable {
     private let database: DatabaseReference
 
     init(database: DatabaseReference = Database.database().reference()) {
@@ -521,9 +521,15 @@ final class FirebaseRunRepository: RunRepositoring, RunReading, RunObserving, Ro
                 let run = try JSONDecoder.clubRunFirebase.decode(Run.self, from: data)
                 onChange(.success(run))
             } catch {
+#if DEBUG
+                print("ClubRun observeRun failed for \(runId): \(error)")
+#endif
                 onChange(.failure(error))
             }
         } withCancel: { error in
+#if DEBUG
+            print("ClubRun observeRun cancelled for \(runId): \(error)")
+#endif
             onChange(.failure(error))
         }
 
@@ -608,6 +614,28 @@ final class FirebaseRunRepository: RunRepositoring, RunReading, RunObserving, Ro
         try await database.child(BackendPaths.run(runId)).updateChildValues([
             "status": RunStatus.ended.rawValue,
             "endedAt": endedAt
+        ])
+    }
+
+    func writeRunSummary(_ summary: RunSummary, runId: String) async throws {
+        let data = try JSONEncoder.clubRunFirebase.encode(summary)
+        let object = try JSONSerialization.jsonObject(with: data)
+        try await database.child(BackendPaths.summary(runId)).setValue(object)
+    }
+
+    func finishDriver(runId: String, uid: String, finishedAt: Int64) async throws {
+        try await database.child(BackendPaths.driver(runId, uid: uid)).updateChildValues([
+            "presence": DriverPresence.offline.rawValue,
+            "finishState": DriverFinishState.finished.rawValue,
+            "finishedAt": finishedAt
+        ])
+    }
+
+    func leaveDriver(runId: String, uid: String, leftAt: Int64) async throws {
+        try await database.child(BackendPaths.driver(runId, uid: uid)).updateChildValues([
+            "presence": DriverPresence.offline.rawValue,
+            "finishState": DriverFinishState.left.rawValue,
+            "leftAt": leftAt
         ])
     }
 }

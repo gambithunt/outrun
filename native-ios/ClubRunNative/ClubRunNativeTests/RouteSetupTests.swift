@@ -123,6 +123,40 @@ final class RouteSetupTests: XCTestCase {
         XCTAssertEqual(router.presentedRoute, AppRoute.adminLobby(runId: "run_1"))
     }
 
+    func testRouteSetupViewModelHydratesExistingSavedRoute() {
+        let route = makeSavedRoute()
+        let viewModel = RouteSetupViewModel(
+            runId: "run_1",
+            routeProvider: StubRouteProvider(),
+            repository: InMemoryRouteRepository(),
+            router: AppRouter(),
+            initialRoute: route
+        )
+
+        XCTAssertEqual(viewModel.routeData, route)
+        XCTAssertEqual(viewModel.stops.map(\.id), ["start", "wp1", "finish"])
+        XCTAssertEqual(viewModel.summaryText, "12.3 km · 24 min")
+        XCTAssertFalse(viewModel.routeNeedsRecalculation)
+        XCTAssertFalse(viewModel.isGPXPreview)
+    }
+
+    func testRouteSetupViewModelRequestsExistingRouteMapFocus() {
+        let route = makeSavedRoute()
+        let viewModel = RouteSetupViewModel(
+            runId: "run_1",
+            routeProvider: StubRouteProvider(),
+            repository: InMemoryRouteRepository(),
+            router: AppRouter(),
+            initialRoute: route
+        )
+
+        viewModel.focusExistingRoute()
+
+        XCTAssertEqual(viewModel.mapFocusRequest?.coordinate, RouteCoordinate(lat: -33.95, lng: 18.45))
+        XCTAssertEqual(viewModel.mapFocusRequest?.latitudeDelta ?? 0, 0.15, accuracy: 0.001)
+        XCTAssertEqual(viewModel.mapFocusRequest?.longitudeDelta ?? 0, 0.15, accuracy: 0.001)
+    }
+
     func testRouteSetupViewModelPublishesSummary() async {
         let viewModel = RouteSetupViewModel(runId: "run_1", routeProvider: StubRouteProvider(), repository: InMemoryRouteRepository(), router: AppRouter())
         viewModel.setStart(makeStop(id: "start", kind: .start, order: 0))
@@ -308,6 +342,20 @@ final class RouteSetupTests: XCTestCase {
             lng: kind == .destination ? 18.5 : 18.4,
             source: .search,
             placeId: nil
+        )
+    }
+
+    private func makeSavedRoute() -> RouteData {
+        RouteData(
+            points: [[-33.9, 18.4], [-33.95, 18.45], [-34.0, 18.5]],
+            distanceMetres: 12_300,
+            durationSeconds: 1_440,
+            source: .appleMaps,
+            stops: [
+                makeStop(id: "start", kind: .start, order: 0, label: "Big Bay"),
+                makeStop(id: "wp1", kind: .waypoint, order: 1, label: "Tokai"),
+                makeStop(id: "finish", kind: .destination, order: 2, label: "Wellington")
+            ]
         )
     }
 }

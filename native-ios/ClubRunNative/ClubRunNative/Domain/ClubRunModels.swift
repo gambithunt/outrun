@@ -22,6 +22,30 @@ enum HazardType: String, Codable, Equatable {
     case debris
     case animal
     case brokenDownCar = "broken_down_car"
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let value = try container.decode(String.self)
+        switch value {
+        case "mobileCamera":
+            self = .mobileCamera
+        case "brokenDownCar":
+            self = .brokenDownCar
+        default:
+            guard let type = HazardType(rawValue: value) else {
+                throw DecodingError.dataCorruptedError(
+                    in: container,
+                    debugDescription: "Unknown hazard type: \(value)"
+                )
+            }
+            self = type
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
 }
 
 enum RouteSource: String, Codable, Equatable {

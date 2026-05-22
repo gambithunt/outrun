@@ -4,6 +4,30 @@ import CoreLocation
 import MapKit
 import SwiftUI
 
+#if DEBUG
+private extension DecodingError {
+    var clubRunDebugSummary: String {
+        switch self {
+        case let .dataCorrupted(context):
+            return "Decode failed at \(codingPathDescription(context.codingPath)): \(context.debugDescription)"
+        case let .keyNotFound(key, context):
+            return "Decode missing \(key.stringValue) at \(codingPathDescription(context.codingPath)): \(context.debugDescription)"
+        case let .typeMismatch(type, context):
+            return "Decode type mismatch for \(type) at \(codingPathDescription(context.codingPath)): \(context.debugDescription)"
+        case let .valueNotFound(type, context):
+            return "Decode missing value for \(type) at \(codingPathDescription(context.codingPath)): \(context.debugDescription)"
+        @unknown default:
+            return "Decode failed."
+        }
+    }
+
+    private func codingPathDescription(_ path: [CodingKey]) -> String {
+        let value = path.map(\.stringValue).joined(separator: ".")
+        return value.isEmpty ? "<root>" : value
+    }
+}
+#endif
+
 enum LiveDriveDriverState: String, Equatable {
     case current
     case live
@@ -320,6 +344,15 @@ protocol RunEnding: Sendable {
     func endDrive(runId: String, endedAt: Int64) async throws
 }
 
+protocol RunSummaryPersisting: Sendable {
+    func writeRunSummary(_ summary: RunSummary, runId: String) async throws
+}
+
+protocol DriverDriveSessionUpdating: Sendable {
+    func finishDriver(runId: String, uid: String, finishedAt: Int64) async throws
+    func leaveDriver(runId: String, uid: String, leftAt: Int64) async throws
+}
+
 extension RunRepositoring {
     func endDrive(runId: String, endedAt: Int64) async throws {
         guard let existingRun = try await readRun(runId: runId) else {
@@ -344,6 +377,166 @@ extension RunRepositoring {
         )
 
         try await writeRun(updatedRun, runId: runId)
+    }
+
+    func finishDriver(runId: String, uid: String, finishedAt: Int64) async throws {
+        try await updateDriverSession(runId: runId, uid: uid, finishState: .finished, timestamp: finishedAt)
+    }
+
+    func leaveDriver(runId: String, uid: String, leftAt: Int64) async throws {
+        try await updateDriverSession(runId: runId, uid: uid, finishState: .left, timestamp: leftAt)
+    }
+
+    private func updateDriverSession(
+        runId: String,
+        uid: String,
+        finishState: DriverFinishState,
+        timestamp: Int64
+    ) async throws {
+        guard let existingRun = try await readRun(runId: runId),
+              let existingDriver = existingRun.drivers?[uid] else {
+            return
+        }
+
+        let updatedDriver = DriverRecord(
+            profile: existingDriver.profile,
+            location: existingDriver.location,
+            joinedAt: existingDriver.joinedAt,
+            leftAt: finishState == .left ? timestamp : existingDriver.leftAt,
+            presence: .offline,
+            finishState: finishState,
+            finishedAt: finishState == .finished ? timestamp : existingDriver.finishedAt,
+            stats: existingDriver.stats
+        )
+
+        try await writeDriver(updatedDriver, runId: runId, uid: uid)
+    }
+}
+
+enum LiveDriveArrivalPrompt: Equatable {
+    case driverFinish
+    case adminEndGroup
+}
+
+enum LiveDriveArrivalPolicy {
+    static let destinationArrivalThresholdMetres = 150.0
+
+    static func prompt(
+        role: ActiveRunRole,
+        runStatus: RunStatus?,
+        finishState: DriverFinishState?,
+        currentLocation: RouteCoordinate?,
+        route: RouteData?
+    ) -> LiveDriveArrivalPrompt? {
+        guard runStatus == .active,
+              finishState != .finished,
+              finishState != .left,
+              let currentLocation,
+              let destination = destinationCoordinate(in: route)
+        else {
+            return nil
+        }
+
+        let distance = GPXDistanceCalculator.distanceMetres(for: [currentLocation, destination])
+        guard distance <= destinationArrivalThresholdMetres else {
+            return nil
+        }
+
+        switch role {
+        case .admin:
+            return .adminEndGroup
+        case .driver:
+            return .driverFinish
+        }
+    }
+
+    private static func destinationCoordinate(in route: RouteData?) -> RouteCoordinate? {
+        let destinationStop = route?.stops?
+            .sorted { ($0.order ?? 0) < ($1.order ?? 0) }
+            .last { $0.kind == .destination }
+
+        if let lat = destinationStop?.lat, let lng = destinationStop?.lng {
+            return RouteCoordinate(lat: lat, lng: lng)
+        }
+
+        guard let point = route?.points.last, point.count >= 2 else {
+            return nil
+        }
+
+        return RouteCoordinate(lat: point[0], lng: point[1])
+    }
+}
+
+enum RunSummaryCalculator {
+    static func summary(for run: Run, generatedAt: Int64) -> RunSummary {
+        let totalDistanceKm = kilometres(run.route?.distanceMetres ?? 0)
+        let totalDriveTimeMinutes = driveTimeMinutes(for: run, generatedAt: generatedAt)
+        let driverStats = Dictionary(uniqueKeysWithValues: (run.drivers ?? [:]).map { uid, driver in
+            (uid, personalSummary(for: driver, fallbackDistanceKm: totalDistanceKm, fallbackDriveTimeMinutes: totalDriveTimeMinutes))
+        })
+        let activeHazards = (run.hazards ?? [:]).values.filter { !$0.dismissed }
+        let hazardCounts = activeHazards.reduce(into: [HazardType: Int]()) { result, hazard in
+            result[hazard.type, default: 0] += 1
+        }
+
+        return RunSummary(
+            totalDistanceKm: rounded(totalDistanceKm),
+            totalDriveTimeMinutes: rounded(totalDriveTimeMinutes),
+            driverStats: driverStats,
+            collectiveFuel: CollectiveFuelSummary(petrolLitres: 0, dieselLitres: 0, hybridLitres: 0, electricKwh: 0),
+            hazardSummary: HazardSummary(total: activeHazards.count, byType: hazardCounts),
+            routePreview: routePreview(for: run.route),
+            generatedAt: generatedAt
+        )
+    }
+
+    private static func personalSummary(
+        for driver: DriverRecord,
+        fallbackDistanceKm: Double,
+        fallbackDriveTimeMinutes: Double
+    ) -> PersonalSummary {
+        let stats = driver.stats
+        let driveTime = stats?.totalDriveTimeMinutes ?? fallbackDriveTimeMinutes
+        let distance = stats?.totalDistanceKm ?? fallbackDistanceKm
+        let avgMovingSpeedKmh = stats?.avgMovingSpeedMs.map { $0 * 3.6 }
+
+        return PersonalSummary(
+            name: driver.profile.displayName ?? driver.profile.name,
+            carMake: driver.profile.carMake,
+            carModel: driver.profile.carModel,
+            badge: driver.profile.badge,
+            topSpeedKmh: stats?.topSpeed.map { $0 * 3.6 },
+            avgMovingSpeedKmh: avgMovingSpeedKmh,
+            totalDistanceKm: rounded(distance),
+            totalDriveTimeMinutes: rounded(driveTime),
+            stopCount: stats?.stopCount,
+            avgStopTimeSec: stats?.avgStopTimeSec,
+            fuelUsedLitres: nil,
+            fuelUsedKwh: nil,
+            fuelType: driver.profile.fuelType
+        )
+    }
+
+    private static func driveTimeMinutes(for run: Run, generatedAt: Int64) -> Double {
+        let start = run.driveStartedAt ?? run.startedAt ?? run.createdAt
+        let end = run.endedAt ?? generatedAt
+        return max(0, Double(end - start) / 60_000)
+    }
+
+    private static func routePreview(for route: RouteData?) -> SummaryRoutePreview? {
+        guard let route else {
+            return nil
+        }
+
+        return SummaryRoutePreview(points: route.points, speedBuckets: [])
+    }
+
+    private static func kilometres(_ metres: Double) -> Double {
+        metres / 1_000
+    }
+
+    private static func rounded(_ value: Double) -> Double {
+        (value * 100).rounded() / 100
     }
 }
 
@@ -392,6 +585,10 @@ final class LiveLocationTrackingController: ObservableObject {
     }
 
     func stop(presence: DriverPresence = .offline) async {
+        guard isTracking else {
+            return
+        }
+
         isTracking = false
         do {
             try await repository.updatePresence(presence, runId: runId, uid: uid)
@@ -746,6 +943,7 @@ final class LiveDriveViewModel: ObservableObject {
     @Published private(set) var cameraTarget: LiveDriveCameraTarget?
     @Published private(set) var isFollowingCurrentUser = false
     @Published private(set) var isHazardAudioMuted = false
+    @Published private(set) var arrivalPrompt: LiveDriveArrivalPrompt?
     @Published var selectedDriver: LiveDriveDriverMarker?
     @Published var selectedHazard: LiveDriveHazardMarker?
 
@@ -758,6 +956,8 @@ final class LiveDriveViewModel: ObservableObject {
     private let runReader: RunReading
     private let runObserver: RunObserving?
     private let runEnding: RunEnding?
+    private let summaryPersisting: RunSummaryPersisting?
+    private let driverSessionUpdater: DriverDriveSessionUpdating?
     private let activeRunStore: ActiveRunStoring?
     private let router: AppRouter?
     private let hazardRepository: HazardPersisting?
@@ -765,6 +965,7 @@ final class LiveDriveViewModel: ObservableObject {
     private let nowMilliseconds: @Sendable () -> Int64
     private var currentRunStatus: RunStatus?
     private var currentFinishState: DriverFinishState?
+    private var currentRun: Run?
     private var lastLocationSpeed: Double?
     private var lastMapInteractionAt: Int64?
     private var isAutoFollowPausedByInteraction = false
@@ -780,6 +981,8 @@ final class LiveDriveViewModel: ObservableObject {
         runReader: RunReading,
         runObserver: RunObserving? = nil,
         runEnding: RunEnding? = nil,
+        summaryPersisting: RunSummaryPersisting? = nil,
+        driverSessionUpdater: DriverDriveSessionUpdating? = nil,
         activeRunStore: ActiveRunStoring? = nil,
         router: AppRouter? = nil,
         liveLocationRepository: LiveLocationPersisting? = nil,
@@ -795,6 +998,8 @@ final class LiveDriveViewModel: ObservableObject {
         self.runReader = runReader
         self.runObserver = runObserver
         self.runEnding = runEnding
+        self.summaryPersisting = summaryPersisting
+        self.driverSessionUpdater = driverSessionUpdater
         self.activeRunStore = activeRunStore
         self.router = router
         self.hazardRepository = hazardRepository
@@ -814,7 +1019,7 @@ final class LiveDriveViewModel: ObservableObject {
                 return
             }
 
-            applyRun(run)
+            await applyRun(run)
         } catch {
             message = "Unable to load drive."
         }
@@ -833,14 +1038,31 @@ final class LiveDriveViewModel: ObservableObject {
 
                 switch result {
                 case let .success(run?):
-                    self.applyRun(run)
+                    await self.applyRun(run)
                 case .success(nil):
                     self.message = "Unable to load drive."
-                case .failure:
-                    self.message = "Unable to update drive."
+                case let .failure(error):
+                    self.message = Self.driveUpdateFailureMessage(for: error)
                 }
             }
         }
+    }
+
+    private static func driveUpdateFailureMessage(for error: Error) -> String {
+#if DEBUG
+        if let decodingError = error as? DecodingError {
+            return "Unable to update drive. \(decodingError.clubRunDebugSummary)"
+        }
+
+        let description = error.localizedDescription
+        guard !description.isEmpty else {
+            return "Unable to update drive."
+        }
+
+        return "Unable to update drive. \(description)"
+#else
+        return "Unable to update drive."
+#endif
     }
 
     func stopObservingRun() {
@@ -974,6 +1196,7 @@ final class LiveDriveViewModel: ObservableObject {
             cameraTarget = cameraTarget(for: marker, speed: sample.speed)
         }
         playActionableHazardAlertsIfNeeded()
+        evaluateArrivalPrompt()
 
         await locationController?.ingest(
             sample,
@@ -998,11 +1221,82 @@ final class LiveDriveViewModel: ObservableObject {
         }
 
         do {
-            try await runEnding.endDrive(runId: runId, endedAt: nowMilliseconds())
+            let endedAt = nowMilliseconds()
+            let runForSummary: Run?
+            if let currentRun {
+                runForSummary = currentRun
+            } else {
+                runForSummary = try await runReader.readRun(runId: runId)
+            }
+            if let runForSummary, let summaryPersisting {
+                let summaryRun = Run(
+                    name: runForSummary.name,
+                    description: runForSummary.description,
+                    joinCode: runForSummary.joinCode,
+                    adminId: runForSummary.adminId,
+                    status: .ended,
+                    createdAt: runForSummary.createdAt,
+                    startedAt: runForSummary.startedAt,
+                    driveStartedAt: runForSummary.driveStartedAt,
+                    endedAt: endedAt,
+                    maxDrivers: runForSummary.maxDrivers,
+                    route: runForSummary.route,
+                    drivers: runForSummary.drivers,
+                    hazards: runForSummary.hazards,
+                    summary: runForSummary.summary
+                )
+                try await summaryPersisting.writeRunSummary(
+                    RunSummaryCalculator.summary(for: summaryRun, generatedAt: endedAt),
+                    runId: runId
+                )
+            }
+            try await runEnding.endDrive(runId: runId, endedAt: endedAt)
             await locationController?.stop()
-            finishDriveLocally()
+            finishDriveLocally(routeToSummary: true)
         } catch {
             message = "Unable to end drive."
+        }
+    }
+
+    func finishDriverDrive() async {
+        guard role == .driver else {
+            message = "Use End to finish the run for everyone."
+            return
+        }
+
+        guard let driverSessionUpdater else {
+            message = "Unable to finish drive."
+            return
+        }
+
+        do {
+            try await driverSessionUpdater.finishDriver(runId: runId, uid: uid, finishedAt: nowMilliseconds())
+            currentFinishState = .finished
+            await locationController?.stop()
+            finishDriveLocally(routeToSummary: true)
+        } catch {
+            message = "Unable to finish drive."
+        }
+    }
+
+    func leaveDriverDrive() async {
+        guard role == .driver else {
+            message = "Admins should end the drive instead of leaving it."
+            return
+        }
+
+        guard let driverSessionUpdater else {
+            message = "Unable to leave drive."
+            return
+        }
+
+        do {
+            try await driverSessionUpdater.leaveDriver(runId: runId, uid: uid, leftAt: nowMilliseconds())
+            currentFinishState = .left
+            await locationController?.stop()
+            finishDriveLocally(routeToSummary: true)
+        } catch {
+            message = "Unable to leave drive."
         }
     }
 
@@ -1018,11 +1312,13 @@ final class LiveDriveViewModel: ObservableObject {
         )
     }
 
-    private func applyRun(_ run: Run) {
+    private func applyRun(_ run: Run) async {
+        currentRun = run
         currentRunStatus = run.status
         currentFinishState = run.drivers?[uid]?.finishState
         if run.status == .ended {
-            finishDriveLocally()
+            await locationController?.stop()
+            finishDriveLocally(routeToSummary: true)
             return
         }
 
@@ -1049,16 +1345,53 @@ final class LiveDriveViewModel: ObservableObject {
             for: run,
             currentLocation: driverMarkers.first { $0.id == uid }?.coordinate
         )
+        evaluateArrivalPrompt()
         if isFollowingCurrentUser, let currentUserMarker {
             cameraTarget = cameraTarget(for: currentUserMarker, speed: lastLocationSpeed)
         }
         message = nil
     }
 
-    private func finishDriveLocally() {
+    func clearArrivalPrompt() {
+        arrivalPrompt = nil
+    }
+
+    func confirmArrivalPrompt() async {
+        guard let arrivalPrompt else {
+            return
+        }
+
+        self.arrivalPrompt = nil
+        switch arrivalPrompt {
+        case .driverFinish:
+            await finishDriverDrive()
+        case .adminEndGroup:
+            await endDrive()
+        }
+    }
+
+    private func evaluateArrivalPrompt() {
+        guard arrivalPrompt == nil else {
+            return
+        }
+
+        arrivalPrompt = LiveDriveArrivalPolicy.prompt(
+            role: role,
+            runStatus: currentRunStatus,
+            finishState: currentFinishState,
+            currentLocation: currentUserMarker?.coordinate,
+            route: currentRun?.route
+        )
+    }
+
+    private func finishDriveLocally(routeToSummary: Bool) {
         activeRunStore?.clearActiveRunSession(uid: uid)
         stopObservingRun()
-        router?.dismissPresentedRoute()
+        if routeToSummary {
+            router?.present(.summary(runId: runId))
+        } else {
+            router?.dismissPresentedRoute()
+        }
     }
 
     private func updateSelectionsFromLatestMarkers() {
@@ -1115,6 +1448,7 @@ struct LiveDriveView: View {
     @State private var foregroundLocationService = CoreLocationForegroundLocationService()
     @State private var mapPosition: MapCameraPosition = .automatic
     @State private var showsEndDriveConfirmation = false
+    @State private var showsLeaveDriveConfirmation = false
     @State private var isHazardRailExpanded = false
     @State private var visibleMapHeading = 0.0
     @State private var hazardConfirmationDismissTask: Task<Void, Never>?
@@ -1147,6 +1481,14 @@ struct LiveDriveView: View {
                     role: viewModel.role,
                     onEndDrive: {
                         showsEndDriveConfirmation = true
+                    },
+                    onFinishDrive: {
+                        Task {
+                            await viewModel.finishDriverDrive()
+                        }
+                    },
+                    onLeaveDrive: {
+                        showsLeaveDriveConfirmation = true
                     }
                 )
                 .padding(.horizontal, 14)
@@ -1282,6 +1624,38 @@ struct LiveDriveView: View {
         } message: {
             Text("This will end the run for every joined driver.")
         }
+        .confirmationDialog("Leave this drive?", isPresented: $showsLeaveDriveConfirmation) {
+            Button("Leave Drive", role: .destructive) {
+                Task {
+                    await viewModel.leaveDriverDrive()
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This stops your location sharing and removes this run from your active session.")
+        }
+        .confirmationDialog(
+            arrivalPromptTitle,
+            isPresented: Binding(
+                get: { viewModel.arrivalPrompt != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        viewModel.clearArrivalPrompt()
+                    }
+                }
+            )
+        ) {
+            Button(arrivalPromptActionTitle) {
+                Task {
+                    await viewModel.confirmArrivalPrompt()
+                }
+            }
+            Button("Not Yet", role: .cancel) {
+                viewModel.clearArrivalPrompt()
+            }
+        } message: {
+            Text(arrivalPromptMessage)
+        }
         .alert(
             "Live Drive",
             isPresented: Binding(
@@ -1298,6 +1672,39 @@ struct LiveDriveView: View {
             }
         } message: {
             Text(viewModel.message ?? "")
+        }
+    }
+
+    private var arrivalPromptTitle: String {
+        switch viewModel.arrivalPrompt {
+        case .adminEndGroup:
+            "End group drive?"
+        case .driverFinish:
+            "Finish your drive?"
+        case nil:
+            "Destination reached"
+        }
+    }
+
+    private var arrivalPromptActionTitle: String {
+        switch viewModel.arrivalPrompt {
+        case .adminEndGroup:
+            "End Group Drive"
+        case .driverFinish:
+            "Finish Drive"
+        case nil:
+            "Continue"
+        }
+    }
+
+    private var arrivalPromptMessage: String {
+        switch viewModel.arrivalPrompt {
+        case .adminEndGroup:
+            "You are near the final destination. Ending will stop the run for every joined driver."
+        case .driverFinish:
+            "You are near the final destination. Finishing stops your location sharing."
+        case nil:
+            ""
         }
     }
 
@@ -1549,6 +1956,8 @@ private struct LiveDriveStatusOverlay: View {
     let subtitle: String
     let role: ActiveRunRole
     let onEndDrive: () -> Void
+    let onFinishDrive: () -> Void
+    let onLeaveDrive: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
@@ -1575,6 +1984,28 @@ private struct LiveDriveStatusOverlay: View {
                 .foregroundStyle(.red)
                 .tint(.red)
                 .accessibilityIdentifier("liveDrive.endDriveButton")
+            } else {
+                HStack(spacing: 8) {
+                    Button("Finish") {
+                        onFinishDrive()
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 9)
+                    .background(.green.opacity(0.16), in: Capsule())
+                    .foregroundStyle(.green)
+                    .accessibilityIdentifier("liveDrive.finishDriveButton")
+
+                    Button("Leave") {
+                        onLeaveDrive()
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 9)
+                    .background(.red.opacity(0.12), in: Capsule())
+                    .foregroundStyle(.red)
+                    .accessibilityIdentifier("liveDrive.leaveDriveButton")
+                }
             }
         }
         .padding(14)

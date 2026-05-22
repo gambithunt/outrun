@@ -95,7 +95,20 @@ struct PendingRouteStopConfirmation: Equatable, Sendable {
 struct RouteMapFocusRequest: Identifiable, Equatable, Sendable {
     let id = UUID()
     let coordinate: RouteCoordinate
-    let span: Double
+    let latitudeDelta: Double
+    let longitudeDelta: Double
+
+    init(coordinate: RouteCoordinate, span: Double) {
+        self.coordinate = coordinate
+        latitudeDelta = span
+        longitudeDelta = span
+    }
+
+    init(coordinate: RouteCoordinate, latitudeDelta: Double, longitudeDelta: Double) {
+        self.coordinate = coordinate
+        self.latitudeDelta = latitudeDelta
+        self.longitudeDelta = longitudeDelta
+    }
 
     static func == (lhs: RouteMapFocusRequest, rhs: RouteMapFocusRequest) -> Bool {
         lhs.id == rhs.id
@@ -459,7 +472,8 @@ final class RouteSetupViewModel: ObservableObject {
         repository: RoutePersisting,
         router: AppRouter,
         gpxParser: GPXRouteParser = GPXRouteParser(),
-        pinNamer: RoutePinNaming = MapKitRoutePinNamer()
+        pinNamer: RoutePinNaming = MapKitRoutePinNamer(),
+        initialRoute: RouteData? = nil
     ) {
         self.runId = runId
         self.routeProvider = routeProvider
@@ -467,6 +481,9 @@ final class RouteSetupViewModel: ObservableObject {
         self.router = router
         self.gpxParser = gpxParser
         self.pinNamer = pinNamer
+        if let initialRoute {
+            hydrate(from: initialRoute)
+        }
     }
 
     func setStart(_ stop: RouteStopDraft) {
@@ -682,6 +699,14 @@ final class RouteSetupViewModel: ObservableObject {
         setStart(sampleStop(id: "start", kind: .start, label: "Current Location", source: .currentLocation, lat: -33.9249, lng: 18.4241))
     }
 
+    func focusExistingRoute() {
+        guard let routeData, let focus = RouteMapFocusRequest.routeBounds(for: routeData) else {
+            return
+        }
+
+        mapFocusRequest = focus
+    }
+
     private func sampleStop(id: String, kind: RouteStopKind, label: String, source: RouteStopInputMethod, lat: Double, lng: Double) -> RouteStopDraft {
         RouteStopDraft(id: id, kind: kind, order: nil, label: label, lat: lat, lng: lng, source: source, placeId: nil)
     }
@@ -720,6 +745,63 @@ final class RouteSetupViewModel: ObservableObject {
         if routeData != nil, !isGPXPreview {
             routeNeedsRecalculation = true
         }
+    }
+
+    private func hydrate(from route: RouteData) {
+        routeData = route
+        stops = route.stops ?? []
+        isGPXPreview = false
+        routeNeedsRecalculation = false
+        summaryText = summary(for: route)
+        message = nil
+
+        var hydratedEditor = RouteStopEditor()
+        for stop in stops.sorted(by: { ($0.order ?? 0) < ($1.order ?? 0) }) {
+            switch stop.kind {
+            case .start:
+                hydratedEditor.setStart(stop)
+            case .waypoint:
+                hydratedEditor.addWaypoint(stop)
+            case .destination:
+                hydratedEditor.setDestination(stop)
+            }
+        }
+        editor = hydratedEditor
+        stops = editor.orderedStops
+    }
+}
+
+extension RouteMapFocusRequest {
+    static func routeBounds(for route: RouteData) -> RouteMapFocusRequest? {
+        let coordinates = route.points.compactMap { point -> RouteCoordinate? in
+            guard point.count >= 2 else {
+                return nil
+            }
+
+            return RouteCoordinate(lat: point[0], lng: point[1])
+        }
+
+        guard let first = coordinates.first else {
+            return nil
+        }
+
+        let bounds = coordinates.reduce(into: (minLat: first.lat, maxLat: first.lat, minLng: first.lng, maxLng: first.lng)) { result, coordinate in
+            result.minLat = min(result.minLat, coordinate.lat)
+            result.maxLat = max(result.maxLat, coordinate.lat)
+            result.minLng = min(result.minLng, coordinate.lng)
+            result.maxLng = max(result.maxLng, coordinate.lng)
+        }
+
+        let latDelta = max((bounds.maxLat - bounds.minLat) * 1.5, 0.01)
+        let lngDelta = max((bounds.maxLng - bounds.minLng) * 1.5, 0.01)
+        return RouteMapFocusRequest(
+            coordinate: RouteCoordinate(
+                lat: (bounds.minLat + bounds.maxLat) / 2,
+                lng: (bounds.minLng + bounds.maxLng) / 2
+            ),
+            latitudeDelta: latDelta,
+            longitudeDelta: lngDelta
+        )
     }
 }
 
@@ -810,8 +892,11 @@ struct RouteSetupView: View {
 
             mapCenter = request.coordinate
             withAnimation(.snappy) {
-                focusMap(on: request.coordinate, span: request.span)
+                focusMap(on: request.coordinate, latitudeDelta: request.latitudeDelta, longitudeDelta: request.longitudeDelta)
             }
+        }
+        .onAppear {
+            viewModel.focusExistingRoute()
         }
         .fileImporter(
             isPresented: $isImportingGPX,
@@ -885,9 +970,13 @@ struct RouteSetupView: View {
     }
 
     private func focusMap(on coordinate: RouteCoordinate, span: CLLocationDegrees) {
+        focusMap(on: coordinate, latitudeDelta: span, longitudeDelta: span)
+    }
+
+    private func focusMap(on coordinate: RouteCoordinate, latitudeDelta: CLLocationDegrees, longitudeDelta: CLLocationDegrees) {
         mapPosition = .region(MKCoordinateRegion(
             center: CLLocationCoordinate2D(latitude: coordinate.lat, longitude: coordinate.lng),
-            span: MKCoordinateSpan(latitudeDelta: span, longitudeDelta: span)
+            span: MKCoordinateSpan(latitudeDelta: latitudeDelta, longitudeDelta: longitudeDelta)
         ))
     }
 

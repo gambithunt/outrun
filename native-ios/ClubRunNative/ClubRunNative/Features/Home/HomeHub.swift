@@ -37,6 +37,7 @@ enum AppRoute: Equatable, Hashable, Identifiable {
     case adminLobby(runId: String)
     case driverLobby(runId: String)
     case liveDrive(runId: String, role: ActiveRunRole)
+    case summary(runId: String)
     case settings
 
     var id: String {
@@ -53,6 +54,8 @@ enum AppRoute: Equatable, Hashable, Identifiable {
             "driverLobby.\(runId)"
         case let .liveDrive(runId, role):
             "liveDrive.\(runId).\(role.rawValue)"
+        case let .summary(runId):
+            "summary.\(runId)"
         case .settings:
             "settings"
         }
@@ -435,10 +438,19 @@ struct HomeHubView: View {
                     runReader: runReader,
                     runObserver: runReader as? RunObserving,
                     runEnding: runReader as? RunEnding,
+                    summaryPersisting: runReader as? RunSummaryPersisting,
+                    driverSessionUpdater: runReader as? DriverDriveSessionUpdating,
                     activeRunStore: activeRunStore,
                     router: router,
                     liveLocationRepository: runReader as? LiveLocationPersisting,
                     hazardRepository: runReader as? HazardPersisting
+                )
+            )
+        case let .summary(runId):
+            SummaryView(
+                viewModel: SummaryViewModel(
+                    runId: runId,
+                    runReader: runReader
                 )
             )
         case .settings:
@@ -523,6 +535,122 @@ private struct DriverLobbyPlaceholderView: View {
             description: Text("Run \(runId) is ready for driver lobby.")
         )
         .navigationTitle("Driver Lobby")
+    }
+}
+
+@MainActor
+final class SummaryViewModel: ObservableObject {
+    @Published private(set) var title = "Drive Summary"
+    @Published private(set) var distanceText = "Distance unavailable"
+    @Published private(set) var timeText = "Time unavailable"
+    @Published private(set) var hazardText = "No hazards"
+    @Published private(set) var participants: [String] = []
+    @Published private(set) var message: String?
+
+    private let runId: String
+    private let runReader: RunReading
+
+    init(runId: String, runReader: RunReading) {
+        self.runId = runId
+        self.runReader = runReader
+    }
+
+    func load() async {
+        do {
+            guard let run = try await runReader.readRun(runId: runId) else {
+                message = "Unable to load summary."
+                return
+            }
+
+            apply(run)
+        } catch {
+            message = "Unable to load summary."
+        }
+    }
+
+    func clearMessage() {
+        message = nil
+    }
+
+    private func apply(_ run: Run) {
+        title = run.name
+        let summary = run.summary ?? RunSummaryCalculator.summary(
+            for: run,
+            generatedAt: run.endedAt ?? Int64(Date().timeIntervalSince1970 * 1_000)
+        )
+        distanceText = "\(String(format: "%.1f", summary.totalDistanceKm)) km"
+        timeText = "\(Int(summary.totalDriveTimeMinutes.rounded())) min"
+        hazardText = summary.hazardSummary.total == 1 ? "1 hazard" : "\(summary.hazardSummary.total) hazards"
+        participants = summary.driverStats.values
+            .map { "\($0.name) · \($0.carMake) \($0.carModel)" }
+            .sorted()
+    }
+}
+
+struct SummaryView: View {
+    @StateObject var viewModel: SummaryViewModel
+
+    var body: some View {
+        List {
+            Section {
+                HStack(spacing: 12) {
+                    SummaryMetricView(title: "Distance", value: viewModel.distanceText)
+                    SummaryMetricView(title: "Time", value: viewModel.timeText)
+                    SummaryMetricView(title: "Hazards", value: viewModel.hazardText)
+                }
+                .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
+            }
+
+            Section("Drivers") {
+                if viewModel.participants.isEmpty {
+                    Text("No driver summaries yet.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(viewModel.participants, id: \.self) { participant in
+                        Label(participant, systemImage: "person.fill")
+                    }
+                }
+            }
+        }
+        .navigationTitle(viewModel.title)
+        .task {
+            await viewModel.load()
+        }
+        .alert(
+            "Summary",
+            isPresented: Binding(
+                get: { viewModel.message != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        viewModel.clearMessage()
+                    }
+                }
+            )
+        ) {
+            Button("OK", role: .cancel) {
+                viewModel.clearMessage()
+            }
+        } message: {
+            Text(viewModel.message ?? "")
+        }
+    }
+}
+
+private struct SummaryMetricView: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.headline.weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

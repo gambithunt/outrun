@@ -185,6 +185,7 @@ final class AdminLobbyViewModel: ObservableObject {
     @Published private(set) var startReadinessLabel = "Loading"
     @Published private(set) var canStartDrive = false
     @Published private(set) var driverRows: [LobbyDriverRow] = []
+    @Published private(set) var currentRoute: RouteData?
     @Published var showsDriversSheet = false
     @Published var showsSoloStartConfirmation = false
     @Published private(set) var message: String?
@@ -280,6 +281,7 @@ final class AdminLobbyViewModel: ObservableObject {
         self.snapshot = snapshot
         title = snapshot.run.name
         joinCode = snapshot.run.joinCode
+        currentRoute = snapshot.run.route
         routeSummary = LobbySummaryFormatter.routeSummary(for: snapshot.run.route)
         driverSummary = LobbySummaryFormatter.driverSummary(for: snapshot.run)
         startReadinessLabel = LobbyStartPolicy.readinessLabel(for: snapshot.run)
@@ -460,7 +462,8 @@ struct AdminLobbyView: View {
                     runId: viewModel.runId,
                     routeProvider: routeProvider,
                     repository: routePersisting,
-                    router: router
+                    router: router,
+                    initialRoute: viewModel.currentRoute
                 )
             )
             .ignoresSafeArea(.all)

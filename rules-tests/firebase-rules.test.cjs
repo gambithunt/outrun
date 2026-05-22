@@ -776,7 +776,7 @@ describe('Realtime Database rules', () => {
   it('accepts only v1 native hazard types', async () => {
     await seed(activeRunSeed());
 
-    for (const type of ['pothole', 'roadworks', 'police', 'mobileCamera', 'debris', 'brokenDownCar']) {
+    for (const type of ['pothole', 'roadworks', 'police', 'mobile_camera', 'debris', 'broken_down_car']) {
       await assertSucceeds(
         driverDb('driver_1').ref(`runs/run_1/hazards/${type}`).set(
           validHazard({

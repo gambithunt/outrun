@@ -683,7 +683,7 @@ final class LiveDriveTests: XCTestCase {
         observer.fail()
         await Task.yield()
 
-        XCTAssertEqual(viewModel.message, "Unable to update drive.")
+        XCTAssertTrue(viewModel.message?.hasPrefix("Unable to update drive.") == true)
     }
 
     func testStoppingRunObservationCancelsActiveListener() {
@@ -817,6 +817,7 @@ final class LiveDriveTests: XCTestCase {
 
     func testAdminEndDriveWritesEndedStatusClearsActiveSessionAndDismisses() async {
         let ending = InMemoryRunEnding()
+        let summaryStore = InMemoryRunSummaryStore()
         let activeRunStore = InMemoryLiveDriveActiveRunStore()
         let router = AppRouter()
         activeRunStore.saveActiveRunSession(ActiveRunSessionMetadata(runId: "run_1", role: .admin), uid: "uid_admin_1")
@@ -827,6 +828,7 @@ final class LiveDriveTests: XCTestCase {
             role: .admin,
             runReader: InMemoryLiveDriveRunReader(run: makeRun()),
             runEnding: ending,
+            summaryPersisting: summaryStore,
             activeRunStore: activeRunStore,
             router: router,
             nowMilliseconds: { 1_800_000_090_000 }
@@ -837,8 +839,77 @@ final class LiveDriveTests: XCTestCase {
         XCTAssertEqual(ending.endedRuns.count, 1)
         XCTAssertEqual(ending.endedRuns.first?.runId, "run_1")
         XCTAssertEqual(ending.endedRuns.first?.endedAt, 1_800_000_090_000)
+        XCTAssertEqual(summaryStore.persistedSummaries.first?.runId, "run_1")
+        XCTAssertEqual(summaryStore.persistedSummaries.first?.summary.totalDistanceKm, 12.3)
+        XCTAssertEqual(summaryStore.persistedSummaries.first?.summary.hazardSummary.total, 1)
         XCTAssertNil(activeRunStore.readActiveRunSession(uid: "uid_admin_1"))
-        XCTAssertNil(router.presentedRoute)
+        XCTAssertEqual(router.presentedRoute, .summary(runId: "run_1"))
+    }
+
+    func testDriverFinishUpdatesOnlyDriverStopsTrackingClearsActiveSessionAndDismisses() async {
+        let updater = InMemoryDriverDriveSessionUpdater()
+        let locationRepository = InMemoryLiveLocationRepository()
+        let activeRunStore = InMemoryLiveDriveActiveRunStore()
+        let router = AppRouter()
+        activeRunStore.saveActiveRunSession(ActiveRunSessionMetadata(runId: "run_1", role: .driver), uid: "uid_driver_1")
+        router.present(.liveDrive(runId: "run_1", role: .driver))
+        let viewModel = LiveDriveViewModel(
+            uid: "uid_driver_1",
+            runId: "run_1",
+            role: .driver,
+            runReader: InMemoryLiveDriveRunReader(run: makeRun()),
+            driverSessionUpdater: updater,
+            activeRunStore: activeRunStore,
+            router: router,
+            liveLocationRepository: locationRepository,
+            nowMilliseconds: { 1_800_000_095_000 }
+        )
+
+        await viewModel.updateLocationPermission(.allowed)
+        await viewModel.finishDriverDrive()
+        await viewModel.ingestLocation(makeLocationSample(timestamp: 1_800_000_096_000))
+
+        XCTAssertEqual(updater.finishedDrivers.first?.runId, "run_1")
+        XCTAssertEqual(updater.finishedDrivers.first?.uid, "uid_driver_1")
+        XCTAssertEqual(updater.finishedDrivers.first?.finishedAt, 1_800_000_095_000)
+        XCTAssertEqual(locationRepository.presenceUpdates, [.online, .offline])
+        XCTAssertTrue(locationRepository.latestLocations.isEmpty)
+        XCTAssertTrue(locationRepository.trackPoints.isEmpty)
+        XCTAssertNil(activeRunStore.readActiveRunSession(uid: "uid_driver_1"))
+        XCTAssertEqual(router.presentedRoute, .summary(runId: "run_1"))
+    }
+
+    func testDriverLeaveUpdatesOnlyDriverStopsTrackingClearsActiveSessionAndDismisses() async {
+        let updater = InMemoryDriverDriveSessionUpdater()
+        let locationRepository = InMemoryLiveLocationRepository()
+        let activeRunStore = InMemoryLiveDriveActiveRunStore()
+        let router = AppRouter()
+        activeRunStore.saveActiveRunSession(ActiveRunSessionMetadata(runId: "run_1", role: .driver), uid: "uid_driver_1")
+        router.present(.liveDrive(runId: "run_1", role: .driver))
+        let viewModel = LiveDriveViewModel(
+            uid: "uid_driver_1",
+            runId: "run_1",
+            role: .driver,
+            runReader: InMemoryLiveDriveRunReader(run: makeRun()),
+            driverSessionUpdater: updater,
+            activeRunStore: activeRunStore,
+            router: router,
+            liveLocationRepository: locationRepository,
+            nowMilliseconds: { 1_800_000_097_000 }
+        )
+
+        await viewModel.updateLocationPermission(.allowed)
+        await viewModel.leaveDriverDrive()
+        await viewModel.ingestLocation(makeLocationSample(timestamp: 1_800_000_098_000))
+
+        XCTAssertEqual(updater.leftDrivers.first?.runId, "run_1")
+        XCTAssertEqual(updater.leftDrivers.first?.uid, "uid_driver_1")
+        XCTAssertEqual(updater.leftDrivers.first?.leftAt, 1_800_000_097_000)
+        XCTAssertEqual(locationRepository.presenceUpdates, [.online, .offline])
+        XCTAssertTrue(locationRepository.latestLocations.isEmpty)
+        XCTAssertTrue(locationRepository.trackPoints.isEmpty)
+        XCTAssertNil(activeRunStore.readActiveRunSession(uid: "uid_driver_1"))
+        XCTAssertEqual(router.presentedRoute, .summary(runId: "run_1"))
     }
 
     func testDriverLeavesLiveDriveWhenRunObservationEnds() async {
@@ -862,8 +933,79 @@ final class LiveDriveTests: XCTestCase {
         await Task.yield()
 
         XCTAssertNil(activeRunStore.readActiveRunSession(uid: "uid_driver_1"))
-        XCTAssertNil(router.presentedRoute)
+        XCTAssertEqual(router.presentedRoute, .summary(runId: "run_1"))
         XCTAssertTrue(observer.lastObservation?.isCancelled == true)
+    }
+
+    func testRunEndObservationStopsLocationWrites() async {
+        let activeRunStore = InMemoryLiveDriveActiveRunStore()
+        let router = AppRouter()
+        let observer = ManualRunObserver()
+        let locationRepository = InMemoryLiveLocationRepository()
+        activeRunStore.saveActiveRunSession(ActiveRunSessionMetadata(runId: "run_1", role: .driver), uid: "uid_driver_1")
+        router.present(.liveDrive(runId: "run_1", role: .driver))
+        let viewModel = LiveDriveViewModel(
+            uid: "uid_driver_1",
+            runId: "run_1",
+            role: .driver,
+            runReader: InMemoryLiveDriveRunReader(run: makeRun()),
+            runObserver: observer,
+            activeRunStore: activeRunStore,
+            router: router,
+            liveLocationRepository: locationRepository
+        )
+
+        await viewModel.updateLocationPermission(.allowed)
+        viewModel.startObservingRun()
+        observer.emit(Self.makeRun(status: .ended))
+        await Task.yield()
+        await viewModel.ingestLocation(makeLocationSample(timestamp: 1_800_000_101_000))
+
+        XCTAssertEqual(locationRepository.presenceUpdates, [.online, .offline])
+        XCTAssertTrue(locationRepository.latestLocations.isEmpty)
+        XCTAssertTrue(locationRepository.trackPoints.isEmpty)
+    }
+
+    func testDestinationArrivalPromptsDriverToFinish() async {
+        let viewModel = LiveDriveViewModel(
+            uid: "uid_driver_1",
+            runId: "run_1",
+            role: .driver,
+            runReader: InMemoryLiveDriveRunReader(run: makeRun())
+        )
+
+        await viewModel.load()
+        await viewModel.ingestLocation(makeLocationSample(lat: -34.0002, lng: 18.5001, timestamp: 1_800_000_102_000))
+
+        XCTAssertEqual(viewModel.arrivalPrompt, .driverFinish)
+    }
+
+    func testDestinationArrivalPromptsAdminToEndGroupDrive() async {
+        let viewModel = LiveDriveViewModel(
+            uid: "uid_admin_1",
+            runId: "run_1",
+            role: .admin,
+            runReader: InMemoryLiveDriveRunReader(run: makeRun())
+        )
+
+        await viewModel.load()
+        await viewModel.ingestLocation(makeLocationSample(lat: -34.0002, lng: 18.5001, timestamp: 1_800_000_102_000))
+
+        XCTAssertEqual(viewModel.arrivalPrompt, .adminEndGroup)
+    }
+
+    func testSummaryCalculatorBuildsGroupAndPersonalSummary() {
+        let summary = RunSummaryCalculator.summary(
+            for: Self.makeRun(),
+            generatedAt: 1_800_000_090_000
+        )
+
+        XCTAssertEqual(summary.totalDistanceKm, 12.3)
+        XCTAssertEqual(summary.totalDriveTimeMinutes, 1.48, accuracy: 0.01)
+        XCTAssertEqual(summary.hazardSummary.byType[.pothole], 1)
+        XCTAssertEqual(summary.driverStats["uid_driver_1"]?.name, "Alex")
+        XCTAssertEqual(summary.driverStats["uid_driver_1"]?.totalDistanceKm, 12.3)
+        XCTAssertEqual(summary.routePreview?.points.count, 3)
     }
 
     private static func makeRun(
@@ -1010,7 +1152,28 @@ private final class InMemoryRunEnding: RunEnding, @unchecked Sendable {
     var endedRuns: [(runId: String, endedAt: Int64)] = []
 
     func endDrive(runId: String, endedAt: Int64) async throws {
-        endedRuns.append((runId, endedAt))
+        endedRuns.append((runId: runId, endedAt: endedAt))
+    }
+}
+
+private final class InMemoryRunSummaryStore: RunSummaryPersisting, @unchecked Sendable {
+    var persistedSummaries: [(summary: RunSummary, runId: String)] = []
+
+    func writeRunSummary(_ summary: RunSummary, runId: String) async throws {
+        persistedSummaries.append((summary: summary, runId: runId))
+    }
+}
+
+private final class InMemoryDriverDriveSessionUpdater: DriverDriveSessionUpdating, @unchecked Sendable {
+    var finishedDrivers: [(runId: String, uid: String, finishedAt: Int64)] = []
+    var leftDrivers: [(runId: String, uid: String, leftAt: Int64)] = []
+
+    func finishDriver(runId: String, uid: String, finishedAt: Int64) async throws {
+        finishedDrivers.append((runId: runId, uid: uid, finishedAt: finishedAt))
+    }
+
+    func leaveDriver(runId: String, uid: String, leftAt: Int64) async throws {
+        leftDrivers.append((runId: runId, uid: uid, leftAt: leftAt))
     }
 }
 
