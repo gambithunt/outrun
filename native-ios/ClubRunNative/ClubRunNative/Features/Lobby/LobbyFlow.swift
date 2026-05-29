@@ -142,7 +142,10 @@ struct LobbyService: Sendable {
         return LobbySnapshot(runId: runId, run: run, driverRows: rows)
     }
 
-    func startDrive(runId: String) async throws {
+    func startDrive(runId: String, adminUID: String? = nil, adminProfile: UserProfile? = nil) async throws {
+        if let adminUID, let adminProfile {
+            try await ensureAdminDriverRecord(runId: runId, adminUID: adminUID, adminProfile: adminProfile)
+        }
         try await repository.updateRunStatus(.active, driveStartedAt: nowMilliseconds(), runId: runId)
     }
 
@@ -174,6 +177,30 @@ struct LobbyService: Sendable {
 
         try await repository.writeDriver(updatedDriver, runId: runId, uid: uid)
     }
+
+    private func ensureAdminDriverRecord(runId: String, adminUID: String, adminProfile: UserProfile) async throws {
+        guard let run = try await repository.readRun(runId: runId),
+              run.drivers?[adminUID] == nil else {
+            return
+        }
+
+        let driver = DriverRecord(
+            profile: DriverProfile(
+                name: adminProfile.displayName,
+                displayName: adminProfile.displayName,
+                carMake: adminProfile.carMake,
+                carModel: adminProfile.carModel,
+                badge: adminProfile.badge,
+                fuelType: .petrol
+            ),
+            joinedAt: nowMilliseconds(),
+            leftAt: nil,
+            presence: .online,
+            finishState: .driving
+        )
+
+        try await repository.writeDriver(driver, runId: runId, uid: adminUID)
+    }
 }
 
 @MainActor
@@ -193,6 +220,7 @@ final class AdminLobbyViewModel: ObservableObject {
     let runId: String
 
     private let uid: String
+    private let profile: UserProfile?
     private let service: LobbyService
     private let router: AppRouter?
     private let runObserver: RunObserving?
@@ -202,11 +230,13 @@ final class AdminLobbyViewModel: ObservableObject {
     init(
         uid: String,
         runId: String,
+        profile: UserProfile? = nil,
         service: LobbyService,
         router: AppRouter? = nil,
         runObserver: RunObserving? = nil
     ) {
         self.uid = uid
+        self.profile = profile
         self.runId = runId
         self.service = service
         self.router = router
@@ -268,7 +298,7 @@ final class AdminLobbyViewModel: ObservableObject {
 
     func confirmSoloStart() async {
         do {
-            try await service.startDrive(runId: runId)
+            try await service.startDrive(runId: runId, adminUID: uid, adminProfile: profile)
             await load()
             showsSoloStartConfirmation = false
             router?.present(.liveDrive(runId: runId, role: .admin))

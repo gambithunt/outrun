@@ -2,9 +2,7 @@ import XCTest
 
 final class ClubRunNativeUITests: XCTestCase {
     func testLaunchShowsSignedOutAuthEntryPoints() {
-        let app = XCUIApplication()
-        app.launchEnvironment["CLUBRUN_UI_TEST_SIGNED_OUT"] = "1"
-        app.launch()
+        let app = launchApp(environment: ["CLUBRUN_UI_TEST_SIGNED_OUT": "1"])
 
         XCTAssertTrue(app.navigationBars["Log In"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.textFields["Email"].exists)
@@ -15,9 +13,7 @@ final class ClubRunNativeUITests: XCTestCase {
     }
 
     func testLaunchShowsHomeHubForProfileCompleteUser() {
-        let app = XCUIApplication()
-        app.launchEnvironment["CLUBRUN_UI_TEST_PROFILE_COMPLETE"] = "1"
-        app.launch()
+        let app = launchApp(environment: ["CLUBRUN_UI_TEST_PROFILE_COMPLETE": "1"])
 
         XCTAssertTrue(app.navigationBars["ClubRun"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Alex Driver"].exists)
@@ -26,9 +22,7 @@ final class ClubRunNativeUITests: XCTestCase {
     }
 
     func testCreateRunFormValidationRequiresName() {
-        let app = XCUIApplication()
-        app.launchEnvironment["CLUBRUN_UI_TEST_PROFILE_COMPLETE"] = "1"
-        app.launch()
+        let app = launchApp(environment: ["CLUBRUN_UI_TEST_PROFILE_COMPLETE": "1"])
 
         XCTAssertTrue(app.buttons["Create Run"].waitForExistence(timeout: 5))
         app.buttons["Create Run"].tap()
@@ -40,9 +34,7 @@ final class ClubRunNativeUITests: XCTestCase {
     }
 
     func testJoinRunFormValidationRequiresCode() {
-        let app = XCUIApplication()
-        app.launchEnvironment["CLUBRUN_UI_TEST_PROFILE_COMPLETE"] = "1"
-        app.launch()
+        let app = launchApp(environment: ["CLUBRUN_UI_TEST_PROFILE_COMPLETE": "1"])
 
         let joinRunButton = app.buttons["homeHub.joinRunButton"]
         XCTAssertTrue(joinRunButton.waitForExistence(timeout: 5))
@@ -59,9 +51,7 @@ final class ClubRunNativeUITests: XCTestCase {
     }
 
     func testAdminLobbyShowsAdminControls() {
-        let app = XCUIApplication()
-        app.launchEnvironment["CLUBRUN_UI_TEST_PROFILE_COMPLETE"] = "1"
-        app.launch()
+        let app = launchApp(environment: ["CLUBRUN_UI_TEST_PROFILE_COMPLETE": "1"])
 
         XCTAssertTrue(app.buttons["Create Run"].waitForExistence(timeout: 5))
         app.buttons["Create Run"].tap()
@@ -79,9 +69,7 @@ final class ClubRunNativeUITests: XCTestCase {
     }
 
     func testAdminLobbyOpensRouteSetup() {
-        let app = XCUIApplication()
-        app.launchEnvironment["CLUBRUN_UI_TEST_PROFILE_COMPLETE"] = "1"
-        app.launch()
+        let app = launchApp(environment: ["CLUBRUN_UI_TEST_PROFILE_COMPLETE": "1"])
 
         XCTAssertTrue(app.buttons["Create Run"].waitForExistence(timeout: 5))
         app.buttons["Create Run"].tap()
@@ -99,9 +87,7 @@ final class ClubRunNativeUITests: XCTestCase {
     }
 
     func testDriverLobbyDoesNotShowAdminControls() {
-        let app = XCUIApplication()
-        app.launchEnvironment["CLUBRUN_UI_TEST_PROFILE_COMPLETE"] = "1"
-        app.launch()
+        let app = launchApp(environment: ["CLUBRUN_UI_TEST_PROFILE_COMPLETE": "1"])
 
         let joinRunButton = app.buttons["homeHub.joinRunButton"]
         XCTAssertTrue(joinRunButton.waitForExistence(timeout: 5))
@@ -117,5 +103,20 @@ final class ClubRunNativeUITests: XCTestCase {
         XCTAssertFalse(app.buttons["Start Drive"].exists)
         XCTAssertFalse(app.buttons["Share"].exists)
         XCTAssertFalse(app.buttons["Copy"].exists)
+    }
+
+    override func tearDown() {
+        XCUIApplication().terminate()
+        super.tearDown()
+    }
+
+    private func launchApp(environment: [String: String]) -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments += ["-ApplePersistenceIgnoreState", "YES"]
+        environment.forEach { key, value in
+            app.launchEnvironment[key] = value
+        }
+        app.launch()
+        return app
     }
 }

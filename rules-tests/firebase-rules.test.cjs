@@ -226,7 +226,7 @@ describe('Realtime Database rules', () => {
     );
   });
 
-  it('allows drivers to write only their own location node', async () => {
+  it('allows drivers to write only their own location and stats nodes', async () => {
     await seed({
       runs: {
         run_1: {
@@ -277,6 +277,55 @@ describe('Realtime Database rules', () => {
 
     await assertFails(
       driverDb('driver_2').ref('runs/run_1/drivers/driver_1/location').set({
+        lat: -26.2041,
+        lng: 28.0473,
+        heading: 0,
+        speed: 0,
+        accuracy: 5,
+        timestamp: 1000,
+      })
+    );
+
+    await assertSucceeds(
+      driverDb('driver_1').ref('runs/run_1/drivers/driver_1/stats').set({
+        topSpeed: 31.2,
+        avgMovingSpeedMs: 14.2,
+        totalDistanceKm: 54,
+        totalDriveTimeMinutes: 68,
+        movingTimeMinutes: 62,
+        stoppedTimeMinutes: 6,
+        stopCount: 2,
+        avgStopTimeSec: 180,
+        maxGForce: 0.42,
+      })
+    );
+
+    await assertFails(
+      driverDb('driver_2').ref('runs/run_1/drivers/driver_1/stats').set({
+        topSpeed: 31.2,
+        maxGForce: 0.42,
+      })
+    );
+
+    await assertFails(
+      driverDb('driver_1').ref('runs/run_1/drivers/driver_1/stats').set({
+        topSpeed: 'fast',
+        maxGForce: 0.42,
+      })
+    );
+  });
+
+  it('rejects partial driver records without profile snapshots', async () => {
+    await seed(activeRunSeed());
+
+    await assertFails(
+      adminDb().ref('runs/run_1/drivers/admin_1').set({
+        presence: 'online',
+      })
+    );
+
+    await assertFails(
+      driverDb('driver_3').ref('runs/run_1/drivers/driver_3/location').set({
         lat: -26.2041,
         lng: 28.0473,
         heading: 0,
@@ -425,7 +474,7 @@ describe('Realtime Database rules', () => {
     );
   });
 
-  it('allows a pre-join driver transaction when an admin driver node already exists', async () => {
+  it('rejects pre-join transactions that preserve malformed driver records', async () => {
     await seed({
       runs: {
         run_1: {
@@ -461,7 +510,7 @@ describe('Realtime Database rules', () => {
       },
     });
 
-    await assertSucceeds(
+    await assertFails(
       driverDb('driver_1').ref('runs/run_1').transaction((currentRun) => {
         if (!currentRun || typeof currentRun !== 'object') {
           return currentRun;
@@ -539,6 +588,33 @@ describe('Realtime Database rules', () => {
 
     await assertFails(driverDb('driver_1').ref('runs/run_1/summary').set(summary));
     await assertSucceeds(adminDb().ref('runs/run_1/summary').set(summary));
+  });
+
+  it('allows drivers to write only their own personal summary', async () => {
+    await seed(activeRunSeed());
+
+    const personalSummary = {
+      name: 'Jamie',
+      carMake: 'BMW',
+      carModel: 'M3',
+      fuelType: 'petrol',
+      driverStatus: 'finished',
+      totalDistanceKm: 54,
+      totalDriveTimeMinutes: 60,
+      movingTimeMinutes: 54,
+      stoppedTimeMinutes: 6,
+      topSpeedKmh: 110,
+      avgMovingSpeedKmh: 54,
+      maxGForce: 0.42,
+    };
+
+    await assertSucceeds(driverDb('driver_1').ref('runs/run_1/drivers/driver_1/summary').set(personalSummary));
+    await assertFails(driverDb('driver_2').ref('runs/run_1/drivers/driver_1/summary').set(personalSummary));
+    await assertSucceeds(adminDb().ref('runs/run_1/drivers/driver_1/summary').set(personalSummary));
+    await assertFails(driverDb('driver_1').ref('runs/run_1/drivers/driver_1/summary').set({
+      ...personalSummary,
+      totalDistanceKm: 'far',
+    }));
   });
 
   it('allows an admin to reopen route planning by moving a lobby run from ready back to draft', async () => {

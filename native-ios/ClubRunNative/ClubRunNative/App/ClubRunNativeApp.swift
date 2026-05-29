@@ -41,6 +41,8 @@ struct ClubRunNativeApp: App {
                     homeHubView(
                         uid: uid,
                         profile: profile,
+                        authService: authService,
+                        profileService: profileService,
                         runReader: EmptyRunReader(),
                         runRepository: UITestRunRepository(),
                         onResetSession: onResetSession
@@ -61,6 +63,8 @@ struct ClubRunNativeApp: App {
                 homeHubView(
                     uid: uid,
                     profile: profile,
+                    authService: authService,
+                    profileService: profileService,
                     runReader: FirebaseRunRepository(),
                     runRepository: FirebaseRunRepository(),
                     onResetSession: onResetSession
@@ -76,11 +80,16 @@ struct ClubRunNativeApp: App {
     private func homeHubView(
         uid: String,
         profile: UserProfile,
+        authService: AuthServicing,
+        profileService: UserProfileService,
         runReader: RunReading,
         runRepository: RunRepositoring,
         onResetSession: @escaping () -> Void
     ) -> some View {
         let activeRunStore = UserDefaultsActiveRunStore()
+        let summaryHistoryStore = UserDefaultsSummaryHistoryStore()
+        let unitPreferenceStore = UserDefaultsUnitPreferenceStore()
+        let hazardAlertAudioModeStore = UserDefaultsHazardAlertAudioModeStore()
         return HomeHubView(
             uid: uid,
             profile: profile,
@@ -97,6 +106,11 @@ struct ClubRunNativeApp: App {
             lobbyService: LobbyService(repository: runRepository),
             runReader: runReader,
             activeRunStore: activeRunStore,
+            summaryHistoryStore: summaryHistoryStore,
+            unitPreferenceStore: unitPreferenceStore,
+            hazardAlertAudioModeStore: hazardAlertAudioModeStore,
+            authService: authService,
+            profileService: profileService,
             onResetSession: onResetSession
         )
     }

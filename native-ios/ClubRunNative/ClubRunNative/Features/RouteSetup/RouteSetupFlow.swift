@@ -1272,6 +1272,7 @@ private struct RouteEditorPanel: View {
             .buttonStyle(.borderedProminent)
             .tint(viewModel.routeNeedsRecalculation ? .orange : .accentColor)
             .disabled(viewModel.isCalculating)
+            .accessibilityLabel(routeActionTitle)
             .accessibilityIdentifier("routeSetup.calculateButton")
         } else if viewModel.routeData == nil {
             EmptyView()
@@ -1287,6 +1288,7 @@ private struct RouteEditorPanel: View {
             }
             .buttonStyle(.borderedProminent)
             .disabled(viewModel.isSaving)
+            .accessibilityLabel(viewModel.isSaving ? "Saving route" : "Save route")
             .accessibilityIdentifier("routeSetup.saveButton")
         }
     }
@@ -1554,7 +1556,21 @@ private struct RouteSetupStopButton: View {
             .frame(maxWidth: .infinity)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(accessibilityLabel)
         .accessibilityIdentifier("routeSetup.\(title.lowercased())Button")
+    }
+
+    private var accessibilityLabel: String {
+        switch title {
+        case "START":
+            "Add start"
+        case "WAYPOINT":
+            "Add waypoint"
+        case "FINISH":
+            "Add finish"
+        default:
+            title.capitalized
+        }
     }
 }
 

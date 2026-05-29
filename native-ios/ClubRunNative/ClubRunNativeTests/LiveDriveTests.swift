@@ -82,6 +82,29 @@ final class LiveDriveTests: XCTestCase {
         XCTAssertEqual(viewModel.driverMarkers.first { $0.id == "uid_driver_3" }?.state, .offline)
     }
 
+    func testDriverMarkerTimeoutMarksSilentOnlineDriversOffline() async {
+        let viewModel = LiveDriveViewModel(
+            uid: "uid_driver_1",
+            runId: "run_1",
+            role: .driver,
+            runReader: InMemoryLiveDriveRunReader(run: Self.makeRun(
+                samLocation: DriverLocation(
+                    lat: -33.93,
+                    lng: 18.43,
+                    heading: 90,
+                    speed: 12,
+                    accuracy: 6,
+                    timestamp: 1_800_000_000_000
+                )
+            )),
+            nowMilliseconds: { 1_800_000_301_000 }
+        )
+
+        await viewModel.load()
+
+        XCTAssertEqual(viewModel.driverMarkers.first { $0.id == "uid_driver_2" }?.state, .offline)
+    }
+
     func testCurrentUserMarkerIsExposedFromLatestDriverLocation() async {
         let viewModel = LiveDriveViewModel(
             uid: "uid_driver_1",
@@ -498,6 +521,42 @@ final class LiveDriveTests: XCTestCase {
         await Task.yield()
 
         XCTAssertEqual(audioAlert.playCount, 1)
+        XCTAssertEqual(audioAlert.playedEvents.first?.type, .police)
+        XCTAssertEqual(audioAlert.playedEvents.first?.mode, .announced)
+    }
+
+    func testLiveDriveUsesSimpleHazardAlertModeWhenConfigured() async {
+        let observer = ManualRunObserver()
+        let audioAlert = RecordingHazardAudioAlert()
+        let viewModel = LiveDriveViewModel(
+            uid: "uid_driver_1",
+            runId: "run_1",
+            role: .driver,
+            runReader: InMemoryLiveDriveRunReader(run: Self.makeRun(hazards: [:])),
+            runObserver: observer,
+            hazardAudioAlert: audioAlert,
+            hazardAlertAudioMode: .simple
+        )
+
+        await viewModel.load()
+        viewModel.startObservingRun()
+        observer.emit(Self.makeRun(hazards: [
+            "near_remote": Hazard(
+                type: .mobileCamera,
+                reportedBy: "uid_driver_2",
+                reporterName: "Sam",
+                lat: -33.9005,
+                lng: 18.4005,
+                timestamp: 1_800_000_030_000,
+                dismissed: false,
+                reportCount: 1
+            )
+        ]))
+        await Task.yield()
+
+        XCTAssertEqual(audioAlert.playCount, 1)
+        XCTAssertEqual(audioAlert.playedEvents.first?.type, .mobileCamera)
+        XCTAssertEqual(audioAlert.playedEvents.first?.mode, .simple)
     }
 
     func testMutedHazardAudioDoesNotPlayForActionableHazard() async {
@@ -599,6 +658,40 @@ final class LiveDriveTests: XCTestCase {
             $0.id == "hazard_1800000020000_roadworks" && $0.type == .roadworks
         })
         XCTAssertEqual(viewModel.hazardConfirmationText, "Roadworks reported")
+    }
+
+    func testReportHazardBlocksPoorAccuracyLocation() async {
+        let repository = InMemoryHazardRepository()
+        let viewModel = LiveDriveViewModel(
+            uid: "uid_driver_1",
+            runId: "run_1",
+            role: .driver,
+            runReader: InMemoryLiveDriveRunReader(run: Self.makeRun(currentDriverLocation: nil)),
+            hazardRepository: repository
+        )
+
+        await viewModel.load()
+        await viewModel.ingestLocation(makeLocationSample(accuracy: 95, timestamp: 1_800_000_020_000))
+        await viewModel.reportHazard(.pothole)
+
+        XCTAssertTrue(repository.writes.isEmpty)
+        XCTAssertEqual(viewModel.message, "Location accuracy is too low to report a hazard.")
+    }
+
+    func testLiveDriveShowsLowAccuracyStatus() async {
+        let viewModel = LiveDriveViewModel(
+            uid: "uid_driver_1",
+            runId: "run_1",
+            role: .driver,
+            runReader: InMemoryLiveDriveRunReader(run: makeRun())
+        )
+
+        await viewModel.load()
+        await viewModel.ingestLocation(makeLocationSample(accuracy: 95, timestamp: 1_800_000_020_000))
+        XCTAssertEqual(viewModel.locationAccuracyMessage, "Location accuracy low")
+
+        await viewModel.ingestLocation(makeLocationSample(accuracy: 6, timestamp: 1_800_000_030_000))
+        XCTAssertNil(viewModel.locationAccuracyMessage)
     }
 
     func testReportHazardShowsErrorOnWriteFailure() async {
@@ -739,7 +832,14 @@ final class LiveDriveTests: XCTestCase {
         let policy = LiveLocationWritePolicy()
         let decision = policy.decision(previous: nil, current: makeLocationSample(timestamp: 1_800_000_001_000))
 
-        XCTAssertEqual(decision, LiveLocationWriteDecision(shouldWrite: true, pointId: "point_1800000001000"))
+        XCTAssertEqual(
+            decision,
+            LiveLocationWriteDecision(
+                shouldWriteLatestLocation: true,
+                shouldWriteTrackPoint: true,
+                pointId: "point_1800000001000"
+            )
+        )
     }
 
     func testLocationWritePolicyThrottlesByInterval() {
@@ -758,6 +858,29 @@ final class LiveDriveTests: XCTestCase {
         XCTAssertFalse(policy.decision(previous: previous, current: current).shouldWrite)
     }
 
+    func testLocationWritePolicyWritesLatestOnlyForDegradedAccuracy() {
+        let policy = LiveLocationWritePolicy()
+        let previous = makeLocationSample(lat: -33.9000, lng: 18.4000, accuracy: 8, timestamp: 1_800_000_001_000)
+        let current = makeLocationSample(lat: -33.9020, lng: 18.4020, accuracy: 90, timestamp: 1_800_000_022_000)
+
+        let decision = policy.decision(previous: previous, current: current)
+
+        XCTAssertTrue(decision.shouldWriteLatestLocation)
+        XCTAssertFalse(decision.shouldWriteTrackPoint)
+        XCTAssertNil(decision.pointId)
+    }
+
+    func testLocationWritePolicyRejectsUnusableAccuracy() {
+        let policy = LiveLocationWritePolicy()
+        let decision = policy.decision(
+            previous: nil,
+            current: makeLocationSample(accuracy: 250, timestamp: 1_800_000_001_000)
+        )
+
+        XCTAssertFalse(decision.shouldWrite)
+        XCTAssertNil(decision.pointId)
+    }
+
     func testLocationTrackingWritesPresenceLatestLocationAndTrackPoint() async {
         let repository = InMemoryLiveLocationRepository()
         let controller = LiveLocationTrackingController(runId: "run_1", uid: "uid_driver_1", repository: repository)
@@ -769,6 +892,41 @@ final class LiveDriveTests: XCTestCase {
         XCTAssertEqual(repository.presenceUpdates, [.online])
         XCTAssertEqual(repository.latestLocations.count, 1)
         XCTAssertEqual(repository.trackPoints.map(\.pointId), ["point_1800000001000"])
+    }
+
+    func testLocationTrackingUpdatesDriverStatsSnapshotFromTrackWrites() async throws {
+        let repository = InMemoryLiveLocationRepository()
+        let controller = LiveLocationTrackingController(runId: "run_1", uid: "uid_driver_1", repository: repository)
+
+        controller.updatePermissionState(.allowed)
+        await controller.start()
+        await controller.ingest(makeLocationSample(lat: -33.9000, lng: 18.4000, speed: 0, timestamp: 1_800_000_001_000), runStatus: .active, finishState: .driving)
+        await controller.ingest(makeLocationSample(lat: -33.9005, lng: 18.4005, speed: 10, timestamp: 1_800_000_007_000), runStatus: .active, finishState: .driving)
+        await controller.ingest(makeLocationSample(lat: -33.9010, lng: 18.4010, speed: 20, timestamp: 1_800_000_013_000), runStatus: .active, finishState: .driving)
+
+        let stats = try XCTUnwrap(repository.statsUpdates.last)
+        XCTAssertEqual(stats.topSpeed, 20)
+        XCTAssertEqual(stats.avgMovingSpeedMs, 15)
+        XCTAssertEqual(stats.stopCount, 1)
+        XCTAssertEqual(stats.maxGForce ?? 0, 0.17, accuracy: 0.01)
+        XCTAssertGreaterThan(stats.totalDistanceKm ?? 0, 0)
+    }
+
+    func testLocationTrackingDoesNotWriteTrackPointForDegradedAccuracy() async {
+        let repository = InMemoryLiveLocationRepository()
+        let controller = LiveLocationTrackingController(runId: "run_1", uid: "uid_driver_1", repository: repository)
+
+        controller.updatePermissionState(.allowed)
+        await controller.start()
+        await controller.ingest(
+            makeLocationSample(accuracy: 95, timestamp: 1_800_000_001_000),
+            runStatus: .active,
+            finishState: .driving
+        )
+
+        XCTAssertEqual(repository.latestLocations.count, 1)
+        XCTAssertTrue(repository.trackPoints.isEmpty)
+        XCTAssertTrue(repository.statsUpdates.isEmpty)
     }
 
     func testLiveDriveStartsLocationWritesWhenPermissionAlreadyAllowed() async {
@@ -846,8 +1004,35 @@ final class LiveDriveTests: XCTestCase {
         XCTAssertEqual(router.presentedRoute, .summary(runId: "run_1"))
     }
 
+    func testAdminEndDriveRoutesToSummaryWhenSummaryPersistenceFails() async {
+        let ending = InMemoryRunEnding()
+        let activeRunStore = InMemoryLiveDriveActiveRunStore()
+        let router = AppRouter()
+        activeRunStore.saveActiveRunSession(ActiveRunSessionMetadata(runId: "run_1", role: .admin), uid: "uid_admin_1")
+        router.present(.liveDrive(runId: "run_1", role: .admin))
+        let viewModel = LiveDriveViewModel(
+            uid: "uid_admin_1",
+            runId: "run_1",
+            role: .admin,
+            runReader: InMemoryLiveDriveRunReader(run: makeRun()),
+            runEnding: ending,
+            summaryPersisting: FailingRunSummaryStore(),
+            activeRunStore: activeRunStore,
+            router: router,
+            nowMilliseconds: { 1_800_000_090_000 }
+        )
+
+        await viewModel.endDrive()
+
+        XCTAssertEqual(ending.endedRuns.first?.runId, "run_1")
+        XCTAssertNil(activeRunStore.readActiveRunSession(uid: "uid_admin_1"))
+        XCTAssertEqual(router.presentedRoute, .summary(runId: "run_1"))
+        XCTAssertNil(viewModel.message)
+    }
+
     func testDriverFinishUpdatesOnlyDriverStopsTrackingClearsActiveSessionAndDismisses() async {
         let updater = InMemoryDriverDriveSessionUpdater()
+        let personalSummaryStore = InMemoryPersonalSummaryStore()
         let locationRepository = InMemoryLiveLocationRepository()
         let activeRunStore = InMemoryLiveDriveActiveRunStore()
         let router = AppRouter()
@@ -858,6 +1043,7 @@ final class LiveDriveTests: XCTestCase {
             runId: "run_1",
             role: .driver,
             runReader: InMemoryLiveDriveRunReader(run: makeRun()),
+            personalSummaryPersisting: personalSummaryStore,
             driverSessionUpdater: updater,
             activeRunStore: activeRunStore,
             router: router,
@@ -872,6 +1058,10 @@ final class LiveDriveTests: XCTestCase {
         XCTAssertEqual(updater.finishedDrivers.first?.runId, "run_1")
         XCTAssertEqual(updater.finishedDrivers.first?.uid, "uid_driver_1")
         XCTAssertEqual(updater.finishedDrivers.first?.finishedAt, 1_800_000_095_000)
+        XCTAssertEqual(personalSummaryStore.persistedSummaries.first?.runId, "run_1")
+        XCTAssertEqual(personalSummaryStore.persistedSummaries.first?.uid, "uid_driver_1")
+        XCTAssertEqual(personalSummaryStore.persistedSummaries.first?.summary.name, "Alex")
+        XCTAssertEqual(personalSummaryStore.persistedSummaries.first?.summary.totalDistanceKm, 12.3)
         XCTAssertEqual(locationRepository.presenceUpdates, [.online, .offline])
         XCTAssertTrue(locationRepository.latestLocations.isEmpty)
         XCTAssertTrue(locationRepository.trackPoints.isEmpty)
@@ -881,6 +1071,7 @@ final class LiveDriveTests: XCTestCase {
 
     func testDriverLeaveUpdatesOnlyDriverStopsTrackingClearsActiveSessionAndDismisses() async {
         let updater = InMemoryDriverDriveSessionUpdater()
+        let personalSummaryStore = InMemoryPersonalSummaryStore()
         let locationRepository = InMemoryLiveLocationRepository()
         let activeRunStore = InMemoryLiveDriveActiveRunStore()
         let router = AppRouter()
@@ -891,6 +1082,7 @@ final class LiveDriveTests: XCTestCase {
             runId: "run_1",
             role: .driver,
             runReader: InMemoryLiveDriveRunReader(run: makeRun()),
+            personalSummaryPersisting: personalSummaryStore,
             driverSessionUpdater: updater,
             activeRunStore: activeRunStore,
             router: router,
@@ -905,6 +1097,9 @@ final class LiveDriveTests: XCTestCase {
         XCTAssertEqual(updater.leftDrivers.first?.runId, "run_1")
         XCTAssertEqual(updater.leftDrivers.first?.uid, "uid_driver_1")
         XCTAssertEqual(updater.leftDrivers.first?.leftAt, 1_800_000_097_000)
+        XCTAssertEqual(personalSummaryStore.persistedSummaries.first?.runId, "run_1")
+        XCTAssertEqual(personalSummaryStore.persistedSummaries.first?.uid, "uid_driver_1")
+        XCTAssertEqual(personalSummaryStore.persistedSummaries.first?.summary.name, "Alex")
         XCTAssertEqual(locationRepository.presenceUpdates, [.online, .offline])
         XCTAssertTrue(locationRepository.latestLocations.isEmpty)
         XCTAssertTrue(locationRepository.trackPoints.isEmpty)
@@ -966,6 +1161,32 @@ final class LiveDriveTests: XCTestCase {
         XCTAssertTrue(locationRepository.trackPoints.isEmpty)
     }
 
+    func testLateRunObservationFailureAfterRouteOutDoesNotShowError() async {
+        let activeRunStore = InMemoryLiveDriveActiveRunStore()
+        let router = AppRouter()
+        let observer = ManualRunObserver()
+        activeRunStore.saveActiveRunSession(ActiveRunSessionMetadata(runId: "run_1", role: .driver), uid: "uid_driver_1")
+        router.present(.liveDrive(runId: "run_1", role: .driver))
+        let viewModel = LiveDriveViewModel(
+            uid: "uid_driver_1",
+            runId: "run_1",
+            role: .driver,
+            runReader: InMemoryLiveDriveRunReader(run: makeRun()),
+            runObserver: observer,
+            activeRunStore: activeRunStore,
+            router: router
+        )
+
+        viewModel.startObservingRun()
+        observer.emit(Self.makeRun(status: .ended))
+        await Task.yield()
+        observer.fail()
+        await Task.yield()
+
+        XCTAssertNil(viewModel.message)
+        XCTAssertEqual(router.presentedRoute, .summary(runId: "run_1"))
+    }
+
     func testDestinationArrivalPromptsDriverToFinish() async {
         let viewModel = LiveDriveViewModel(
             uid: "uid_driver_1",
@@ -978,6 +1199,27 @@ final class LiveDriveTests: XCTestCase {
         await viewModel.ingestLocation(makeLocationSample(lat: -34.0002, lng: 18.5001, timestamp: 1_800_000_102_000))
 
         XCTAssertEqual(viewModel.arrivalPrompt, .driverFinish)
+    }
+
+    func testDestinationArrivalDoesNotPromptWithPoorAccuracy() async {
+        let viewModel = LiveDriveViewModel(
+            uid: "uid_driver_1",
+            runId: "run_1",
+            role: .driver,
+            runReader: InMemoryLiveDriveRunReader(run: makeRun())
+        )
+
+        await viewModel.load()
+        await viewModel.ingestLocation(
+            makeLocationSample(
+                lat: -34.0002,
+                lng: 18.5001,
+                accuracy: 95,
+                timestamp: 1_800_000_102_000
+            )
+        )
+
+        XCTAssertNil(viewModel.arrivalPrompt)
     }
 
     func testDestinationArrivalPromptsAdminToEndGroupDrive() async {
@@ -1004,15 +1246,98 @@ final class LiveDriveTests: XCTestCase {
         XCTAssertEqual(summary.totalDriveTimeMinutes, 1.48, accuracy: 0.01)
         XCTAssertEqual(summary.hazardSummary.byType[.pothole], 1)
         XCTAssertEqual(summary.driverStats["uid_driver_1"]?.name, "Alex")
-        XCTAssertEqual(summary.driverStats["uid_driver_1"]?.totalDistanceKm, 12.3)
+        XCTAssertNil(summary.driverStats["uid_driver_1"]?.totalDistanceKm)
+        XCTAssertEqual(summary.driverStats["uid_driver_1"]?.driverStatus, .active)
+        XCTAssertEqual(summary.driverStats["uid_driver_3"]?.driverStatus, .offline)
         XCTAssertEqual(summary.routePreview?.points.count, 3)
+    }
+
+    func testPersonalSummaryCalculatorBuildsDriverSummary() throws {
+        let summary = RunSummaryCalculator.personalSummary(
+            for: "uid_driver_1",
+            in: Self.makeRun(),
+            generatedAt: 1_800_000_090_000
+        )
+
+        let unwrappedSummary = try XCTUnwrap(summary)
+        let totalDistanceKm = try XCTUnwrap(unwrappedSummary.totalDistanceKm)
+        let totalDriveTimeMinutes = try XCTUnwrap(unwrappedSummary.totalDriveTimeMinutes)
+        XCTAssertEqual(unwrappedSummary.name, "Alex")
+        XCTAssertEqual(unwrappedSummary.carMake, "Porsche")
+        XCTAssertEqual(unwrappedSummary.carModel, "911")
+        XCTAssertEqual(unwrappedSummary.fuelType, .petrol)
+        XCTAssertEqual(totalDistanceKm, 12.3)
+        XCTAssertEqual(totalDriveTimeMinutes, 1.48, accuracy: 0.01)
+    }
+
+    func testGroupSummaryKeepsPersonalStatsPrivateByDefault() throws {
+        let run = Self.makeRun(driverStats: [
+            "uid_driver_1": DriverStats(topSpeed: 38, avgMovingSpeedMs: 16, totalDistanceKm: 41.2, totalDriveTimeMinutes: 58, movingTimeMinutes: 51, stoppedTimeMinutes: 7, stopCount: 2, avgStopTimeSec: 210, maxGForce: 0.44),
+            "uid_driver_2": DriverStats(topSpeed: 42, avgMovingSpeedMs: 15, totalDistanceKm: 40.8, totalDriveTimeMinutes: 59, movingTimeMinutes: 52, stoppedTimeMinutes: 7, stopCount: 1, avgStopTimeSec: 420, maxGForce: 0.51)
+        ])
+
+        let summary = RunSummaryCalculator.summary(for: run, generatedAt: 1_800_000_090_000)
+        let alex = try XCTUnwrap(summary.driverStats["uid_driver_1"])
+        let sam = try XCTUnwrap(summary.driverStats["uid_driver_2"])
+
+        XCTAssertEqual(alex.name, "Alex")
+        XCTAssertEqual(alex.carMake, "Porsche")
+        XCTAssertEqual(alex.driverStatus, .active)
+        XCTAssertNil(alex.topSpeedKmh)
+        XCTAssertNil(alex.maxGForce)
+        XCTAssertNil(alex.movingTimeMinutes)
+        XCTAssertNil(alex.stoppedTimeMinutes)
+        XCTAssertNil(alex.totalDistanceKm)
+        XCTAssertNil(sam.topSpeedKmh)
+        XCTAssertEqual(summary.driverStats.keys.sorted(), ["uid_driver_1", "uid_driver_2", "uid_driver_3"])
+    }
+
+    func testPersonalSummaryIncludesMaxSpeedAndMaxGWithoutRankingDrivers() throws {
+        let run = Self.makeRun(driverStats: [
+            "uid_driver_1": DriverStats(topSpeed: 38, avgMovingSpeedMs: 16, totalDistanceKm: 41.2, totalDriveTimeMinutes: 58, movingTimeMinutes: 51, stoppedTimeMinutes: 7, stopCount: 2, avgStopTimeSec: 210, maxGForce: 0.44)
+        ])
+
+        let summary = try XCTUnwrap(RunSummaryCalculator.personalSummary(
+            for: "uid_driver_1",
+            in: run,
+            generatedAt: 1_800_000_090_000
+        ))
+
+        XCTAssertEqual(summary.topSpeedKmh ?? 0, 136.8, accuracy: 0.01)
+        XCTAssertEqual(summary.maxGForce, 0.44)
+        XCTAssertEqual(summary.movingTimeMinutes, 51)
+        XCTAssertEqual(summary.stoppedTimeMinutes, 7)
+        XCTAssertEqual(summary.totalDistanceKm, 41.2)
+    }
+
+    func testSummaryCalculatorClassifiesStaleAndOfflineDriversByTimeout() throws {
+        let summary = RunSummaryCalculator.summary(
+            for: Self.makeRun(),
+            generatedAt: 1_800_000_301_000
+        )
+
+        XCTAssertEqual(summary.driverStats["uid_driver_1"]?.driverStatus, .stale)
+        XCTAssertEqual(summary.driverStats["uid_driver_2"]?.driverStatus, .offline)
+        XCTAssertEqual(summary.driverStats["uid_driver_3"]?.driverStatus, .offline)
+    }
+
+    func testSummaryCalculatorLabelsActiveDriversEndedWithGroupAfterRunEnds() {
+        let summary = RunSummaryCalculator.summary(
+            for: Self.makeRun(status: .ended),
+            generatedAt: 1_800_000_301_000
+        )
+
+        XCTAssertEqual(summary.driverStats["uid_driver_1"]?.driverStatus, .endedWithGroup)
+        XCTAssertEqual(summary.driverStats["uid_driver_2"]?.driverStatus, .endedWithGroup)
+        XCTAssertEqual(summary.driverStats["uid_driver_3"]?.driverStatus, .offline)
     }
 
     private static func makeRun(
         status: RunStatus = .active,
         currentDriverLocation: DriverLocation? = DriverLocation(lat: -33.9, lng: 18.4, heading: 90, speed: 18, accuracy: 5, timestamp: 1_800_000_004_000),
         samLocation: DriverLocation? = DriverLocation(lat: -33.93, lng: 18.43, heading: 90, speed: 12, accuracy: 6, timestamp: 1_800_000_000_000),
-        hazards: [String: Hazard]? = nil
+        hazards: [String: Hazard]? = nil,
+        driverStats: [String: DriverStats] = [:]
     ) -> Run {
         Run(
             name: "Sunday Run",
@@ -1041,19 +1366,22 @@ final class LiveDriveTests: XCTestCase {
                     name: "Alex",
                     badge: DriverBadge(text: "A", colorHex: "#1E88E5"),
                     location: currentDriverLocation,
-                    presence: .online
+                    presence: .online,
+                    stats: driverStats["uid_driver_1"]
                 ),
                 "uid_driver_2": makeDriver(
                     name: "Sam",
                     badge: DriverBadge(text: "S", colorHex: "#43A047"),
                     location: samLocation,
-                    presence: .online
+                    presence: .online,
+                    stats: driverStats["uid_driver_2"]
                 ),
                 "uid_driver_3": makeDriver(
                     name: "Lee",
                     badge: DriverBadge(text: "L", colorHex: "#F4511E"),
                     location: DriverLocation(lat: -33.91, lng: 18.41, heading: 90, speed: 0, accuracy: 6, timestamp: 1_800_000_004_000),
-                    presence: .offline
+                    presence: .offline,
+                    stats: driverStats["uid_driver_3"]
                 )
             ],
             hazards: hazards ?? [
@@ -1079,16 +1407,18 @@ final class LiveDriveTests: XCTestCase {
         lat: Double = -33.9,
         lng: Double = 18.4,
         speed: Double = 12,
+        accuracy: Double = 4,
         timestamp: Int64
     ) -> LiveLocationSample {
-        LiveLocationSample(lat: lat, lng: lng, heading: 90, speed: speed, accuracy: 4, timestamp: timestamp)
+        LiveLocationSample(lat: lat, lng: lng, heading: 90, speed: speed, accuracy: accuracy, timestamp: timestamp)
     }
 
     private static func makeDriver(
         name: String,
         badge: DriverBadge,
         location: DriverLocation?,
-        presence: DriverPresence
+        presence: DriverPresence,
+        stats: DriverStats? = nil
     ) -> DriverRecord {
         DriverRecord(
             profile: DriverProfile(
@@ -1103,7 +1433,8 @@ final class LiveDriveTests: XCTestCase {
             joinedAt: 1_800_000_000_000,
             leftAt: nil,
             presence: presence,
-            finishState: .driving
+            finishState: .driving,
+            stats: stats
         )
     }
 }
@@ -1111,6 +1442,7 @@ final class LiveDriveTests: XCTestCase {
 private final class InMemoryLiveLocationRepository: LiveLocationPersisting, @unchecked Sendable {
     var latestLocations: [DriverLocation] = []
     var trackPoints: [(pointId: String, point: TrackPoint)] = []
+    var statsUpdates: [DriverStats] = []
     var presenceUpdates: [DriverPresence] = []
 
     func writeLatestLocation(_ location: DriverLocation, runId: String, uid: String) async throws {
@@ -1119,6 +1451,10 @@ private final class InMemoryLiveLocationRepository: LiveLocationPersisting, @unc
 
     func writeTrackPoint(_ point: TrackPoint, pointId: String, runId: String, uid: String) async throws {
         trackPoints.append((pointId: pointId, point: point))
+    }
+
+    func updateDriverStats(_ stats: DriverStats, runId: String, uid: String) async throws {
+        statsUpdates.append(stats)
     }
 
     func updatePresence(_ presence: DriverPresence, runId: String, uid: String) async throws {
@@ -1135,10 +1471,14 @@ private final class InMemoryHazardRepository: HazardPersisting, @unchecked Senda
 }
 
 private final class RecordingHazardAudioAlert: LiveDriveHazardAudioAlerting, @unchecked Sendable {
-    var playCount = 0
+    var playedEvents: [(type: HazardType, mode: HazardAlertAudioMode)] = []
 
-    func playHazardAlert() {
-        playCount += 1
+    var playCount: Int {
+        playedEvents.count
+    }
+
+    func playHazardAlert(for type: HazardType, mode: HazardAlertAudioMode) {
+        playedEvents.append((type: type, mode: mode))
     }
 }
 
@@ -1161,6 +1501,20 @@ private final class InMemoryRunSummaryStore: RunSummaryPersisting, @unchecked Se
 
     func writeRunSummary(_ summary: RunSummary, runId: String) async throws {
         persistedSummaries.append((summary: summary, runId: runId))
+    }
+}
+
+private struct FailingRunSummaryStore: RunSummaryPersisting {
+    func writeRunSummary(_ summary: RunSummary, runId: String) async throws {
+        throw NSError(domain: "summary", code: 1)
+    }
+}
+
+private final class InMemoryPersonalSummaryStore: PersonalSummaryPersisting, @unchecked Sendable {
+    var persistedSummaries: [(summary: PersonalSummary, runId: String, uid: String)] = []
+
+    func writePersonalSummary(_ summary: PersonalSummary, runId: String, uid: String) async throws {
+        persistedSummaries.append((summary: summary, runId: runId, uid: uid))
     }
 }
 

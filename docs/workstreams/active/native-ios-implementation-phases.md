@@ -591,37 +591,39 @@ Goal: write live driver location and track points while the app is foregrounded.
 
 ### Red
 
-- [ ] Add failing tests for latest location payload.
-- [ ] Add failing tests for track point payload.
-- [ ] Add failing tests for timestamp milliseconds.
-- [ ] Add failing tests for throttling interval.
-- [ ] Add failing tests for minimum movement filtering.
-- [ ] Add failing tests for presence updates.
+- [x] Add failing tests for latest location payload.
+- [x] Add failing tests for track point payload.
+- [x] Add failing tests for timestamp milliseconds.
+- [x] Add failing tests for throttling interval.
+- [x] Add failing tests for minimum movement filtering.
+- [x] Add failing tests for presence updates.
 - [x] Add failing tests for stop-writing after leave/finish/end.
 - [x] Add failing tests for Live Drive follow camera movement threshold and user interaction override.
 - [x] Add failing tests for delayed return to follow mode after map interaction.
 - [x] Add failing tests that Live Drive starts foreground location writes when permission was already granted.
+- [x] Add failing tests for degraded/unusable accuracy handling.
 
 ### Green
 
 - [ ] Implement Core Location permission request.
 - [ ] Implement foreground location service.
-- [ ] Implement throttle/write policy.
-- [ ] Write latest location to `/runs/{runId}/drivers/{uid}/location`.
-- [ ] Write track points to `/tracks/{runId}/{uid}/{pointId}` while active.
-- [ ] Update driver presence.
+- [x] Implement throttle/write policy.
+- [x] Write latest location to `/runs/{runId}/drivers/{uid}/location`.
+- [x] Write track points to `/tracks/{runId}/{uid}/{pointId}` while active.
+- [x] Update driver presence.
 - [x] Stop updates when driver leaves/finishes.
-- [ ] Surface denied/restricted/reduced accuracy states.
+- [x] Surface denied/restricted/reduced accuracy states.
 - [x] Auto-enter Live Drive follow mode when active movement starts.
 - [x] Pause follow mode on manual map interaction and resume after an idle delay.
 - [x] Start foreground location writes from the current permission state when Live Drive opens.
 - [x] Track visible map camera heading so the current-user arrow remains aligned after pan/zoom.
+- [x] Downgrade poor-accuracy samples: latest-only for rough fixes, no track/safety actions for unreliable fixes.
 
 ### Refactor
 
-- [ ] Keep raw Core Location separate from backend write policy.
-- [ ] Make write policy testable with fake clock/location.
-- [ ] Avoid unbounded writes.
+- [x] Keep raw Core Location separate from backend write policy.
+- [x] Make write policy testable with fake clock/location.
+- [x] Avoid unbounded writes.
 
 ### Verify
 
@@ -734,11 +736,11 @@ Goal: support admin group end, individual driver finish/leave, persistent summar
 - [x] Add failing tests for participants leaving Live Drive when a run observation becomes ended.
 - [x] Add failing tests for driver personal finish.
 - [x] Add failing tests for destination arrival finish prompt policy.
-- [ ] Add failing tests for stale/offline timeout classification.
+- [x] Add failing tests for stale/offline timeout classification.
 - [x] Add failing tests for summary calculations: distance, moving time, stopped time.
-- [ ] Add failing tests for max speed and max g-force calculations.
-- [ ] Add failing tests for no ranking by max speed/g-force.
-- [ ] Add failing tests for shareText generation.
+- [x] Add failing tests for max speed and max g-force calculations.
+- [x] Add failing tests for no ranking by max speed/g-force.
+- [x] Add failing tests for shareText generation.
 - [x] Add failing tests for summary persistence paths.
 
 ### Green
@@ -754,21 +756,22 @@ Goal: support admin group end, individual driver finish/leave, persistent summar
 - [x] Generate group summary when admin ends.
 - [x] Persist summaries.
 - [x] Build Summary screen.
-- [ ] Add share/copy summary format.
-- [ ] Add post-drive history entry.
+- [x] Add share/copy summary format.
+- [x] Add post-drive history entry.
+- [x] Add driver stats snapshots for speed, stop, and estimated g-force summaries.
 
 ### Refactor
 
 - [x] Keep summary calculation pure and fixture-driven.
-- [ ] Keep share text generation independent from UI.
-- [ ] Keep personal stats private by default.
+- [x] Keep share text generation independent from UI.
+- [x] Keep personal stats private by default.
 
 ### Verify
 
 - [x] Driver can finish independently.
 - [ ] Admin can end group run.
-- [ ] Summary remains available after app restart.
-- [ ] Summary share/copy works.
+- [x] Summary remains available after app restart.
+- [x] Summary share/copy works.
 - [x] No location writes after finish/end.
 
 ### Done
@@ -781,30 +784,30 @@ Goal: provide profile/account maintenance, history access, and development diagn
 
 ### Red
 
-- [ ] Add failing tests for Settings view model.
-- [ ] Add failing tests for profile edit validation.
-- [ ] Add failing tests for unit preference persistence.
-- [ ] Add failing tests for password reset action.
-- [ ] Add failing tests for sign-out behavior.
-- [ ] Add failing tests for history list loading.
-- [ ] Add failing tests for debug diagnostics visibility by build config.
+- [x] Add failing tests for Settings view model.
+- [x] Add failing tests for profile edit validation.
+- [x] Add failing tests for unit preference persistence.
+- [x] Add failing tests for password reset action.
+- [x] Add failing tests for sign-out behavior.
+- [x] Add failing tests for history list loading.
+- [x] Add failing tests for debug diagnostics visibility by build config.
 
 ### Green
 
-- [ ] Build Settings screen as grouped settings list.
-- [ ] Profile section: display name, badge preview, regenerate color if allowed.
-- [ ] Car section: make/model searchable suggestions with free text fallback.
-- [ ] Units section: km/kmh and mi/mph.
-- [ ] Account section: email, reset password, sign out.
-- [ ] History section: past runs and summaries.
-- [ ] Debug section: backend mode, auth uid, database/emulator status, latest smoke result.
-- [ ] Hide or tuck debug information away for production builds.
+- [x] Build Settings screen as grouped settings list.
+- [x] Profile section: display name, badge preview, regenerate color if allowed.
+- [x] Car section: make/model searchable suggestions with free text fallback.
+- [x] Units section: km/kmh and mi/mph.
+- [x] Account section: email, reset password, sign out.
+- [x] History section: past runs and summaries.
+- [x] Debug section: backend mode, auth uid, database/emulator status, latest smoke result.
+- [x] Hide or tuck debug information away for production builds.
 
 ### Refactor
 
-- [ ] Avoid dashboard-like settings cards.
-- [ ] Keep destructive account actions out until data deletion behavior is defined.
-- [ ] Keep history loading separate from profile settings.
+- [x] Avoid dashboard-like settings cards.
+- [x] Keep destructive account actions out until data deletion behavior is defined.
+- [x] Keep history loading separate from profile settings.
 
 ### Verify
 
@@ -824,10 +827,10 @@ Goal: turn working flows into a premium Apple-native app without sacrificing cla
 
 ### Red
 
-- [ ] Add accessibility checklist items for every major screen.
-- [ ] Add screenshot checklist for light/dark mode.
-- [ ] Add checklist for Reduce Transparency, Increase Contrast, Reduce Motion.
-- [ ] Add map readability checklist for daylight/dark conditions.
+- [x] Add accessibility checklist items for every major screen.
+- [x] Add screenshot checklist for light/dark mode.
+- [x] Add checklist for Reduce Transparency, Increase Contrast, Reduce Motion.
+- [x] Add map readability checklist for daylight/dark conditions.
 
 ### Green
 
@@ -835,12 +838,12 @@ Goal: turn working flows into a premium Apple-native app without sacrificing cla
 - [ ] Add custom glass only to compact map overlays and action surfaces.
 - [ ] Tune Home Hub.
 - [ ] Tune Admin/Driver Lobby.
-- [ ] Tune Route Setup panel.
-- [ ] Tune Live Drive overlays.
+- [x] Tune Route Setup panel.
+- [x] Tune Live Drive overlays.
 - [ ] Tune Hazard sheet.
 - [ ] Tune Summary share presentation.
-- [ ] Add VoiceOver labels.
-- [ ] Add Dynamic Type support.
+- [x] Add VoiceOver labels.
+- [x] Add Dynamic Type support.
 - [ ] Add high-contrast and reduce-transparency fallbacks.
 
 ### Refactor

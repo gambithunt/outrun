@@ -65,6 +65,26 @@ final class LobbyTests: XCTestCase {
         XCTAssertEqual(router.presentedRoute, .liveDrive(runId: "run_1", role: .admin))
     }
 
+    func testStartDriveCreatesAdminDriverRecordForLiveLocationSharing() async throws {
+        let repository = InMemoryLobbyRepository(runs: ["run_1": makeRun(status: .ready, route: makeRoute(), drivers: nil)])
+        let viewModel = AdminLobbyViewModel(
+            uid: "uid_admin_1",
+            runId: "run_1",
+            profile: makeUserProfile(),
+            service: LobbyService(repository: repository, nowMilliseconds: { 1_800_000_002_000 })
+        )
+
+        await viewModel.load()
+        await viewModel.confirmSoloStart()
+
+        let adminDriver = try XCTUnwrap(repository.runs["run_1"]?.drivers?["uid_admin_1"])
+        XCTAssertEqual(adminDriver.profile.displayName, "Alex Admin")
+        XCTAssertEqual(adminDriver.profile.carMake, "Porsche")
+        XCTAssertEqual(adminDriver.joinedAt, 1_800_000_002_000)
+        XCTAssertEqual(adminDriver.presence, .online)
+        XCTAssertEqual(adminDriver.finishState, .driving)
+    }
+
     func testAdminLobbyObservesJoinedDrivers() async {
         let observer = ManualRunObserver()
         let viewModel = AdminLobbyViewModel(
@@ -275,6 +295,19 @@ final class LobbyTests: XCTestCase {
         finishState: DriverFinishState = .driving
     ) -> DriverRecord {
         Self.makeDriver(name: name, presence: presence, finishState: finishState)
+    }
+
+    private func makeUserProfile() -> UserProfile {
+        UserProfile(
+            displayName: "Alex Admin",
+            carMake: "Porsche",
+            carModel: "911",
+            badge: DriverBadge(text: "AA", colorHex: "#1E88E5"),
+            homeClub: nil,
+            createdAt: 1_800_000_000_000,
+            updatedAt: 1_800_000_000_000,
+            stats: UserStats(totalRuns: 0, totalDistanceKm: 0, hazardsReported: 0, mostUsedCarId: nil)
+        )
     }
 }
 

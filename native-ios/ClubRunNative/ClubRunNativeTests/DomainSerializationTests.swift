@@ -118,17 +118,71 @@ final class DomainSerializationTests: XCTestCase {
             presence: .online,
             finishState: .finished,
             finishedAt: 1_800_000_100_000,
-            stats: DriverStats(topSpeed: 31.2, avgMovingSpeedMs: 14.2, totalDistanceKm: 54, totalDriveTimeMinutes: 68, stopCount: 2, avgStopTimeSec: 24)
+            stats: DriverStats(
+                topSpeed: 31.2,
+                avgMovingSpeedMs: 14.2,
+                totalDistanceKm: 54,
+                totalDriveTimeMinutes: 68,
+                movingTimeMinutes: 62,
+                stoppedTimeMinutes: 6,
+                stopCount: 2,
+                avgStopTimeSec: 180,
+                maxGForce: 0.42
+            )
         )
 
         let object = try encodeObject(record)
         let profile = try XCTUnwrap(object["profile"] as? [String: Any])
+        let stats = try XCTUnwrap(object["stats"] as? [String: Any])
 
         XCTAssertEqual(profile["displayName"] as? String, "Alex Driver")
         XCTAssertEqual(profile["badge"] as? [String: String], ["colorHex": "#1E88E5", "text": "AD"])
         XCTAssertEqual(object["presence"] as? String, "online")
         XCTAssertEqual(object["finishState"] as? String, "finished")
         XCTAssertEqual(object["finishedAt"] as? Int64, 1_800_000_100_000)
+        XCTAssertEqual(stats["movingTimeMinutes"] as? Double, 62)
+        XCTAssertEqual(stats["stoppedTimeMinutes"] as? Double, 6)
+        XCTAssertEqual(stats["maxGForce"] as? Double, 0.42)
+    }
+
+    func testDecodesRunWithPartialDriverRecordWithoutFailingWholeRun() throws {
+        let data = Data(
+            """
+            {
+              "name": "Test",
+              "joinCode": "123456",
+              "adminId": "uid_admin",
+              "status": "active",
+              "createdAt": 1800000000000,
+              "startedAt": null,
+              "endedAt": null,
+              "maxDrivers": 15,
+              "drivers": {
+                "uid_admin": {
+                  "presence": "online"
+                },
+                "uid_driver": {
+                  "profile": {
+                    "name": "Alex Driver",
+                    "displayName": "Alex Driver",
+                    "carMake": "Porsche",
+                    "carModel": "911",
+                    "fuelType": "petrol"
+                  },
+                  "joinedAt": 1800000000000,
+                  "leftAt": null,
+                  "presence": "online",
+                  "finishState": "driving"
+                }
+              }
+            }
+            """.utf8
+        )
+
+        let run = try JSONDecoder.clubRunFirebase.decode(Run.self, from: data)
+
+        XCTAssertNil(run.drivers?["uid_admin"])
+        XCTAssertEqual(run.drivers?["uid_driver"]?.profile.displayName, "Alex Driver")
     }
 
     func testEncodesLatestLocationAndTrackPointPayloads() throws {
@@ -223,12 +277,16 @@ final class DomainSerializationTests: XCTestCase {
                     carMake: "Porsche",
                     carModel: "911",
                     badge: DriverBadge(text: "AD", colorHex: "#1E88E5"),
+                    driverStatus: .finished,
                     topSpeedKmh: 112,
                     avgMovingSpeedKmh: 67,
                     totalDistanceKm: 54.2,
                     totalDriveTimeMinutes: 72,
+                    movingTimeMinutes: 66,
+                    stoppedTimeMinutes: 6,
                     stopCount: 3,
                     avgStopTimeSec: 28,
+                    maxGForce: 0.37,
                     fuelUsedLitres: 6.4,
                     fuelUsedKwh: nil,
                     fuelType: .petrol
@@ -247,7 +305,60 @@ final class DomainSerializationTests: XCTestCase {
 
         XCTAssertEqual(object["totalDistanceKm"] as? Double, 54.2)
         XCTAssertEqual(driverStats["uid_driver_1"]?["badge"] as? [String: String], ["colorHex": "#1E88E5", "text": "AD"])
+        XCTAssertEqual(driverStats["uid_driver_1"]?["driverStatus"] as? String, "finished")
+        XCTAssertEqual(driverStats["uid_driver_1"]?["maxGForce"] as? Double, 0.37)
         XCTAssertEqual(byType["police"], 1)
+    }
+
+    func testDecodesSummaryRoutePreviewWithoutSpeedBuckets() throws {
+        let data = Data(
+            """
+            {
+              "points": [[-33.9, 18.4], [-34.0, 18.5]]
+            }
+            """.utf8
+        )
+
+        let preview = try JSONDecoder.clubRunFirebase.decode(SummaryRoutePreview.self, from: data)
+
+        XCTAssertEqual(preview.points, [[-33.9, 18.4], [-34.0, 18.5]])
+        XCTAssertEqual(preview.speedBuckets, [])
+    }
+
+    func testDecodesHazardSummaryWithoutTypeBreakdown() throws {
+        let data = Data(
+            """
+            {
+              "total": 0
+            }
+            """.utf8
+        )
+
+        let summary = try JSONDecoder.clubRunFirebase.decode(HazardSummary.self, from: data)
+
+        XCTAssertEqual(summary, HazardSummary(total: 0, byType: [:]))
+    }
+
+    func testDecodesDriverProfileWithoutFuelType() throws {
+        let data = Data(
+            """
+            {
+              "name": "Sam Driver",
+              "displayName": "Sam Driver",
+              "carMake": "BMW",
+              "carModel": "M2",
+              "badge": {
+                "text": "SD",
+                "colorHex": "#1E88E5"
+              }
+            }
+            """.utf8
+        )
+
+        let profile = try JSONDecoder.clubRunFirebase.decode(DriverProfile.self, from: data)
+
+        XCTAssertEqual(profile.name, "Sam Driver")
+        XCTAssertEqual(profile.fuelType, .petrol)
     }
 
     private func decodeFixture<T: Decodable>(_ name: String) throws -> T {

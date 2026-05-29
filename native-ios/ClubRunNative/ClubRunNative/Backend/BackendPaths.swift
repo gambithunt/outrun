@@ -29,6 +29,14 @@ enum BackendPaths {
         "runs/\(runId)/drivers/\(uid)/location"
     }
 
+    static func driverStats(_ runId: String, uid: String) -> String {
+        "runs/\(runId)/drivers/\(uid)/stats"
+    }
+
+    static func driverSummary(_ runId: String, uid: String) -> String {
+        "runs/\(runId)/drivers/\(uid)/summary"
+    }
+
     static func hazard(_ runId: String, hazardId: String) -> String {
         "runs/\(runId)/hazards/\(hazardId)"
     }

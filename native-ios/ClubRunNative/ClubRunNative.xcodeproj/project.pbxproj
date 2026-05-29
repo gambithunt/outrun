@@ -38,6 +38,14 @@
 		10000000000000000000A01D /* LiveDriveFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000131 /* LiveDriveFlow.swift */; };
 		10000000000000000000A01E /* LiveDriveTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000132 /* LiveDriveTests.swift */; };
 		10000000000000000000A01F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000133 /* LaunchScreen.storyboard */; };
+		10000000000000000000A020 /* alert.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000134 /* alert.mp3 */; };
+		10000000000000000000A021 /* broken-down-car.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000135 /* broken-down-car.mp3 */; };
+		10000000000000000000A022 /* debris-ahead.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000136 /* debris-ahead.mp3 */; };
+		10000000000000000000A023 /* hazard-ahead.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000137 /* hazard-ahead.mp3 */; };
+		10000000000000000000A024 /* police-ahead.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000138 /* police-ahead.mp3 */; };
+		10000000000000000000A025 /* pothole-ahead.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 100000000000000000000139 /* pothole-ahead.mp3 */; };
+		10000000000000000000A026 /* roadworks.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000013A /* roadworks.mp3 */; };
+		10000000000000000000A027 /* speed-camera.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 10000000000000000000013B /* speed-camera.mp3 */; };
 		78B292652FA8E8AF004F5AA2 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 78B292642FA8E8AF004F5AA2 /* FirebaseAuth */; };
 		78B292672FA8E8AF004F5AA2 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 78B292662FA8E8AF004F5AA2 /* FirebaseCore */; };
 		78B292692FA8E8AF004F5AA2 /* FirebaseDatabase in Frameworks */ = {isa = PBXBuildFile; productRef = 78B292682FA8E8AF004F5AA2 /* FirebaseDatabase */; };
@@ -100,6 +108,14 @@
 		100000000000000000000131 /* LiveDriveFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveDriveFlow.swift; sourceTree = "<group>"; };
 		100000000000000000000132 /* LiveDriveTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveDriveTests.swift; sourceTree = "<group>"; };
 		100000000000000000000133 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
+		100000000000000000000134 /* alert.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = Sounds/alert.mp3; sourceTree = "<group>"; };
+		100000000000000000000135 /* broken-down-car.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = Sounds/broken-down-car.mp3; sourceTree = "<group>"; };
+		100000000000000000000136 /* debris-ahead.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = Sounds/debris-ahead.mp3; sourceTree = "<group>"; };
+		100000000000000000000137 /* hazard-ahead.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = Sounds/hazard-ahead.mp3; sourceTree = "<group>"; };
+		100000000000000000000138 /* police-ahead.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = Sounds/police-ahead.mp3; sourceTree = "<group>"; };
+		100000000000000000000139 /* pothole-ahead.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = Sounds/pothole-ahead.mp3; sourceTree = "<group>"; };
+		10000000000000000000013A /* roadworks.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = Sounds/roadworks.mp3; sourceTree = "<group>"; };
+		10000000000000000000013B /* speed-camera.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = Sounds/speed-camera.mp3; sourceTree = "<group>"; };
 		7839C9602FBDFD4C0090F274 /* test.gpx */ = {isa = PBXFileReference; lastKnownFileType = text.xml; name = test.gpx; path = ../../../../../../Downloads/test.gpx; sourceTree = "<group>"; };
 		78B2926A2FA8EDC9004F5AA2 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -203,6 +219,14 @@
 			children = (
 				10000000000000000000010E /* Info.plist */,
 				100000000000000000000133 /* LaunchScreen.storyboard */,
+				100000000000000000000134 /* alert.mp3 */,
+				100000000000000000000135 /* broken-down-car.mp3 */,
+				100000000000000000000136 /* debris-ahead.mp3 */,
+				100000000000000000000137 /* hazard-ahead.mp3 */,
+				100000000000000000000138 /* police-ahead.mp3 */,
+				100000000000000000000139 /* pothole-ahead.mp3 */,
+				10000000000000000000013A /* roadworks.mp3 */,
+				10000000000000000000013B /* speed-camera.mp3 */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -439,7 +463,15 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				10000000000000000000A020 /* alert.mp3 in Resources */,
+				10000000000000000000A021 /* broken-down-car.mp3 in Resources */,
+				10000000000000000000A022 /* debris-ahead.mp3 in Resources */,
+				10000000000000000000A023 /* hazard-ahead.mp3 in Resources */,
 				10000000000000000000A01F /* LaunchScreen.storyboard in Resources */,
+				10000000000000000000A024 /* police-ahead.mp3 in Resources */,
+				10000000000000000000A025 /* pothole-ahead.mp3 in Resources */,
+				10000000000000000000A026 /* roadworks.mp3 in Resources */,
+				10000000000000000000A027 /* speed-camera.mp3 in Resources */,
 				78B2926B2FA8EDC9004F5AA2 /* GoogleService-Info.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

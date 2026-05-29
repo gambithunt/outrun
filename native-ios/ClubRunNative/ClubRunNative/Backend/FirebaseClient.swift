@@ -470,7 +470,7 @@ final class FirebaseAuthService: AuthServicing, @unchecked Sendable {
     }
 }
 
-final class FirebaseRunRepository: RunRepositoring, RunReading, RunObserving, RoutePersisting, LiveLocationPersisting, HazardPersisting, RunEnding, RunSummaryPersisting, DriverDriveSessionUpdating, @unchecked Sendable {
+final class FirebaseRunRepository: RunRepositoring, RunReading, RunObserving, RoutePersisting, LiveLocationPersisting, HazardPersisting, RunEnding, RunSummaryPersisting, PersonalSummaryPersisting, DriverDriveSessionUpdating, @unchecked Sendable {
     private let database: DatabaseReference
 
     init(database: DatabaseReference = Database.database().reference()) {
@@ -570,6 +570,10 @@ final class FirebaseRunRepository: RunRepositoring, RunReading, RunObserving, Ro
     }
 
     func writeLatestLocation(_ location: DriverLocation, runId: String, uid: String) async throws {
+        guard try await driverRecordExists(runId: runId, uid: uid) else {
+            return
+        }
+
         let data = try JSONEncoder.clubRunFirebase.encode(location)
         let object = try JSONSerialization.jsonObject(with: data)
         try await database.child(BackendPaths.driverLocation(runId, uid: uid)).setValue(object)
@@ -581,7 +585,21 @@ final class FirebaseRunRepository: RunRepositoring, RunReading, RunObserving, Ro
         try await database.child(BackendPaths.trackPoint(runId, uid: uid, pointId: pointId)).setValue(object)
     }
 
+    func updateDriverStats(_ stats: DriverStats, runId: String, uid: String) async throws {
+        guard try await driverRecordExists(runId: runId, uid: uid) else {
+            return
+        }
+
+        let data = try JSONEncoder.clubRunFirebase.encode(stats)
+        let object = try JSONSerialization.jsonObject(with: data)
+        try await database.child(BackendPaths.driverStats(runId, uid: uid)).setValue(object)
+    }
+
     func updatePresence(_ presence: DriverPresence, runId: String, uid: String) async throws {
+        guard try await driverRecordExists(runId: runId, uid: uid) else {
+            return
+        }
+
         try await database
             .child(BackendPaths.driver(runId, uid: uid))
             .updateChildValues(["presence": presence.rawValue])
@@ -623,6 +641,16 @@ final class FirebaseRunRepository: RunRepositoring, RunReading, RunObserving, Ro
         try await database.child(BackendPaths.summary(runId)).setValue(object)
     }
 
+    func writePersonalSummary(_ summary: PersonalSummary, runId: String, uid: String) async throws {
+        guard try await driverRecordExists(runId: runId, uid: uid) else {
+            return
+        }
+
+        let data = try JSONEncoder.clubRunFirebase.encode(summary)
+        let object = try JSONSerialization.jsonObject(with: data)
+        try await database.child(BackendPaths.driverSummary(runId, uid: uid)).setValue(object)
+    }
+
     func finishDriver(runId: String, uid: String, finishedAt: Int64) async throws {
         try await database.child(BackendPaths.driver(runId, uid: uid)).updateChildValues([
             "presence": DriverPresence.offline.rawValue,
@@ -637,6 +665,24 @@ final class FirebaseRunRepository: RunRepositoring, RunReading, RunObserving, Ro
             "finishState": DriverFinishState.left.rawValue,
             "leftAt": leftAt
         ])
+    }
+
+    private func driverRecordExists(runId: String, uid: String) async throws -> Bool {
+        try await withCheckedThrowingContinuation { continuation in
+            database.child(BackendPaths.driver(runId, uid: uid)).observeSingleEvent(of: .value) { snapshot in
+                guard snapshot.exists(),
+                      snapshot.childSnapshot(forPath: "profile").exists(),
+                      snapshot.childSnapshot(forPath: "joinedAt").exists()
+                else {
+                    continuation.resume(returning: false)
+                    return
+                }
+
+                continuation.resume(returning: true)
+            } withCancel: { error in
+                continuation.resume(throwing: error)
+            }
+        }
     }
 }
 

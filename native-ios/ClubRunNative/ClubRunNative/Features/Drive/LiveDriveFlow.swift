@@ -1,5 +1,6 @@
 import Foundation
 import AudioToolbox
+import AVFoundation
 import CoreLocation
 import MapKit
 import SwiftUI
@@ -119,12 +120,82 @@ enum LiveDriveHazardAlertPolicy {
 }
 
 protocol LiveDriveHazardAudioAlerting: Sendable {
-    func playHazardAlert()
+    func playHazardAlert(for type: HazardType, mode: HazardAlertAudioMode)
 }
 
-struct SystemLiveDriveHazardAudioAlert: LiveDriveHazardAudioAlerting {
-    func playHazardAlert() {
-        AudioServicesPlaySystemSound(1104)
+enum HazardAlertAudioMode: String, CaseIterable, Identifiable {
+    case announced
+    case simple
+
+    var id: String {
+        rawValue
+    }
+
+    var label: String {
+        switch self {
+        case .announced:
+            "Announced"
+        case .simple:
+            "Simple"
+        }
+    }
+}
+
+final class SystemLiveDriveHazardAudioAlert: LiveDriveHazardAudioAlerting, @unchecked Sendable {
+    private let lock = NSLock()
+    private var players: [String: AVAudioPlayer] = [:]
+
+    func playHazardAlert(for type: HazardType, mode: HazardAlertAudioMode) {
+        let resourceName = Self.resourceName(for: type, mode: mode)
+        guard let url = Bundle.main.url(forResource: resourceName, withExtension: "mp3") else {
+            AudioServicesPlaySystemSound(1104)
+            return
+        }
+
+        do {
+            let player = try player(for: resourceName, url: url)
+            player.currentTime = 0
+            player.play()
+        } catch {
+            AudioServicesPlaySystemSound(1104)
+        }
+    }
+
+    private func player(for resourceName: String, url: URL) throws -> AVAudioPlayer {
+        lock.lock()
+        defer { lock.unlock() }
+
+        if let player = players[resourceName] {
+            return player
+        }
+
+        let player = try AVAudioPlayer(contentsOf: url)
+        player.prepareToPlay()
+        players[resourceName] = player
+        return player
+    }
+
+    private static func resourceName(for type: HazardType, mode: HazardAlertAudioMode) -> String {
+        guard mode == .announced else {
+            return "alert"
+        }
+
+        switch type {
+        case .pothole:
+            return "pothole-ahead"
+        case .roadworks:
+            return "roadworks"
+        case .police:
+            return "police-ahead"
+        case .mobileCamera:
+            return "speed-camera"
+        case .debris:
+            return "debris-ahead"
+        case .brokenDownCar:
+            return "broken-down-car"
+        case .animal:
+            return "hazard-ahead"
+        }
     }
 }
 
@@ -301,8 +372,45 @@ enum LiveLocationPermissionState: Equatable {
 }
 
 struct LiveLocationWriteDecision: Equatable {
-    let shouldWrite: Bool
+    let shouldWriteLatestLocation: Bool
+    let shouldWriteTrackPoint: Bool
     let pointId: String?
+
+    var shouldWrite: Bool {
+        shouldWriteLatestLocation || shouldWriteTrackPoint
+    }
+}
+
+enum LiveLocationAccuracyQuality: Equatable {
+    case reliable
+    case degraded
+    case unusable
+}
+
+enum LiveLocationAccuracyPolicy {
+    static let reliableAccuracyMetres = 50.0
+    static let roughAccuracyMetres = 150.0
+    static let roughLatestLocationIntervalMilliseconds: Int64 = 20_000
+
+    static func quality(for accuracy: Double) -> LiveLocationAccuracyQuality {
+        guard accuracy.isFinite, accuracy >= 0 else {
+            return .unusable
+        }
+
+        if accuracy <= reliableAccuracyMetres {
+            return .reliable
+        }
+
+        if accuracy <= roughAccuracyMetres {
+            return .degraded
+        }
+
+        return .unusable
+    }
+
+    static func canUseForSafetyCriticalAction(_ accuracy: Double) -> Bool {
+        quality(for: accuracy) == .reliable
+    }
 }
 
 struct LiveLocationWritePolicy: Equatable {
@@ -315,14 +423,52 @@ struct LiveLocationWritePolicy: Equatable {
     }
 
     func decision(previous: LiveLocationSample?, current: LiveLocationSample) -> LiveLocationWriteDecision {
+        switch LiveLocationAccuracyPolicy.quality(for: current.accuracy) {
+        case .reliable:
+            return reliableDecision(previous: previous, current: current)
+        case .degraded:
+            return degradedDecision(previous: previous, current: current)
+        case .unusable:
+            return LiveLocationWriteDecision(
+                shouldWriteLatestLocation: false,
+                shouldWriteTrackPoint: false,
+                pointId: nil
+            )
+        }
+    }
+
+    private func reliableDecision(previous: LiveLocationSample?, current: LiveLocationSample) -> LiveLocationWriteDecision {
         guard let previous else {
-            return LiveLocationWriteDecision(shouldWrite: true, pointId: pointId(for: current))
+            return LiveLocationWriteDecision(
+                shouldWriteLatestLocation: true,
+                shouldWriteTrackPoint: true,
+                pointId: pointId(for: current)
+            )
         }
 
         let elapsed = current.timestamp - previous.timestamp
         let distance = GPXDistanceCalculator.distanceMetres(for: [previous.coordinate, current.coordinate])
         let shouldWrite = elapsed >= minimumIntervalMilliseconds && distance >= minimumDistanceMetres
-        return LiveLocationWriteDecision(shouldWrite: shouldWrite, pointId: shouldWrite ? pointId(for: current) : nil)
+        return LiveLocationWriteDecision(
+            shouldWriteLatestLocation: shouldWrite,
+            shouldWriteTrackPoint: shouldWrite,
+            pointId: shouldWrite ? pointId(for: current) : nil
+        )
+    }
+
+    private func degradedDecision(previous: LiveLocationSample?, current: LiveLocationSample) -> LiveLocationWriteDecision {
+        let shouldWriteLatestLocation: Bool
+        if let previous {
+            shouldWriteLatestLocation = current.timestamp - previous.timestamp >= LiveLocationAccuracyPolicy.roughLatestLocationIntervalMilliseconds
+        } else {
+            shouldWriteLatestLocation = true
+        }
+
+        return LiveLocationWriteDecision(
+            shouldWriteLatestLocation: shouldWriteLatestLocation,
+            shouldWriteTrackPoint: false,
+            pointId: nil
+        )
     }
 
     private func pointId(for sample: LiveLocationSample) -> String {
@@ -333,6 +479,7 @@ struct LiveLocationWritePolicy: Equatable {
 protocol LiveLocationPersisting: Sendable {
     func writeLatestLocation(_ location: DriverLocation, runId: String, uid: String) async throws
     func writeTrackPoint(_ point: TrackPoint, pointId: String, runId: String, uid: String) async throws
+    func updateDriverStats(_ stats: DriverStats, runId: String, uid: String) async throws
     func updatePresence(_ presence: DriverPresence, runId: String, uid: String) async throws
 }
 
@@ -346,6 +493,10 @@ protocol RunEnding: Sendable {
 
 protocol RunSummaryPersisting: Sendable {
     func writeRunSummary(_ summary: RunSummary, runId: String) async throws
+}
+
+protocol PersonalSummaryPersisting: Sendable {
+    func writePersonalSummary(_ summary: PersonalSummary, runId: String, uid: String) async throws
 }
 
 protocol DriverDriveSessionUpdating: Sendable {
@@ -467,12 +618,86 @@ enum LiveDriveArrivalPolicy {
     }
 }
 
+enum LiveDriveDriverTimeoutPolicy {
+    static let staleThresholdMilliseconds: Int64 = 120_000
+    static let offlineThresholdMilliseconds: Int64 = 300_000
+
+    static func markerState(
+        for driver: DriverRecord,
+        uid: String,
+        currentUID: String,
+        nowMilliseconds: Int64
+    ) -> LiveDriveDriverState {
+        if driver.finishState == .finished || driver.finishState == .left {
+            return .stopped
+        }
+
+        if driver.presence == .offline || driver.presence == nil {
+            return .offline
+        }
+
+        if uid == currentUID {
+            return .current
+        }
+
+        guard let timestamp = driver.location?.timestamp else {
+            return .stale
+        }
+
+        let age = nowMilliseconds - timestamp
+        if age >= offlineThresholdMilliseconds {
+            return .offline
+        }
+        if age >= staleThresholdMilliseconds {
+            return .stale
+        }
+
+        return .live
+    }
+
+    static func summaryStatus(for driver: DriverRecord, runStatus: RunStatus, generatedAt: Int64) -> SummaryDriverStatus {
+        if driver.finishState == .finished {
+            return .finished
+        }
+        if driver.finishState == .left {
+            return .left
+        }
+        if driver.presence == .offline || driver.presence == nil {
+            return .offline
+        }
+        if runStatus == .ended {
+            return .endedWithGroup
+        }
+
+        guard let timestamp = driver.location?.timestamp else {
+            return .stale
+        }
+
+        let age = generatedAt - timestamp
+        if age >= offlineThresholdMilliseconds {
+            return .offline
+        }
+        if age >= staleThresholdMilliseconds {
+            return .stale
+        }
+
+        return .active
+    }
+}
+
 enum RunSummaryCalculator {
     static func summary(for run: Run, generatedAt: Int64) -> RunSummary {
         let totalDistanceKm = kilometres(run.route?.distanceMetres ?? 0)
         let totalDriveTimeMinutes = driveTimeMinutes(for: run, generatedAt: generatedAt)
         let driverStats = Dictionary(uniqueKeysWithValues: (run.drivers ?? [:]).map { uid, driver in
-            (uid, personalSummary(for: driver, fallbackDistanceKm: totalDistanceKm, fallbackDriveTimeMinutes: totalDriveTimeMinutes))
+            let personalSummary = personalSummary(
+                for: driver,
+                runStatus: run.status,
+                generatedAt: generatedAt,
+                fallbackDistanceKm: totalDistanceKm,
+                fallbackDriveTimeMinutes: totalDriveTimeMinutes
+            )
+            return (uid, privacySafeGroupSummary(from: personalSummary))
         })
         let activeHazards = (run.hazards ?? [:]).values.filter { !$0.dismissed }
         let hazardCounts = activeHazards.reduce(into: [HazardType: Int]()) { result, hazard in
@@ -490,8 +715,24 @@ enum RunSummaryCalculator {
         )
     }
 
+    static func personalSummary(for uid: String, in run: Run, generatedAt: Int64) -> PersonalSummary? {
+        guard let driver = run.drivers?[uid] else {
+            return nil
+        }
+
+        return personalSummary(
+            for: driver,
+            runStatus: run.status,
+            generatedAt: generatedAt,
+            fallbackDistanceKm: kilometres(run.route?.distanceMetres ?? 0),
+            fallbackDriveTimeMinutes: driveTimeMinutes(for: run, generatedAt: generatedAt)
+        )
+    }
+
     private static func personalSummary(
         for driver: DriverRecord,
+        runStatus: RunStatus,
+        generatedAt: Int64,
         fallbackDistanceKm: Double,
         fallbackDriveTimeMinutes: Double
     ) -> PersonalSummary {
@@ -505,15 +746,41 @@ enum RunSummaryCalculator {
             carMake: driver.profile.carMake,
             carModel: driver.profile.carModel,
             badge: driver.profile.badge,
+            driverStatus: LiveDriveDriverTimeoutPolicy.summaryStatus(for: driver, runStatus: runStatus, generatedAt: generatedAt),
             topSpeedKmh: stats?.topSpeed.map { $0 * 3.6 },
             avgMovingSpeedKmh: avgMovingSpeedKmh,
             totalDistanceKm: rounded(distance),
             totalDriveTimeMinutes: rounded(driveTime),
+            movingTimeMinutes: stats?.movingTimeMinutes.map(rounded),
+            stoppedTimeMinutes: stats?.stoppedTimeMinutes.map(rounded),
             stopCount: stats?.stopCount,
             avgStopTimeSec: stats?.avgStopTimeSec,
+            maxGForce: stats?.maxGForce.map(rounded),
             fuelUsedLitres: nil,
             fuelUsedKwh: nil,
             fuelType: driver.profile.fuelType
+        )
+    }
+
+    private static func privacySafeGroupSummary(from summary: PersonalSummary) -> PersonalSummary {
+        PersonalSummary(
+            name: summary.name,
+            carMake: summary.carMake,
+            carModel: summary.carModel,
+            badge: summary.badge,
+            driverStatus: summary.driverStatus,
+            topSpeedKmh: nil,
+            avgMovingSpeedKmh: nil,
+            totalDistanceKm: nil,
+            totalDriveTimeMinutes: nil,
+            movingTimeMinutes: nil,
+            stoppedTimeMinutes: nil,
+            stopCount: nil,
+            avgStopTimeSec: nil,
+            maxGForce: nil,
+            fuelUsedLitres: nil,
+            fuelUsedKwh: nil,
+            fuelType: summary.fuelType
         )
     }
 
@@ -540,6 +807,101 @@ enum RunSummaryCalculator {
     }
 }
 
+struct LiveDriveStatsAccumulator: Equatable {
+    private static let movingSpeedThresholdMetresPerSecond = 1.0
+    private static let gravityMetresPerSecondSquared = 9.80665
+
+    private var firstTimestamp: Int64?
+    private var previousSample: LiveLocationSample?
+    private var topSpeedMetresPerSecond = 0.0
+    private var movingSpeedTotal = 0.0
+    private var movingSampleCount = 0
+    private var distanceMetres = 0.0
+    private var movingTimeSeconds = 0.0
+    private var stoppedTimeSeconds = 0.0
+    private var stopCount = 0
+    private var currentStopDurationSeconds = 0.0
+    private var completedStopDurationSeconds = 0.0
+    private var maxGForce = 0.0
+    private var wasStopped = false
+
+    mutating func ingest(_ sample: LiveLocationSample) -> DriverStats? {
+        guard LiveLocationAccuracyPolicy.quality(for: sample.accuracy) == .reliable else {
+            return currentStats()
+        }
+
+        if firstTimestamp == nil {
+            firstTimestamp = sample.timestamp
+        }
+
+        topSpeedMetresPerSecond = max(topSpeedMetresPerSecond, max(sample.speed, 0))
+        if sample.speed > Self.movingSpeedThresholdMetresPerSecond {
+            movingSpeedTotal += sample.speed
+            movingSampleCount += 1
+        }
+
+        let isStopped = sample.speed <= Self.movingSpeedThresholdMetresPerSecond
+        if previousSample == nil, isStopped {
+            stopCount += 1
+        }
+
+        if let previousSample {
+            let elapsedSeconds = max(0, Double(sample.timestamp - previousSample.timestamp) / 1_000)
+            let segmentDistance = GPXDistanceCalculator.distanceMetres(for: [previousSample.coordinate, sample.coordinate])
+            distanceMetres += segmentDistance
+
+            if isStopped {
+                stoppedTimeSeconds += elapsedSeconds
+                currentStopDurationSeconds += elapsedSeconds
+                if !wasStopped {
+                    stopCount += 1
+                }
+            } else {
+                movingTimeSeconds += elapsedSeconds
+                if wasStopped {
+                    completedStopDurationSeconds += currentStopDurationSeconds
+                    currentStopDurationSeconds = 0
+                }
+            }
+
+            if elapsedSeconds > 0 {
+                let acceleration = abs(sample.speed - previousSample.speed) / elapsedSeconds
+                maxGForce = max(maxGForce, acceleration / Self.gravityMetresPerSecondSquared)
+            }
+        }
+
+        wasStopped = isStopped
+        previousSample = sample
+        return currentStats()
+    }
+
+    func currentStats() -> DriverStats? {
+        guard firstTimestamp != nil else {
+            return nil
+        }
+
+        let totalStopSeconds = completedStopDurationSeconds + currentStopDurationSeconds
+        let avgStopTimeSec: Double? = stopCount > 0 ? totalStopSeconds / Double(stopCount) : nil
+        let avgMovingSpeedMs: Double? = movingSampleCount > 0 ? movingSpeedTotal / Double(movingSampleCount) : nil
+
+        return DriverStats(
+            topSpeed: rounded(topSpeedMetresPerSecond),
+            avgMovingSpeedMs: avgMovingSpeedMs.map(rounded),
+            totalDistanceKm: rounded(distanceMetres / 1_000),
+            totalDriveTimeMinutes: rounded((movingTimeSeconds + stoppedTimeSeconds) / 60),
+            movingTimeMinutes: rounded(movingTimeSeconds / 60),
+            stoppedTimeMinutes: rounded(stoppedTimeSeconds / 60),
+            stopCount: stopCount,
+            avgStopTimeSec: avgStopTimeSec.map(rounded),
+            maxGForce: rounded(maxGForce)
+        )
+    }
+
+    private func rounded(_ value: Double) -> Double {
+        (value * 100).rounded() / 100
+    }
+}
+
 @MainActor
 final class LiveLocationTrackingController: ObservableObject {
     @Published private(set) var permissionState: LiveLocationPermissionState = .notDetermined
@@ -551,6 +913,7 @@ final class LiveLocationTrackingController: ObservableObject {
     private let repository: LiveLocationPersisting
     private let policy: LiveLocationWritePolicy
     private var previousWrittenSample: LiveLocationSample?
+    private var statsAccumulator = LiveDriveStatsAccumulator()
 
     init(
         runId: String,
@@ -603,13 +966,20 @@ final class LiveLocationTrackingController: ObservableObject {
         }
 
         let decision = policy.decision(previous: previousWrittenSample, current: sample)
-        guard decision.shouldWrite, let pointId = decision.pointId else {
+        guard decision.shouldWrite else {
             return
         }
 
         do {
-            try await repository.writeLatestLocation(sample.driverLocation, runId: runId, uid: uid)
-            try await repository.writeTrackPoint(sample.trackPoint, pointId: pointId, runId: runId, uid: uid)
+            if decision.shouldWriteLatestLocation {
+                try await repository.writeLatestLocation(sample.driverLocation, runId: runId, uid: uid)
+            }
+            if decision.shouldWriteTrackPoint, let pointId = decision.pointId {
+                try await repository.writeTrackPoint(sample.trackPoint, pointId: pointId, runId: runId, uid: uid)
+                if let stats = statsAccumulator.ingest(sample) {
+                    try await repository.updateDriverStats(stats, runId: runId, uid: uid)
+                }
+            }
             previousWrittenSample = sample
             message = nil
         } catch {
@@ -694,8 +1064,6 @@ final class CoreLocationForegroundLocationService: NSObject, ForegroundLocationS
 }
 
 enum LiveDriveDriverMarkerFactory {
-    static let staleThresholdMilliseconds: Int64 = 120_000
-
     static func markers(for run: Run, currentUID: String, nowMilliseconds: Int64) -> [LiveDriveDriverMarker] {
         (run.drivers ?? [:])
             .compactMap { uid, driver in
@@ -717,7 +1085,12 @@ enum LiveDriveDriverMarkerFactory {
                     badgeText: badge.text,
                     badgeColorHex: badge.colorHex,
                     coordinate: RouteCoordinate(lat: location.lat, lng: location.lng),
-                    state: state(for: driver, uid: uid, currentUID: currentUID, nowMilliseconds: nowMilliseconds),
+                    state: LiveDriveDriverTimeoutPolicy.markerState(
+                        for: driver,
+                        uid: uid,
+                        currentUID: currentUID,
+                        nowMilliseconds: nowMilliseconds
+                    ),
                     freshnessText: freshnessText(for: location.timestamp, nowMilliseconds: nowMilliseconds),
                     speedText: nil
                 )
@@ -731,30 +1104,6 @@ enum LiveDriveDriverMarkerFactory {
                 }
                 return lhs.displayName < rhs.displayName
             }
-    }
-
-    private static func state(for driver: DriverRecord, uid: String, currentUID: String, nowMilliseconds: Int64) -> LiveDriveDriverState {
-        if driver.finishState == .finished || driver.finishState == .left {
-            return .stopped
-        }
-
-        if driver.presence == .offline || driver.presence == nil {
-            return .offline
-        }
-
-        if uid == currentUID {
-            return .current
-        }
-
-        guard let timestamp = driver.location?.timestamp else {
-            return .stale
-        }
-
-        if nowMilliseconds - timestamp > staleThresholdMilliseconds {
-            return .stale
-        }
-
-        return .live
     }
 
     private static func freshnessText(for timestamp: Int64, nowMilliseconds: Int64) -> String {
@@ -940,9 +1289,11 @@ final class LiveDriveViewModel: ObservableObject {
     @Published private(set) var nextWaypointText = "Loading route"
     @Published private(set) var message: String?
     @Published private(set) var hazardConfirmationText: String?
+    @Published private(set) var locationAccuracyMessage: String?
     @Published private(set) var cameraTarget: LiveDriveCameraTarget?
     @Published private(set) var isFollowingCurrentUser = false
     @Published private(set) var isHazardAudioMuted = false
+    @Published private(set) var hazardAlertAudioMode: HazardAlertAudioMode
     @Published private(set) var arrivalPrompt: LiveDriveArrivalPrompt?
     @Published var selectedDriver: LiveDriveDriverMarker?
     @Published var selectedHazard: LiveDriveHazardMarker?
@@ -957,6 +1308,7 @@ final class LiveDriveViewModel: ObservableObject {
     private let runObserver: RunObserving?
     private let runEnding: RunEnding?
     private let summaryPersisting: RunSummaryPersisting?
+    private let personalSummaryPersisting: PersonalSummaryPersisting?
     private let driverSessionUpdater: DriverDriveSessionUpdating?
     private let activeRunStore: ActiveRunStoring?
     private let router: AppRouter?
@@ -973,6 +1325,7 @@ final class LiveDriveViewModel: ObservableObject {
     private var runObservation: RunObservation?
     private var hasLoadedInitialHazardSnapshot = false
     private var alertedHazardIds = Set<String>()
+    private var hasFinishedDriveLocally = false
 
     init(
         uid: String,
@@ -982,12 +1335,14 @@ final class LiveDriveViewModel: ObservableObject {
         runObserver: RunObserving? = nil,
         runEnding: RunEnding? = nil,
         summaryPersisting: RunSummaryPersisting? = nil,
+        personalSummaryPersisting: PersonalSummaryPersisting? = nil,
         driverSessionUpdater: DriverDriveSessionUpdating? = nil,
         activeRunStore: ActiveRunStoring? = nil,
         router: AppRouter? = nil,
         liveLocationRepository: LiveLocationPersisting? = nil,
         hazardRepository: HazardPersisting? = nil,
         hazardAudioAlert: LiveDriveHazardAudioAlerting? = SystemLiveDriveHazardAudioAlert(),
+        hazardAlertAudioMode: HazardAlertAudioMode = .announced,
         nowMilliseconds: @escaping @Sendable () -> Int64 = {
             Int64(Date().timeIntervalSince1970 * 1_000)
         }
@@ -999,11 +1354,13 @@ final class LiveDriveViewModel: ObservableObject {
         self.runObserver = runObserver
         self.runEnding = runEnding
         self.summaryPersisting = summaryPersisting
+        self.personalSummaryPersisting = personalSummaryPersisting
         self.driverSessionUpdater = driverSessionUpdater
         self.activeRunStore = activeRunStore
         self.router = router
         self.hazardRepository = hazardRepository
         self.hazardAudioAlert = hazardAudioAlert
+        self.hazardAlertAudioMode = hazardAlertAudioMode
         self.nowMilliseconds = nowMilliseconds
         if let liveLocationRepository {
             self.locationController = LiveLocationTrackingController(runId: runId, uid: uid, repository: liveLocationRepository)
@@ -1033,6 +1390,10 @@ final class LiveDriveViewModel: ObservableObject {
         runObservation = runObserver.observeRun(runId: runId) { [weak self] result in
             Task { @MainActor in
                 guard let self else {
+                    return
+                }
+
+                guard !self.hasFinishedDriveLocally else {
                     return
                 }
 
@@ -1073,6 +1434,11 @@ final class LiveDriveViewModel: ObservableObject {
     func reportHazard(_ type: HazardType) async {
         guard let marker = currentUserMarker else {
             message = "Waiting for your location."
+            return
+        }
+
+        guard LiveLocationAccuracyPolicy.canUseForSafetyCriticalAction(marker.accuracy) else {
+            message = "Location accuracy is too low to report a hazard."
             return
         }
 
@@ -1189,6 +1555,7 @@ final class LiveDriveViewModel: ObservableObject {
             heading: sample.heading,
             accuracy: sample.accuracy
         )
+        updateLocationAccuracyMessage(for: sample.accuracy)
         lastLocationSpeed = sample.speed
         currentUserMarker = marker
         if isFollowingCurrentUser || (!isAutoFollowPausedByInteraction && LiveDriveFollowCameraPolicy.isMoving(speed: sample.speed)) {
@@ -1245,7 +1612,7 @@ final class LiveDriveViewModel: ObservableObject {
                     hazards: runForSummary.hazards,
                     summary: runForSummary.summary
                 )
-                try await summaryPersisting.writeRunSummary(
+                try? await summaryPersisting.writeRunSummary(
                     RunSummaryCalculator.summary(for: summaryRun, generatedAt: endedAt),
                     runId: runId
                 )
@@ -1270,7 +1637,9 @@ final class LiveDriveViewModel: ObservableObject {
         }
 
         do {
-            try await driverSessionUpdater.finishDriver(runId: runId, uid: uid, finishedAt: nowMilliseconds())
+            let finishedAt = nowMilliseconds()
+            try await persistPersonalSummaryIfAvailable(generatedAt: finishedAt)
+            try await driverSessionUpdater.finishDriver(runId: runId, uid: uid, finishedAt: finishedAt)
             currentFinishState = .finished
             await locationController?.stop()
             finishDriveLocally(routeToSummary: true)
@@ -1291,13 +1660,36 @@ final class LiveDriveViewModel: ObservableObject {
         }
 
         do {
-            try await driverSessionUpdater.leaveDriver(runId: runId, uid: uid, leftAt: nowMilliseconds())
+            let leftAt = nowMilliseconds()
+            try await persistPersonalSummaryIfAvailable(generatedAt: leftAt)
+            try await driverSessionUpdater.leaveDriver(runId: runId, uid: uid, leftAt: leftAt)
             currentFinishState = .left
             await locationController?.stop()
             finishDriveLocally(routeToSummary: true)
         } catch {
             message = "Unable to leave drive."
         }
+    }
+
+    private func persistPersonalSummaryIfAvailable(generatedAt: Int64) async throws {
+        guard let personalSummaryPersisting else {
+            return
+        }
+
+        let run: Run?
+        if let currentRun {
+            run = currentRun
+        } else {
+            run = try await runReader.readRun(runId: runId)
+        }
+
+        guard let run,
+              let summary = RunSummaryCalculator.personalSummary(for: uid, in: run, generatedAt: generatedAt)
+        else {
+            return
+        }
+
+        try await personalSummaryPersisting.writePersonalSummary(summary, runId: runId, uid: uid)
     }
 
     private func currentUserMarker(from location: DriverLocation?) -> LiveDriveCurrentUserMarker? {
@@ -1375,16 +1767,37 @@ final class LiveDriveViewModel: ObservableObject {
             return
         }
 
+        guard let currentUserMarker,
+              LiveLocationAccuracyPolicy.canUseForSafetyCriticalAction(currentUserMarker.accuracy) else {
+            return
+        }
+
         arrivalPrompt = LiveDriveArrivalPolicy.prompt(
             role: role,
             runStatus: currentRunStatus,
             finishState: currentFinishState,
-            currentLocation: currentUserMarker?.coordinate,
+            currentLocation: currentUserMarker.coordinate,
             route: currentRun?.route
         )
     }
 
+    private func updateLocationAccuracyMessage(for accuracy: Double) {
+        switch LiveLocationAccuracyPolicy.quality(for: accuracy) {
+        case .reliable:
+            locationAccuracyMessage = nil
+        case .degraded:
+            locationAccuracyMessage = "Location accuracy low"
+        case .unusable:
+            locationAccuracyMessage = "Location unavailable"
+        }
+    }
+
     private func finishDriveLocally(routeToSummary: Bool) {
+        guard !hasFinishedDriveLocally else {
+            return
+        }
+
+        hasFinishedDriveLocally = true
         activeRunStore?.clearActiveRunSession(uid: uid)
         stopObservingRun()
         if routeToSummary {
@@ -1439,7 +1852,7 @@ final class LiveDriveViewModel: ObservableObject {
             return
         }
 
-        hazardAudioAlert?.playHazardAlert()
+        hazardAudioAlert?.playHazardAlert(for: events[0].type, mode: hazardAlertAudioMode)
     }
 }
 
@@ -1478,6 +1891,7 @@ struct LiveDriveView: View {
                 LiveDriveStatusOverlay(
                     title: viewModel.statusTitle,
                     subtitle: viewModel.nextWaypointText,
+                    accuracyMessage: viewModel.locationAccuracyMessage,
                     role: viewModel.role,
                     onEndDrive: {
                         showsEndDriveConfirmation = true
@@ -1857,16 +2271,11 @@ private struct LiveDriveMap: View {
                 }
             }
         }
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 6)
-                .onChanged { _ in onMapInteraction() }
-        )
-        .simultaneousGesture(
-            MagnificationGesture()
-                .onChanged { _ in onMapInteraction() }
-        )
         .onMapCameraChange(frequency: .continuous) { context in
             onCameraHeadingChange(context.camera.heading)
+            if mapPosition.positionedByUser {
+                onMapInteraction()
+            }
         }
     }
 }
@@ -1954,6 +2363,7 @@ private struct LiveDriveDriverMarkerView: View {
 private struct LiveDriveStatusOverlay: View {
     let title: String
     let subtitle: String
+    let accuracyMessage: String?
     let role: ActiveRunRole
     let onEndDrive: () -> Void
     let onFinishDrive: () -> Void
@@ -1965,11 +2375,22 @@ private struct LiveDriveStatusOverlay: View {
                 Text(title)
                     .font(.headline.weight(.semibold))
                     .lineLimit(1)
+                    .minimumScaleFactor(0.82)
                 Text(subtitle)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+                if let accuracyMessage {
+                    Text(accuracyMessage)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.orange)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
             }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(statusAccessibilityLabel)
 
             Spacer()
 
@@ -1983,6 +2404,7 @@ private struct LiveDriveStatusOverlay: View {
                 .background(.red.opacity(0.14), in: Capsule())
                 .foregroundStyle(.red)
                 .tint(.red)
+                .accessibilityLabel("End drive")
                 .accessibilityIdentifier("liveDrive.endDriveButton")
             } else {
                 HStack(spacing: 8) {
@@ -1994,6 +2416,7 @@ private struct LiveDriveStatusOverlay: View {
                     .padding(.vertical, 9)
                     .background(.green.opacity(0.16), in: Capsule())
                     .foregroundStyle(.green)
+                    .accessibilityLabel("Finish drive")
                     .accessibilityIdentifier("liveDrive.finishDriveButton")
 
                     Button("Leave") {
@@ -2004,6 +2427,7 @@ private struct LiveDriveStatusOverlay: View {
                     .padding(.vertical, 9)
                     .background(.red.opacity(0.12), in: Capsule())
                     .foregroundStyle(.red)
+                    .accessibilityLabel("Leave drive")
                     .accessibilityIdentifier("liveDrive.leaveDriveButton")
                 }
             }
@@ -2017,6 +2441,14 @@ private struct LiveDriveStatusOverlay: View {
         .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
         .accessibilityIdentifier("liveDrive.statusOverlay")
     }
+
+    private var statusAccessibilityLabel: String {
+        if let accuracyMessage {
+            "\(title). \(subtitle). \(accuracyMessage)"
+        } else {
+            "\(title). \(subtitle)"
+        }
+    }
 }
 
 private struct LiveDriveBottomControls: View {
@@ -2029,12 +2461,12 @@ private struct LiveDriveBottomControls: View {
             } label: {
                 Image(systemName: "location.fill")
             }
-            .accessibilityLabel("Recenter")
+            .accessibilityLabel("Recenter on my location")
 
             Button {} label: {
                 Image(systemName: "list.bullet")
             }
-            .accessibilityLabel("Lobby Details")
+            .accessibilityLabel("Drive details")
         }
         .font(.title3.weight(.semibold))
         .buttonStyle(.borderedProminent)

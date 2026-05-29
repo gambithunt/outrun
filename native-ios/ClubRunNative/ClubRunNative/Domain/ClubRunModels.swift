@@ -129,6 +129,19 @@ struct DriverProfile: Codable, Equatable {
     let fuelEfficiency: Double?
     let fuelUnit: String?
 
+    enum CodingKeys: String, CodingKey {
+        case name
+        case displayName
+        case carMake
+        case carModel
+        case badge
+        case engineSize
+        case engineUnit
+        case fuelType
+        case fuelEfficiency
+        case fuelUnit
+    }
+
     init(
         name: String,
         displayName: String? = nil,
@@ -151,6 +164,34 @@ struct DriverProfile: Codable, Equatable {
         self.fuelType = fuelType
         self.fuelEfficiency = fuelEfficiency
         self.fuelUnit = fuelUnit
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = try container.decode(String.self, forKey: .name)
+        displayName = try container.decodeIfPresent(String.self, forKey: .displayName)
+        carMake = try container.decode(String.self, forKey: .carMake)
+        carModel = try container.decode(String.self, forKey: .carModel)
+        badge = try container.decodeIfPresent(DriverBadge.self, forKey: .badge)
+        engineSize = try container.decodeIfPresent(String.self, forKey: .engineSize)
+        engineUnit = try container.decodeIfPresent(String.self, forKey: .engineUnit)
+        fuelType = try container.decodeIfPresent(FuelType.self, forKey: .fuelType) ?? .petrol
+        fuelEfficiency = try container.decodeIfPresent(Double.self, forKey: .fuelEfficiency)
+        fuelUnit = try container.decodeIfPresent(String.self, forKey: .fuelUnit)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(name, forKey: .name)
+        try container.encodeIfPresent(displayName, forKey: .displayName)
+        try container.encode(carMake, forKey: .carMake)
+        try container.encode(carModel, forKey: .carModel)
+        try container.encodeIfPresent(badge, forKey: .badge)
+        try container.encodeIfPresent(engineSize, forKey: .engineSize)
+        try container.encodeIfPresent(engineUnit, forKey: .engineUnit)
+        try container.encode(fuelType, forKey: .fuelType)
+        try container.encodeIfPresent(fuelEfficiency, forKey: .fuelEfficiency)
+        try container.encodeIfPresent(fuelUnit, forKey: .fuelUnit)
     }
 }
 
@@ -274,8 +315,33 @@ struct DriverStats: Codable, Equatable {
     let avgMovingSpeedMs: Double?
     let totalDistanceKm: Double?
     let totalDriveTimeMinutes: Double?
+    let movingTimeMinutes: Double?
+    let stoppedTimeMinutes: Double?
     let stopCount: Int?
     let avgStopTimeSec: Double?
+    let maxGForce: Double?
+
+    init(
+        topSpeed: Double? = nil,
+        avgMovingSpeedMs: Double? = nil,
+        totalDistanceKm: Double? = nil,
+        totalDriveTimeMinutes: Double? = nil,
+        movingTimeMinutes: Double? = nil,
+        stoppedTimeMinutes: Double? = nil,
+        stopCount: Int? = nil,
+        avgStopTimeSec: Double? = nil,
+        maxGForce: Double? = nil
+    ) {
+        self.topSpeed = topSpeed
+        self.avgMovingSpeedMs = avgMovingSpeedMs
+        self.totalDistanceKm = totalDistanceKm
+        self.totalDriveTimeMinutes = totalDriveTimeMinutes
+        self.movingTimeMinutes = movingTimeMinutes
+        self.stoppedTimeMinutes = stoppedTimeMinutes
+        self.stopCount = stopCount
+        self.avgStopTimeSec = avgStopTimeSec
+        self.maxGForce = maxGForce
+    }
 }
 
 struct DriverRecord: Codable, Equatable {
@@ -287,6 +353,7 @@ struct DriverRecord: Codable, Equatable {
     let finishState: DriverFinishState?
     let finishedAt: Int64?
     let stats: DriverStats?
+    let summary: PersonalSummary?
 
     init(
         profile: DriverProfile,
@@ -296,7 +363,8 @@ struct DriverRecord: Codable, Equatable {
         presence: DriverPresence? = nil,
         finishState: DriverFinishState? = nil,
         finishedAt: Int64? = nil,
-        stats: DriverStats? = nil
+        stats: DriverStats? = nil,
+        summary: PersonalSummary? = nil
     ) {
         self.profile = profile
         self.location = location
@@ -306,7 +374,17 @@ struct DriverRecord: Codable, Equatable {
         self.finishState = finishState
         self.finishedAt = finishedAt
         self.stats = stats
+        self.summary = summary
     }
+}
+
+enum SummaryDriverStatus: String, Codable, Equatable {
+    case active
+    case endedWithGroup = "ended_with_group"
+    case finished
+    case left
+    case stale
+    case offline
 }
 
 struct PersonalSummary: Codable, Equatable {
@@ -314,15 +392,57 @@ struct PersonalSummary: Codable, Equatable {
     let carMake: String
     let carModel: String
     let badge: DriverBadge?
+    let driverStatus: SummaryDriverStatus?
     let topSpeedKmh: Double?
     let avgMovingSpeedKmh: Double?
     let totalDistanceKm: Double?
     let totalDriveTimeMinutes: Double?
+    let movingTimeMinutes: Double?
+    let stoppedTimeMinutes: Double?
     let stopCount: Int?
     let avgStopTimeSec: Double?
+    let maxGForce: Double?
     let fuelUsedLitres: Double?
     let fuelUsedKwh: Double?
     let fuelType: FuelType
+
+    init(
+        name: String,
+        carMake: String,
+        carModel: String,
+        badge: DriverBadge?,
+        driverStatus: SummaryDriverStatus? = nil,
+        topSpeedKmh: Double?,
+        avgMovingSpeedKmh: Double?,
+        totalDistanceKm: Double?,
+        totalDriveTimeMinutes: Double?,
+        movingTimeMinutes: Double? = nil,
+        stoppedTimeMinutes: Double? = nil,
+        stopCount: Int?,
+        avgStopTimeSec: Double?,
+        maxGForce: Double? = nil,
+        fuelUsedLitres: Double?,
+        fuelUsedKwh: Double?,
+        fuelType: FuelType
+    ) {
+        self.name = name
+        self.carMake = carMake
+        self.carModel = carModel
+        self.badge = badge
+        self.driverStatus = driverStatus
+        self.topSpeedKmh = topSpeedKmh
+        self.avgMovingSpeedKmh = avgMovingSpeedKmh
+        self.totalDistanceKm = totalDistanceKm
+        self.totalDriveTimeMinutes = totalDriveTimeMinutes
+        self.movingTimeMinutes = movingTimeMinutes
+        self.stoppedTimeMinutes = stoppedTimeMinutes
+        self.stopCount = stopCount
+        self.avgStopTimeSec = avgStopTimeSec
+        self.maxGForce = maxGForce
+        self.fuelUsedLitres = fuelUsedLitres
+        self.fuelUsedKwh = fuelUsedKwh
+        self.fuelType = fuelType
+    }
 }
 
 struct CollectiveFuelSummary: Codable, Equatable {
@@ -350,7 +470,7 @@ struct HazardSummary: Codable, Equatable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         total = try container.decode(Int.self, forKey: .total)
 
-        let rawByType = try container.decode([String: Int].self, forKey: .byType)
+        let rawByType = try container.decodeIfPresent([String: Int].self, forKey: .byType) ?? [:]
         byType = rawByType.reduce(into: [:]) { result, entry in
             if let type = HazardType(rawValue: entry.key) {
                 result[type] = entry.value
@@ -370,6 +490,28 @@ struct HazardSummary: Codable, Equatable {
 struct SummaryRoutePreview: Codable, Equatable {
     let points: [[Double]]
     let speedBuckets: [Double]
+
+    enum CodingKeys: String, CodingKey {
+        case points
+        case speedBuckets
+    }
+
+    init(points: [[Double]], speedBuckets: [Double] = []) {
+        self.points = points
+        self.speedBuckets = speedBuckets
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        points = try container.decode([[Double]].self, forKey: .points)
+        speedBuckets = try container.decodeIfPresent([Double].self, forKey: .speedBuckets) ?? []
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(points, forKey: .points)
+        try container.encode(speedBuckets, forKey: .speedBuckets)
+    }
 }
 
 struct RunSummary: Codable, Equatable {
@@ -397,6 +539,23 @@ struct Run: Codable, Equatable {
     let drivers: [String: DriverRecord]?
     let hazards: [String: Hazard]?
     let summary: RunSummary?
+
+    enum CodingKeys: String, CodingKey {
+        case name
+        case description
+        case joinCode
+        case adminId
+        case status
+        case createdAt
+        case startedAt
+        case driveStartedAt
+        case endedAt
+        case maxDrivers
+        case route
+        case drivers
+        case hazards
+        case summary
+    }
 
     init(
         name: String,
@@ -428,6 +587,39 @@ struct Run: Codable, Equatable {
         self.drivers = drivers
         self.hazards = hazards
         self.summary = summary
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = try container.decode(String.self, forKey: .name)
+        description = try container.decodeIfPresent(String.self, forKey: .description)
+        joinCode = try container.decode(String.self, forKey: .joinCode)
+        adminId = try container.decode(String.self, forKey: .adminId)
+        status = try container.decode(RunStatus.self, forKey: .status)
+        createdAt = try container.decode(Int64.self, forKey: .createdAt)
+        startedAt = try container.decodeIfPresent(Int64.self, forKey: .startedAt)
+        driveStartedAt = try container.decodeIfPresent(Int64.self, forKey: .driveStartedAt)
+        endedAt = try container.decodeIfPresent(Int64.self, forKey: .endedAt)
+        maxDrivers = try container.decode(Int.self, forKey: .maxDrivers)
+        route = try container.decodeIfPresent(RouteData.self, forKey: .route)
+
+        if let decodedDrivers = try container.decodeIfPresent([String: LossyDecodable<DriverRecord>].self, forKey: .drivers) {
+            let validDrivers = decodedDrivers.compactMapValues(\.value)
+            drivers = validDrivers.isEmpty ? nil : validDrivers
+        } else {
+            drivers = nil
+        }
+
+        hazards = try container.decodeIfPresent([String: Hazard].self, forKey: .hazards)
+        summary = try container.decodeIfPresent(RunSummary.self, forKey: .summary)
+    }
+}
+
+private struct LossyDecodable<Value: Decodable>: Decodable {
+    let value: Value?
+
+    init(from decoder: Decoder) throws {
+        value = try? Value(from: decoder)
     }
 }
 
