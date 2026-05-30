@@ -299,6 +299,10 @@ Check:
 - [ ] Confirmation appears.
 - [ ] Hazard marker appears at reported location.
 - [ ] Hazard detail opens.
+- [ ] Admin hazard detail shows dismiss and removes the marker for all clients.
+- [ ] Announced hazard audio plays by default for actionable remote hazards.
+- [ ] Settings > Drive Alerts can switch to the simple alert sound.
+- [ ] Live Drive mute toggle suppresses hazard audio without hiding hazards.
 - [ ] Fade/hide timer works.
 - [ ] Admin dismiss works if implemented.
 
@@ -426,4 +430,3 @@ Phase 15:
 Phase 17:
   real-world drive matrix
 ```
-

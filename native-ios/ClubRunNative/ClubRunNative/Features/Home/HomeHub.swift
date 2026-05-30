@@ -599,6 +599,7 @@ struct HomeHubView: View {
                     router: router,
                     liveLocationRepository: runReader as? LiveLocationPersisting,
                     hazardRepository: runReader as? HazardPersisting,
+                    hazardDismissing: runReader as? HazardDismissing,
                     hazardAlertAudioMode: hazardAlertAudioModeStore.readHazardAlertAudioMode(uid: uid)
                 )
             )

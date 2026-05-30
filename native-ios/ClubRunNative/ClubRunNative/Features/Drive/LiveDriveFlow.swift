@@ -487,6 +487,10 @@ protocol HazardPersisting: Sendable {
     func writeHazard(_ hazard: Hazard, hazardId: String, runId: String) async throws
 }
 
+protocol HazardDismissing: Sendable {
+    func dismissHazard(runId: String, hazardId: String) async throws
+}
+
 protocol RunEnding: Sendable {
     func endDrive(runId: String, endedAt: Int64) async throws
 }
@@ -1313,6 +1317,7 @@ final class LiveDriveViewModel: ObservableObject {
     private let activeRunStore: ActiveRunStoring?
     private let router: AppRouter?
     private let hazardRepository: HazardPersisting?
+    private let hazardDismissing: HazardDismissing?
     private let hazardAudioAlert: LiveDriveHazardAudioAlerting?
     private let nowMilliseconds: @Sendable () -> Int64
     private var currentRunStatus: RunStatus?
@@ -1341,6 +1346,7 @@ final class LiveDriveViewModel: ObservableObject {
         router: AppRouter? = nil,
         liveLocationRepository: LiveLocationPersisting? = nil,
         hazardRepository: HazardPersisting? = nil,
+        hazardDismissing: HazardDismissing? = nil,
         hazardAudioAlert: LiveDriveHazardAudioAlerting? = SystemLiveDriveHazardAudioAlert(),
         hazardAlertAudioMode: HazardAlertAudioMode = .announced,
         nowMilliseconds: @escaping @Sendable () -> Int64 = {
@@ -1359,6 +1365,7 @@ final class LiveDriveViewModel: ObservableObject {
         self.activeRunStore = activeRunStore
         self.router = router
         self.hazardRepository = hazardRepository
+        self.hazardDismissing = hazardDismissing
         self.hazardAudioAlert = hazardAudioAlert
         self.hazardAlertAudioMode = hazardAlertAudioMode
         self.nowMilliseconds = nowMilliseconds
@@ -1528,6 +1535,32 @@ final class LiveDriveViewModel: ObservableObject {
 
     func clearSelectedHazard() {
         selectedHazard = nil
+    }
+
+    func dismissSelectedHazard() async {
+        guard role == .admin else {
+            message = "Only admins can dismiss hazards."
+            return
+        }
+
+        guard let selectedHazard else {
+            return
+        }
+
+        guard let hazardDismissing else {
+            message = "Unable to dismiss hazard."
+            return
+        }
+
+        do {
+            try await hazardDismissing.dismissHazard(runId: runId, hazardId: selectedHazard.id)
+            hazardMarkers.removeAll { $0.id == selectedHazard.id }
+            self.selectedHazard = nil
+            hazardConfirmationText = "Hazard dismissed"
+            message = nil
+        } catch {
+            message = "Unable to dismiss hazard."
+        }
     }
 
     func clearMessage() {
@@ -2019,7 +2052,15 @@ struct LiveDriveView: View {
             LiveDriveDriverDetailView(marker: marker)
         }
         .sheet(item: $viewModel.selectedHazard) { marker in
-            LiveDriveHazardDetailView(marker: marker)
+            LiveDriveHazardDetailView(
+                marker: marker,
+                canDismiss: viewModel.role == .admin,
+                onDismiss: {
+                    Task {
+                        await viewModel.dismissSelectedHazard()
+                    }
+                }
+            )
         }
         .onChange(of: viewModel.cameraTarget) { _, cameraTarget in
             guard let cameraTarget else {
@@ -2515,6 +2556,8 @@ private struct LiveDriveDriverDetailView: View {
 
 private struct LiveDriveHazardDetailView: View {
     let marker: LiveDriveHazardMarker
+    let canDismiss: Bool
+    let onDismiss: () -> Void
 
     var body: some View {
         NavigationStack {
@@ -2538,6 +2581,13 @@ private struct LiveDriveHazardDetailView: View {
                     LabeledContent("Reported by", value: marker.reporterName)
                     LabeledContent("Reports", value: "\(marker.reportCount)")
                     LabeledContent("Time", value: reportedTimeText)
+                }
+
+                if canDismiss {
+                    Section {
+                        Button("Dismiss Hazard", role: .destructive, action: onDismiss)
+                            .accessibilityIdentifier("liveDrive.dismissHazardButton")
+                    }
                 }
             }
             .navigationTitle("Hazard")

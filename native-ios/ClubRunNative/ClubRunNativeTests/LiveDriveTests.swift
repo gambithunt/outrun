@@ -348,6 +348,50 @@ final class LiveDriveTests: XCTestCase {
         XCTAssertEqual(viewModel.selectedHazard?.reportedAt, 1_800_000_003_000)
     }
 
+    func testAdminCanDismissSelectedHazard() async throws {
+        let repository = InMemoryHazardRepository()
+        let viewModel = LiveDriveViewModel(
+            uid: "uid_admin_1",
+            runId: "run_1",
+            role: .admin,
+            runReader: InMemoryLiveDriveRunReader(run: makeRun()),
+            hazardDismissing: repository
+        )
+
+        await viewModel.load()
+        let marker = try XCTUnwrap(viewModel.hazardMarkers.first)
+        viewModel.selectHazard(marker)
+        await viewModel.dismissSelectedHazard()
+
+        XCTAssertEqual(repository.dismissals.count, 1)
+        XCTAssertEqual(repository.dismissals.first?.runId, "run_1")
+        XCTAssertEqual(repository.dismissals.first?.hazardId, "hazard_1")
+        XCTAssertNil(viewModel.selectedHazard)
+        XCTAssertTrue(viewModel.hazardMarkers.isEmpty)
+        XCTAssertEqual(viewModel.hazardConfirmationText, "Hazard dismissed")
+        XCTAssertNil(viewModel.message)
+    }
+
+    func testDriverCannotDismissSelectedHazard() async throws {
+        let repository = InMemoryHazardRepository()
+        let viewModel = LiveDriveViewModel(
+            uid: "uid_driver_1",
+            runId: "run_1",
+            role: .driver,
+            runReader: InMemoryLiveDriveRunReader(run: makeRun()),
+            hazardDismissing: repository
+        )
+
+        await viewModel.load()
+        let marker = try XCTUnwrap(viewModel.hazardMarkers.first)
+        viewModel.selectHazard(marker)
+        await viewModel.dismissSelectedHazard()
+
+        XCTAssertTrue(repository.dismissals.isEmpty)
+        XCTAssertEqual(viewModel.selectedHazard?.id, "hazard_1")
+        XCTAssertEqual(viewModel.message, "Only admins can dismiss hazards.")
+    }
+
     func testHazardMarkersHideExpiredHazardsWithoutDeletingBackendRecord() async {
         let viewModel = LiveDriveViewModel(
             uid: "uid_driver_1",
@@ -1462,11 +1506,16 @@ private final class InMemoryLiveLocationRepository: LiveLocationPersisting, @unc
     }
 }
 
-private final class InMemoryHazardRepository: HazardPersisting, @unchecked Sendable {
+private final class InMemoryHazardRepository: HazardPersisting, HazardDismissing, @unchecked Sendable {
     var writes: [(hazard: Hazard, hazardId: String, runId: String)] = []
+    var dismissals: [(runId: String, hazardId: String)] = []
 
     func writeHazard(_ hazard: Hazard, hazardId: String, runId: String) async throws {
         writes.append((hazard: hazard, hazardId: hazardId, runId: runId))
+    }
+
+    func dismissHazard(runId: String, hazardId: String) async throws {
+        dismissals.append((runId: runId, hazardId: hazardId))
     }
 }
 

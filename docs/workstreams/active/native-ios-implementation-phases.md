@@ -706,7 +706,7 @@ Goal: drivers can report and view route hazards in realtime.
 - [x] Implement v1 fade/hide timer.
 - [x] Play a short hazard alert for new remote hazards within 300 m.
 - [x] Add a compact Live Drive mute toggle for hazard audio.
-- [ ] Implement admin dismiss if supported cleanly.
+- [x] Implement admin dismiss if supported cleanly.
 - [ ] Keep data model ready for later nearby-driver confirmation.
 
 ### Refactor

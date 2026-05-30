@@ -470,7 +470,7 @@ final class FirebaseAuthService: AuthServicing, @unchecked Sendable {
     }
 }
 
-final class FirebaseRunRepository: RunRepositoring, RunReading, RunObserving, RoutePersisting, LiveLocationPersisting, HazardPersisting, RunEnding, RunSummaryPersisting, PersonalSummaryPersisting, DriverDriveSessionUpdating, @unchecked Sendable {
+final class FirebaseRunRepository: RunRepositoring, RunReading, RunObserving, RoutePersisting, LiveLocationPersisting, HazardPersisting, HazardDismissing, RunEnding, RunSummaryPersisting, PersonalSummaryPersisting, DriverDriveSessionUpdating, @unchecked Sendable {
     private let database: DatabaseReference
 
     init(database: DatabaseReference = Database.database().reference()) {
@@ -609,6 +609,12 @@ final class FirebaseRunRepository: RunRepositoring, RunReading, RunObserving, Ro
         let data = try JSONEncoder.clubRunFirebase.encode(hazard)
         let object = try JSONSerialization.jsonObject(with: data)
         try await database.child(BackendPaths.hazard(runId, hazardId: hazardId)).setValue(object)
+    }
+
+    func dismissHazard(runId: String, hazardId: String) async throws {
+        try await database
+            .child(BackendPaths.hazard(runId, hazardId: hazardId))
+            .updateChildValues(["dismissed": true])
     }
 
     func saveRoute(_ route: RouteData, runId: String) async throws {
