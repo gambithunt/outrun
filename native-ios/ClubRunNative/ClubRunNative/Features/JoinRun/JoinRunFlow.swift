@@ -233,7 +233,7 @@ struct JoinRunView: View {
             VStack(alignment: .leading, spacing: 22) {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Paste or type the six-digit code from the run admin.")
-                        .font(.headline)
+                        .font(.headline.weight(.semibold))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -251,6 +251,8 @@ struct JoinRunView: View {
                         TextField("000000", text: $viewModel.code)
                             .font(.system(size: 44, weight: .bold, design: .rounded))
                             .monospacedDigit()
+                            .foregroundStyle(.primary)
+                            .tint(.accentColor)
                             .keyboardType(.numberPad)
                             .textContentType(.oneTimeCode)
                             .multilineTextAlignment(.center)
@@ -262,7 +264,7 @@ struct JoinRunView: View {
                             )
                             .overlay {
                                 RoundedRectangle(cornerRadius: 22, style: .continuous)
-                                    .stroke(Color.primary.opacity(0.12), lineWidth: 1)
+                                    .stroke(Color.joinRunBorder, lineWidth: 1)
                             }
                             .accessibilityIdentifier("joinRun.codeField")
                     }
@@ -286,6 +288,7 @@ struct JoinRunView: View {
                         .foregroundStyle(.white)
                         .padding(.vertical, 16)
                         .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                        .shadow(color: Color.accentColor.opacity(0.22), radius: 14, y: 8)
                     }
                     .buttonStyle(.plain)
                     .disabled(viewModel.isResolving)
@@ -299,7 +302,7 @@ struct JoinRunView: View {
                 )
                 .overlay {
                     RoundedRectangle(cornerRadius: 28, style: .continuous)
-                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                        .stroke(Color.joinRunBorder, lineWidth: 1)
                 }
 
                 if let resolvedRunName = viewModel.resolvedRunName {
@@ -318,13 +321,26 @@ struct JoinRunView: View {
                                 .foregroundStyle(.green)
                         }
 
-                        Text(resolvedRunName)
-                            .font(.system(size: 30, weight: .bold, design: .rounded))
-                            .lineLimit(2)
-                            .minimumScaleFactor(0.75)
-                            .frame(maxWidth: .infinity)
-                            .multilineTextAlignment(.center)
-                            .accessibilityIdentifier("joinRun.resolvedRunName")
+                        HStack(spacing: 14) {
+                            Image(systemName: "flag.checkered")
+                                .font(.title3.weight(.semibold))
+                                .foregroundStyle(.white)
+                                .frame(width: 48, height: 48)
+                                .background(Color.accentColor, in: Circle())
+
+                            Text(resolvedRunName)
+                                .font(.system(size: 30, weight: .bold, design: .rounded))
+                                .lineLimit(2)
+                                .minimumScaleFactor(0.75)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .accessibilityIdentifier("joinRun.resolvedRunName")
+                        }
+                        .padding(16)
+                        .background(Color.joinRunInlineFill, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                                .stroke(Color.joinRunBorder, lineWidth: 1)
+                        }
 
                         Button {
                             Task {
@@ -340,6 +356,7 @@ struct JoinRunView: View {
                             .foregroundStyle(.white)
                             .padding(.vertical, 16)
                             .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                            .shadow(color: Color.accentColor.opacity(0.22), radius: 14, y: 8)
                         }
                         .buttonStyle(.plain)
                         .disabled(viewModel.isJoining)
@@ -353,7 +370,7 @@ struct JoinRunView: View {
                     )
                     .overlay {
                         RoundedRectangle(cornerRadius: 28, style: .continuous)
-                            .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                            .stroke(Color.joinRunBorder, lineWidth: 1)
                     }
                 }
 
@@ -363,7 +380,11 @@ struct JoinRunView: View {
                         .foregroundStyle(.red)
                         .padding(16)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        .background(Color.joinRunMessageFill, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                .stroke(Color.red.opacity(0.22), lineWidth: 1)
+                        }
                         .accessibilityIdentifier("joinRun.message")
                 }
             }
@@ -380,7 +401,7 @@ private extension Color {
     static var joinRunCardFill: Color {
         Color(UIColor { traits in
             traits.userInterfaceStyle == .dark
-                ? UIColor(white: 0.12, alpha: 1)
+                ? UIColor(white: 0.11, alpha: 1)
                 : UIColor.secondarySystemGroupedBackground
         })
     }
@@ -388,8 +409,32 @@ private extension Color {
     static var joinRunFieldFill: Color {
         Color(UIColor { traits in
             traits.userInterfaceStyle == .dark
+                ? UIColor(white: 0.065, alpha: 1)
+                : UIColor.systemBackground
+        })
+    }
+
+    static var joinRunInlineFill: Color {
+        Color(UIColor { traits in
+            traits.userInterfaceStyle == .dark
                 ? UIColor(white: 0.075, alpha: 1)
                 : UIColor.systemBackground
+        })
+    }
+
+    static var joinRunBorder: Color {
+        Color(UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(white: 1, alpha: 0.08)
+                : UIColor(white: 0, alpha: 0.06)
+        })
+    }
+
+    static var joinRunMessageFill: Color {
+        Color(UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(red: 0.28, green: 0.06, blue: 0.06, alpha: 1)
+                : UIColor(red: 1, green: 0.92, blue: 0.92, alpha: 1)
         })
     }
 }

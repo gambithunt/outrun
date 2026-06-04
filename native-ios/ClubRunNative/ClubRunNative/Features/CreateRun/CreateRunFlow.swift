@@ -135,6 +135,7 @@ struct CreateRunView: View {
         }
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .navigationTitle("Create Run")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
@@ -148,7 +149,7 @@ private struct CreateRunField<Field: View>: View {
             HStack {
                 Text(label)
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.primary.opacity(0.72))
                 if let caption {
                     Spacer()
                     Text(caption)
@@ -168,7 +169,7 @@ private struct CreateRunField<Field: View>: View {
                 )
                 .overlay {
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(Color.primary.opacity(0.12), lineWidth: 1)
+                        .stroke(Color.primary.opacity(0.16), lineWidth: 1)
                 }
         }
     }

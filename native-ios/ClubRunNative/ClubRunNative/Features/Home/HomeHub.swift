@@ -479,7 +479,7 @@ struct HomeHubView: View {
                     if let activeRunCard = viewModel.activeRunCard {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("Active Run")
-                                .font(.headline)
+                                .font(.headline.weight(.heavy))
                                 .foregroundStyle(.secondary)
 
                             Button {
@@ -524,8 +524,9 @@ struct HomeHubView: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(viewModel.identity.displayName)
-                        .font(.headline)
+                        .font(.headline.weight(.bold))
                     Text(viewModel.identity.vehicle)
+                        .font(.subheadline.weight(.semibold))
                         .foregroundStyle(.secondary)
                 }
 
@@ -540,7 +541,11 @@ struct HomeHubView: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(20)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .background(Color.homeCardFill, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .stroke(Color.homeBorder, lineWidth: 1)
+        )
     }
 
     @ViewBuilder
@@ -688,8 +693,9 @@ private struct ActiveRunCardRow: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(card.runName)
-                    .font(.headline)
+                    .font(.headline.weight(.bold))
                 Text("\(card.statusText) · \(card.role.rawValue.capitalized)")
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
 
@@ -700,7 +706,11 @@ private struct ActiveRunCardRow: View {
                 .foregroundStyle(.tertiary)
         }
         .padding(18)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .background(Color.homeCardFill, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
+                .stroke(Color.homeBorder, lineWidth: 1)
+        )
     }
 }
 
@@ -720,10 +730,10 @@ private struct HomeActionRow: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(title)
-                    .font(.headline)
+                    .font(.headline.weight(.bold))
                     .foregroundStyle(.primary)
                 Text(subtitle)
-                    .font(.subheadline)
+                    .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
 
@@ -734,7 +744,11 @@ private struct HomeActionRow: View {
                 .foregroundStyle(.tertiary)
         }
         .padding(18)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .background(Color.homeCardFill, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
+                .stroke(Color.homeBorder, lineWidth: 1)
+        )
     }
 }
 
@@ -755,7 +769,12 @@ private struct PlaceholderDestinationView: View {
     let message: String
 
     var body: some View {
-        ContentUnavailableView(title, systemImage: "steeringwheel", description: Text(message))
+        HomeFallbackView(
+            title: title,
+            eyebrow: "Coming Soon",
+            message: message,
+            systemImage: "steeringwheel"
+        )
             .navigationTitle(title)
     }
 }
@@ -764,10 +783,11 @@ private struct AdminLobbyPlaceholderView: View {
     let runId: String
 
     var body: some View {
-        ContentUnavailableView(
-            "Admin Lobby",
-            systemImage: "person.3.sequence.fill",
-            description: Text("Run \(runId) is ready for lobby setup.")
+        HomeFallbackView(
+            title: "Admin Lobby",
+            eyebrow: "Run Ready",
+            message: "Run \(runId) is ready for lobby setup.",
+            systemImage: "person.3.sequence.fill"
         )
         .navigationTitle("Admin Lobby")
     }
@@ -777,12 +797,67 @@ private struct DriverLobbyPlaceholderView: View {
     let runId: String
 
     var body: some View {
-        ContentUnavailableView(
-            "Driver Lobby",
-            systemImage: "person.2.fill",
-            description: Text("Run \(runId) is ready for driver lobby.")
+        HomeFallbackView(
+            title: "Driver Lobby",
+            eyebrow: "Run Ready",
+            message: "Run \(runId) is ready for driver lobby.",
+            systemImage: "person.2.fill"
         )
         .navigationTitle("Driver Lobby")
+    }
+}
+
+private struct HomeFallbackView: View {
+    let title: String
+    let eyebrow: String
+    let message: String
+    let systemImage: String
+
+    var body: some View {
+        ZStack {
+            Color.homeScreenBackground
+                .ignoresSafeArea()
+
+            VStack(alignment: .leading, spacing: 28) {
+                Spacer(minLength: 40)
+
+                VStack(alignment: .leading, spacing: 18) {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 28, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 64, height: 64)
+                        .background(Color.accentColor, in: Circle())
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(eyebrow.uppercased())
+                            .font(.caption.weight(.bold))
+                            .tracking(3)
+                            .foregroundStyle(.secondary)
+
+                        Text(title)
+                            .font(.system(size: 44, weight: .bold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.78)
+
+                        Text(message)
+                            .font(.title3.weight(.medium))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(28)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.homeCardFill, in: RoundedRectangle(cornerRadius: 32, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 32, style: .continuous)
+                        .stroke(Color.homeBorder, lineWidth: 1)
+                }
+
+                Spacer(minLength: 120)
+            }
+            .padding(.horizontal, 24)
+        }
     }
 }
 
@@ -1094,15 +1169,15 @@ struct SummaryView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
+            VStack(alignment: .leading, spacing: 24) {
                 VStack(alignment: .leading, spacing: 10) {
                     Text(viewModel.title)
-                        .font(.system(size: 44, weight: .bold, design: .rounded))
+                        .font(.system(size: 42, weight: .bold, design: .rounded))
                         .lineLimit(2)
                         .minimumScaleFactor(0.75)
 
                     Text("Drive Summary")
-                        .font(.headline)
+                        .font(.headline.weight(.semibold))
                         .foregroundStyle(.secondary)
                 }
                 .padding(.top, 20)
@@ -1115,7 +1190,11 @@ struct SummaryView: View {
                     }
                     .padding(18)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                    .background(Color.summaryCardFill, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .stroke(Color.summaryBorder, lineWidth: 1)
+                    )
                 }
 
                 HStack(spacing: 12) {
@@ -1124,11 +1203,15 @@ struct SummaryView: View {
                     SummaryMetricView(title: "Hazards", value: viewModel.hazardText)
                 }
                 .padding(16)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+                .background(Color.summaryCardFill, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                        .stroke(Color.summaryBorder, lineWidth: 1)
+                )
 
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Drivers")
-                        .font(.title3.weight(.bold))
+                        .font(.title3.weight(.heavy))
                         .foregroundStyle(.secondary)
 
                     if let currentUserSummary = viewModel.currentUserSummary {
@@ -1141,7 +1224,11 @@ struct SummaryView: View {
                             .foregroundStyle(.secondary)
                             .padding(18)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                            .background(Color.summaryInsetFill, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                                    .stroke(Color.summaryBorder, lineWidth: 1)
+                            )
                     } else {
                         ForEach(viewModel.otherDriverSummaries) { participant in
                             SummaryDriverRow(participant: participant)
@@ -1149,13 +1236,18 @@ struct SummaryView: View {
                     }
                 }
                 .padding(16)
-                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 30, style: .continuous))
+                .background(Color.summaryCardFill, in: RoundedRectangle(cornerRadius: 30, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 30, style: .continuous)
+                        .stroke(Color.summaryBorder, lineWidth: 1)
+                )
             }
             .padding(.horizontal, 24)
             .padding(.bottom, 32)
         }
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
@@ -1200,16 +1292,17 @@ private struct SummaryDriverRow: View {
     let participant: SummaryDriverDisplay
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 12) {
                 Image(systemName: participant.isCurrentUser ? "person.fill.checkmark" : "person.fill")
                     .font(.headline.weight(.semibold))
                     .foregroundStyle(.white)
-                    .frame(width: 42, height: 42)
+                    .frame(width: 44, height: 44)
                     .background(Color.accentColor, in: Circle())
+                    .overlay(Circle().stroke(.white.opacity(0.18), lineWidth: 1))
 
                 Text(participant.title)
-                    .font(.headline)
+                    .font(.headline.weight(.bold))
                     .lineLimit(2)
                     .minimumScaleFactor(0.85)
             }
@@ -1227,8 +1320,12 @@ private struct SummaryDriverRow: View {
                 SummaryStatChip(title: "Status", value: participant.statusText)
             }
         }
-        .padding(14)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .padding(16)
+        .background(Color.summaryInsetFill, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(Color.summaryBorder, lineWidth: 1)
+        )
         .accessibilityElement(children: .combine)
     }
 }
@@ -1240,10 +1337,10 @@ private struct SummaryMetricView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
-                .font(.caption.weight(.semibold))
+                .font(.caption.weight(.bold))
                 .foregroundStyle(.secondary)
             Text(value)
-                .font(.title3.weight(.bold))
+                .font(.title3.weight(.heavy))
                 .lineLimit(1)
                 .minimumScaleFactor(0.65)
         }
@@ -1258,16 +1355,20 @@ private struct SummaryStatChip: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
-                .font(.caption.weight(.semibold))
+                .font(.caption.weight(.bold))
                 .foregroundStyle(.secondary)
             Text(value)
-                .font(.headline.weight(.semibold))
+                .font(.headline.weight(.bold))
                 .lineLimit(2)
                 .minimumScaleFactor(0.75)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(10)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .padding(12)
+        .background(Color.summaryStatFill, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color.summaryBorder, lineWidth: 1)
+        )
     }
 }
 
@@ -1597,16 +1698,16 @@ private struct SettingsDestinationView: View {
 
                 if viewModel.showsDiagnostics {
                     SettingsSection(title: "Debug") {
-                    DisclosureGroup {
-                        ForEach(viewModel.diagnosticsRows) { row in
-                            LabeledContent(row.title, value: row.value)
+                        DisclosureGroup {
+                            ForEach(viewModel.diagnosticsRows) { row in
+                                LabeledContent(row.title, value: row.value)
+                            }
+                        } label: {
+                            Label("Development Diagnostics", systemImage: "stethoscope")
                         }
-                    } label: {
-                        Label("Development Diagnostics", systemImage: "stethoscope")
+                        .accessibilityIdentifier("settings.diagnosticsDisclosure")
                     }
-                    .accessibilityIdentifier("settings.diagnosticsDisclosure")
                 }
-            }
             }
             .padding(.horizontal, 24)
             .padding(.top, 20)
@@ -1614,6 +1715,7 @@ private struct SettingsDestinationView: View {
         }
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .navigationTitle("Settings")
+        .navigationBarTitleDisplayMode(.inline)
         .task {
             await viewModel.loadAccount()
             viewModel.refreshHistory()
@@ -1669,14 +1771,22 @@ private struct SettingsDestinationView: View {
                 }
                 .font(.headline.weight(.semibold))
                 .padding(16)
-                .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .background(Color.settingsInlineFill, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .stroke(Color.settingsBorder, lineWidth: 1)
+                )
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Edit Profile")
             .accessibilityIdentifier("settings.editProfileButton")
         }
         .padding(20)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 30, style: .continuous))
+        .background(Color.settingsCardFill, in: RoundedRectangle(cornerRadius: 30, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 30, style: .continuous)
+                .stroke(Color.settingsBorder, lineWidth: 1)
+        )
     }
 }
 
@@ -1694,7 +1804,11 @@ private struct SettingsSection<Content: View>: View {
                 content
             }
             .padding(16)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+            .background(Color.settingsCardFill, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 26, style: .continuous)
+                    .stroke(Color.settingsBorder, lineWidth: 1)
+            )
         }
     }
 }
@@ -1809,8 +1923,6 @@ private struct SettingsProfileEditView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Edit Profile")
-                            .font(.system(size: 40, weight: .bold, design: .rounded))
                         Text("Keep your display name and vehicle visible to other drivers.")
                             .font(.headline)
                             .foregroundStyle(.secondary)
@@ -1819,36 +1931,44 @@ private struct SettingsProfileEditView: View {
                     .padding(.top, 20)
 
                     VStack(spacing: 0) {
-                    TextField("Display Name", text: $displayName)
-                        .textContentType(.name)
+                        TextField("Display Name", text: $displayName)
+                            .textContentType(.name)
+                            .font(.body.weight(.medium))
                             .padding(.vertical, 14)
 
                         Divider()
 
-                    TextField("Car Make", text: $carMake)
+                        TextField("Car Make", text: $carMake)
+                            .font(.body.weight(.medium))
                             .padding(.vertical, 14)
 
-                    SettingsSuggestionRow(suggestions: viewModel.carMakeSuggestions(query: carMake)) { suggestion in
-                        carMake = suggestion
-                    }
+                        SettingsSuggestionRow(suggestions: viewModel.carMakeSuggestions(query: carMake)) { suggestion in
+                            carMake = suggestion
+                        }
 
                         Divider()
 
-                    TextField("Car Model", text: $carModel)
+                        TextField("Car Model", text: $carModel)
+                            .font(.body.weight(.medium))
                             .padding(.vertical, 14)
 
-                    SettingsSuggestionRow(suggestions: viewModel.carModelSuggestions(make: carMake, query: carModel)) { suggestion in
-                        carModel = suggestion
-                    }
+                        SettingsSuggestionRow(suggestions: viewModel.carModelSuggestions(make: carMake, query: carModel)) { suggestion in
+                            carModel = suggestion
+                        }
                     }
                     .padding(.horizontal, 18)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                    .background(Color.settingsCardFill, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .stroke(Color.settingsBorder, lineWidth: 1)
+                    )
                 }
                 .padding(.horizontal, 24)
                 .padding(.bottom, 32)
             }
             .background(Color(.systemGroupedBackground).ignoresSafeArea())
             .navigationTitle("Edit Profile")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
@@ -1901,6 +2021,126 @@ private extension String {
 }
 
 private extension Color {
+    static var homeScreenBackground: Color {
+        #if canImport(UIKit)
+        Color(UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor.black
+                : UIColor.systemGroupedBackground
+        })
+        #else
+        Color(.systemGroupedBackground)
+        #endif
+    }
+
+    static var homeCardFill: Color {
+        #if canImport(UIKit)
+        Color(UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(white: 0.105, alpha: 1)
+                : UIColor.secondarySystemGroupedBackground
+        })
+        #else
+        Color(.secondarySystemGroupedBackground)
+        #endif
+    }
+
+    static var homeBorder: Color {
+        #if canImport(UIKit)
+        Color(UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(white: 1, alpha: 0.075)
+                : UIColor(white: 0, alpha: 0.045)
+        })
+        #else
+        Color.primary.opacity(0.08)
+        #endif
+    }
+
+    static var summaryCardFill: Color {
+        #if canImport(UIKit)
+        Color(UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(white: 0.105, alpha: 1)
+                : UIColor.secondarySystemGroupedBackground
+        })
+        #else
+        Color(.secondarySystemGroupedBackground)
+        #endif
+    }
+
+    static var summaryInsetFill: Color {
+        #if canImport(UIKit)
+        Color(UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(white: 0.085, alpha: 1)
+                : UIColor.systemBackground
+        })
+        #else
+        Color(.systemBackground)
+        #endif
+    }
+
+    static var summaryStatFill: Color {
+        #if canImport(UIKit)
+        Color(UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(white: 0.14, alpha: 1)
+                : UIColor.systemGroupedBackground
+        })
+        #else
+        Color(.systemGroupedBackground)
+        #endif
+    }
+
+    static var summaryBorder: Color {
+        #if canImport(UIKit)
+        Color(UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(white: 1, alpha: 0.075)
+                : UIColor(white: 0, alpha: 0.045)
+        })
+        #else
+        Color.primary.opacity(0.08)
+        #endif
+    }
+
+    static var settingsCardFill: Color {
+        #if canImport(UIKit)
+        Color(UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(white: 0.11, alpha: 1)
+                : UIColor.secondarySystemGroupedBackground
+        })
+        #else
+        Color(.secondarySystemGroupedBackground)
+        #endif
+    }
+
+    static var settingsInlineFill: Color {
+        #if canImport(UIKit)
+        Color(UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(white: 0.08, alpha: 1)
+                : UIColor.systemGroupedBackground
+        })
+        #else
+        Color(.systemGroupedBackground)
+        #endif
+    }
+
+    static var settingsBorder: Color {
+        #if canImport(UIKit)
+        Color(UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(white: 1, alpha: 0.07)
+                : UIColor(white: 0, alpha: 0.05)
+        })
+        #else
+        Color.primary.opacity(0.08)
+        #endif
+    }
+
     init(hex: String) {
         let scanner = Scanner(string: hex.trimmingCharacters(in: CharacterSet(charactersIn: "#")))
         var value: UInt64 = 0

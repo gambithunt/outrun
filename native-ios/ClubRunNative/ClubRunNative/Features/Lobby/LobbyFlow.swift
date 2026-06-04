@@ -595,58 +595,40 @@ private struct DriversSheetView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                LazyVStack(spacing: 12) {
+                LazyVStack(alignment: .leading, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Drivers")
+                            .font(.system(size: 38, weight: .bold, design: .rounded))
+                        Text(driverSummary)
+                            .font(.headline.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.bottom, 8)
+
                     if rows.isEmpty {
-                        ContentUnavailableView(
-                            "No Drivers Yet",
-                            systemImage: "person.2.slash",
-                            description: Text("Drivers will appear here after they join the run.")
-                        )
-                        .padding(.top, 60)
+                        DriversEmptyCard()
                     }
 
                     ForEach(rows) { row in
-                        HStack(spacing: 12) {
-                            if let badge = row.badge {
-                                Text(badge.text)
-                                    .font(.headline.weight(.semibold))
-                                    .foregroundStyle(.white)
-                                    .frame(width: 42, height: 42)
-                                    .background(Color(hex: badge.colorHex), in: Circle())
-                            } else {
-                                Image(systemName: "person.fill")
-                                    .font(.headline)
-                                    .foregroundStyle(.white)
-                                    .frame(width: 42, height: 42)
-                                    .background(Color.gray, in: Circle())
-                            }
-
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(row.displayName)
-                                    .font(.headline)
-                                Text(row.vehicle)
-                                    .foregroundStyle(.secondary)
-                            }
-
-                            Spacer()
-
-                            Text(row.statusText)
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(statusColor(row.classification))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(statusColor(row.classification).opacity(0.12), in: Capsule())
-                        }
-                        .padding(16)
-                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-                        .accessibilityElement(children: .combine)
+                        DriversSheetRow(row: row, statusColor: statusColor(row.classification))
                     }
                 }
-                .padding(20)
+                .padding(.horizontal, 24)
+                .padding(.top, 24)
+                .padding(.bottom, 32)
             }
             .background(Color(.systemGroupedBackground).ignoresSafeArea())
-            .navigationTitle("Drivers")
+            .navigationBarTitleDisplayMode(.inline)
         }
+    }
+
+    private var driverSummary: String {
+        if rows.isEmpty {
+            return "No drivers have joined yet."
+        }
+
+        let waiting = rows.filter { $0.classification == .waiting }.count
+        return "\(rows.count) joined · \(waiting) waiting"
     }
 
     private func statusColor(_ classification: LobbyDriverClassification) -> Color {
@@ -657,6 +639,84 @@ private struct DriversSheetView: View {
             .secondary
         case .left:
             .orange
+        }
+    }
+}
+
+private struct DriversEmptyCard: View {
+    var body: some View {
+        HStack(spacing: 16) {
+            Image(systemName: "person.2.slash")
+                .font(.title2.weight(.semibold))
+                .foregroundStyle(.white)
+                .frame(width: 54, height: 54)
+                .background(Color.secondary, in: Circle())
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("No Drivers Yet")
+                    .font(.headline.weight(.bold))
+                Text("Drivers will appear here after they join the run.")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.lobbyCardFill, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
+                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+        }
+    }
+}
+
+private struct DriversSheetRow: View {
+    let row: LobbyDriverRow
+    let statusColor: Color
+
+    var body: some View {
+        HStack(spacing: 14) {
+            driverBadge
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(row.displayName)
+                    .font(.headline.weight(.bold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                Text(row.vehicle)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 12)
+
+            LobbyStatusPill(text: row.statusText, tint: statusColor)
+        }
+        .padding(18)
+        .background(Color.lobbyCardFill, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
+                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder
+    private var driverBadge: some View {
+        if let badge = row.badge {
+            Text(badge.text)
+                .font(.headline.weight(.bold))
+                .foregroundStyle(.white)
+                .frame(width: 52, height: 52)
+                .background(Color(hex: badge.colorHex), in: Circle())
+        } else {
+            Image(systemName: "person.fill")
+                .font(.headline.weight(.bold))
+                .foregroundStyle(.white)
+                .frame(width: 52, height: 52)
+                .background(Color.gray, in: Circle())
         }
     }
 }
@@ -791,9 +851,9 @@ private struct DriverLobbyStatusCard: View {
     let runName: String
 
     var body: some View {
-        VStack(spacing: 22) {
+        VStack(spacing: 20) {
             HStack(alignment: .center) {
-                Text("Run Status")
+                Text("Lobby Access")
                     .font(.caption.weight(.bold))
                     .tracking(2.2)
                     .foregroundStyle(.secondary)
@@ -804,29 +864,45 @@ private struct DriverLobbyStatusCard: View {
                 LobbyStatusPill(text: "Waiting", tint: .orange)
             }
 
-            VStack(spacing: 10) {
-                Image(systemName: "clock.fill")
-                    .font(.title2.weight(.bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 58, height: 58)
-                    .background(Color.orange, in: Circle())
-
+            VStack(spacing: 8) {
                 Text(runName)
-                    .font(.system(size: 34, weight: .bold, design: .rounded))
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.72)
-                    .multilineTextAlignment(.center)
-
-                Text("Waiting for admin")
                     .font(.headline.weight(.semibold))
-
-                Text("Live Drive opens automatically when the run starts.")
-                    .font(.footnote.weight(.medium))
                     .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+
+                HStack(spacing: 14) {
+                    Image(systemName: "clock.fill")
+                        .font(.title2.weight(.bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 58, height: 58)
+                        .background(Color.orange, in: Circle())
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Waiting for admin")
+                            .font(.title2.weight(.bold))
+                        Text("Live Drive opens when the run starts.")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .padding(18)
+                .background(Color.lobbyActionFill, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                }
+                .accessibilityElement(children: .combine)
             }
             .frame(maxWidth: .infinity)
+
+            Text("Stay on this screen. You will be moved into the drive automatically.")
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity)
         }
         .padding(24)
         .background(Color.lobbyCardFill, in: RoundedRectangle(cornerRadius: 32, style: .continuous))

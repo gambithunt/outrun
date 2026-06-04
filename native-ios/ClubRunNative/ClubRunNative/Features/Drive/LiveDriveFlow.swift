@@ -2513,28 +2513,45 @@ private struct LiveDriveBottomControls: View {
     let onRecenter: () -> Void
 
     var body: some View {
-        HStack(spacing: 10) {
-            Button {
-                onRecenter()
-            } label: {
-                Image(systemName: "location.fill")
-            }
-            .accessibilityLabel("Recenter on my location")
+        HStack(spacing: 12) {
+            LiveDriveRoundControlButton(
+                systemName: "location.fill",
+                accessibilityLabel: "Recenter on my location",
+                action: onRecenter
+            )
 
-            Button {} label: {
-                Image(systemName: "list.bullet")
-            }
-            .accessibilityLabel("Drive details")
+            LiveDriveRoundControlButton(
+                systemName: "list.bullet",
+                accessibilityLabel: "Drive details",
+                action: {}
+            )
         }
-        .font(.title3.weight(.semibold))
-        .buttonStyle(.borderedProminent)
-        .tint(.white.opacity(0.74))
-        .foregroundStyle(.blue)
-        .controlSize(.large)
-        .padding(8)
-        .liveDriveGlassSurface(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
+        .padding(10)
+        .liveDriveGlassSurface(RoundedRectangle(cornerRadius: 18, style: .continuous), tintOpacity: 0.88)
+        .shadow(color: .black.opacity(0.16), radius: 14, y: 5)
         .accessibilityIdentifier("liveDrive.bottomControls")
+    }
+}
+
+private struct LiveDriveRoundControlButton: View {
+    let systemName: String
+    let accessibilityLabel: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(.blue)
+                .frame(width: 56, height: 56)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .strokeBorder(.white.opacity(0.36), lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(accessibilityLabel)
     }
 }
 
@@ -2543,26 +2560,66 @@ private struct LiveDriveDriverDetailView: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                Section {
-                    HStack(spacing: 12) {
-                        Text(marker.badgeText)
-                            .font(.headline.weight(.semibold))
-                            .foregroundStyle(.white)
-                            .frame(width: 44, height: 44)
-                            .background(Color(hex: marker.badgeColorHex), in: Circle())
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(marker.displayName)
-                                .font(.headline)
-                            Text(marker.vehicle)
-                                .foregroundStyle(.secondary)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    VStack(alignment: .leading, spacing: 18) {
+                        HStack(spacing: 14) {
+                            Text(marker.badgeText)
+                                .font(.title3.weight(.bold))
+                                .foregroundStyle(.white)
+                                .frame(width: 58, height: 58)
+                                .background(Color(hex: marker.badgeColorHex), in: Circle())
+                                .overlay(Circle().stroke(.white.opacity(0.82), lineWidth: 2))
+                                .shadow(color: .black.opacity(0.14), radius: 8, y: 3)
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(marker.displayName)
+                                    .font(.title2.weight(.bold))
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.82)
+                                Text(marker.vehicle)
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Spacer()
+                        }
+
+                        VStack(spacing: 10) {
+                            LiveDriveHazardDetailRow(title: "Status", value: marker.state.label)
+                            LiveDriveHazardDetailRow(title: "Location", value: marker.freshnessText)
                         }
                     }
-                    LabeledContent("Status", value: marker.state.label)
-                    LabeledContent("Location", value: marker.freshnessText)
+                    .padding(18)
+                    .liveDriveGlassSurface(RoundedRectangle(cornerRadius: 28, style: .continuous), tintOpacity: 0.9)
+                    .accessibilityElement(children: .combine)
+
+                    Text(driverStateHelpText)
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 4)
                 }
+                .padding(.horizontal, 20)
+                .padding(.top, 18)
+                .padding(.bottom, 28)
             }
+            .background(Color(.systemGroupedBackground).ignoresSafeArea())
             .navigationTitle("Driver")
+        }
+    }
+
+    private var driverStateHelpText: String {
+        switch marker.state {
+        case .current:
+            "This is your live position."
+        case .live:
+            "This driver is sharing a recent live position."
+        case .stale:
+            "This driver has not sent a fresh position recently."
+        case .offline:
+            "This driver is currently offline."
+        case .stopped:
+            "This driver has finished or left the drive."
         }
     }
 }

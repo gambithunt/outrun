@@ -1037,11 +1037,42 @@ private enum RoutePanelState: CaseIterable {
     }
 }
 
+private enum RouteSetupSurface {
+    static func controlFill(_ colorScheme: ColorScheme) -> Color {
+        colorScheme == .dark ? Color.black.opacity(0.26) : Color.white.opacity(0.24)
+    }
+
+    static func panelFill(_ colorScheme: ColorScheme) -> Color {
+        colorScheme == .dark ? Color.black.opacity(0.22) : Color.white.opacity(0.16)
+    }
+
+    static func sheetFill(_ colorScheme: ColorScheme) -> Color {
+        colorScheme == .dark ? Color.black.opacity(0.36) : Color.white.opacity(0.72)
+    }
+
+    static func inlineFill(_ colorScheme: ColorScheme) -> Color {
+        colorScheme == .dark ? Color.white.opacity(0.08) : Color.white.opacity(0.58)
+    }
+
+    static func solidInputFill(_ colorScheme: ColorScheme) -> Color {
+        colorScheme == .dark ? Color.white.opacity(0.10) : Color.white.opacity(0.74)
+    }
+
+    static func border(_ colorScheme: ColorScheme) -> Color {
+        colorScheme == .dark ? Color.white.opacity(0.24) : Color.white.opacity(0.42)
+    }
+
+    static func subtleBorder(_ colorScheme: ColorScheme) -> Color {
+        colorScheme == .dark ? Color.white.opacity(0.10) : Color.black.opacity(0.05)
+    }
+}
+
 private struct RouteSetupTopBar: View {
     let topInset: CGFloat
     let onBack: () -> Void
     let onLocate: () -> Void
     let onSettings: () -> Void
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 10) {
@@ -1061,8 +1092,8 @@ private struct RouteSetupTopBar: View {
                     .padding(.horizontal, 26)
                     .padding(.vertical, 15)
                     .background(.ultraThinMaterial, in: Capsule())
-                    .background(Color.white.opacity(0.10), in: Capsule())
-                    .overlay(Capsule().stroke(.white.opacity(0.28), lineWidth: 1))
+                    .background(RouteSetupSurface.controlFill(colorScheme), in: Capsule())
+                    .overlay(Capsule().stroke(RouteSetupSurface.border(colorScheme), lineWidth: 1))
             }
 
             CircleIconButton(systemName: "location.north", accessibilityLabel: "Center Map", action: onLocate)
@@ -1078,6 +1109,7 @@ private struct CircleIconButton: View {
     let systemName: String
     let accessibilityLabel: String
     let action: () -> Void
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         Button(action: action) {
@@ -1085,8 +1117,8 @@ private struct CircleIconButton: View {
                 .font(.title3.weight(.semibold))
                 .frame(width: 56, height: 56)
                 .background(.ultraThinMaterial, in: Circle())
-                .background(Color.white.opacity(0.10), in: Circle())
-                .overlay(Circle().stroke(.white.opacity(0.28), lineWidth: 1))
+                .background(RouteSetupSurface.controlFill(colorScheme), in: Circle())
+                .overlay(Circle().stroke(RouteSetupSurface.border(colorScheme), lineWidth: 1))
         }
         .buttonStyle(.plain)
         .accessibilityLabel(accessibilityLabel)
@@ -1143,6 +1175,7 @@ private struct RouteEditorPanel: View {
     @State private var draggingWaypointID: String?
     @State private var dragStartWaypointIndex: Int?
     @State private var dragCurrentWaypointIndex: Int?
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack {
@@ -1204,9 +1237,9 @@ private struct RouteEditorPanel: View {
             .padding(.bottom, panelState == .compact ? max(bottomInset + 46, 62) : max(bottomInset + 18, 26))
             .frame(maxWidth: .infinity)
             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 32))
-            .background(Color.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 32))
+            .background(RouteSetupSurface.panelFill(colorScheme), in: RoundedRectangle(cornerRadius: 32))
             .clipShape(RoundedRectangle(cornerRadius: 32))
-            .overlay(RoundedRectangle(cornerRadius: 32).stroke(.white.opacity(0.28), lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: 32).stroke(RouteSetupSurface.border(colorScheme), lineWidth: 1))
             .shadow(color: .black.opacity(0.12), radius: 18, y: 8)
             .offset(y: panelState == .compact ? max(bottomInset + 8, 30) : 0)
             .accessibilityIdentifier("routeSetup.bottomSheet")
@@ -1375,7 +1408,8 @@ private struct RouteEditorPanel: View {
         }
         .padding(12)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18))
-        .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 18))
+        .background(RouteSetupSurface.inlineFill(colorScheme), in: RoundedRectangle(cornerRadius: 18))
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(RouteSetupSurface.subtleBorder(colorScheme), lineWidth: 1))
     }
 
     @ViewBuilder
@@ -1393,7 +1427,8 @@ private struct RouteEditorPanel: View {
             }
             .padding(12)
             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18))
-            .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 18))
+            .background(RouteSetupSurface.inlineFill(colorScheme), in: RoundedRectangle(cornerRadius: 18))
+            .overlay(RoundedRectangle(cornerRadius: 18).stroke(RouteSetupSurface.subtleBorder(colorScheme), lineWidth: 1))
             .accessibilityIdentifier("routeSetup.emptyStopsState")
         } else {
             ScrollView {
@@ -1486,6 +1521,7 @@ private struct RouteStopListRow: View {
     let isReorderable: Bool
     var isDragging = false
     var dragGesture: AnyGesture<DragGesture.Value>?
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         HStack(spacing: 10) {
@@ -1516,7 +1552,8 @@ private struct RouteStopListRow: View {
         .padding(.vertical, 7)
         .padding(.horizontal, 12)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
-        .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 16))
+        .background(RouteSetupSurface.inlineFill(colorScheme), in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(RouteSetupSurface.subtleBorder(colorScheme), lineWidth: 1))
         .scaleEffect(isDragging ? 1.015 : 1)
     }
 }
@@ -1538,6 +1575,7 @@ private struct RouteSetupStopButton: View {
     let icon: String
     let isPrimary: Bool
     let action: () -> Void
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         Button(action: action) {
@@ -1545,7 +1583,8 @@ private struct RouteSetupStopButton: View {
                 Image(systemName: icon)
                     .font(.title2.weight(.semibold))
                     .frame(width: 58, height: 58)
-                    .background(isPrimary ? Color.white.opacity(0.96) : Color.white.opacity(0.72), in: Circle())
+                    .background(stopButtonFill, in: Circle())
+                    .overlay(Circle().stroke(RouteSetupSurface.subtleBorder(colorScheme), lineWidth: 1))
                     .foregroundStyle(isPrimary ? Color.accentColor : Color.primary)
                 Text(title)
                     .font(.caption.weight(.heavy))
@@ -1572,11 +1611,19 @@ private struct RouteSetupStopButton: View {
             title.capitalized
         }
     }
+
+    private var stopButtonFill: Color {
+        if isPrimary {
+            return colorScheme == .dark ? Color.white.opacity(0.92) : Color.white.opacity(0.96)
+        }
+        return colorScheme == .dark ? Color.white.opacity(0.82) : Color.white.opacity(0.76)
+    }
 }
 
 private struct RouteMetricPill: View {
     let title: String
     let value: String
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -1592,7 +1639,8 @@ private struct RouteMetricPill: View {
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
-        .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 16))
+        .background(RouteSetupSurface.inlineFill(colorScheme), in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(RouteSetupSurface.subtleBorder(colorScheme), lineWidth: 1))
     }
 }
 
@@ -1601,11 +1649,29 @@ private struct RouteSettingsSheet: View {
     let canExportGPX: Bool
     let onImportGPX: () -> Void
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        NavigationStack {
-            List {
-                Section("Preferred Units") {
+        VStack(alignment: .leading, spacing: 22) {
+            HStack {
+                Text("Route Settings")
+                    .font(.title2.weight(.bold))
+                Spacer()
+                Button("Done") {
+                    dismiss()
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+            }
+
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Preferred Units")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.secondary)
+                    .textCase(.uppercase)
+                    .tracking(1.2)
+
+                VStack(spacing: 14) {
                     Picker("Distance", selection: $preferredUnits) {
                         ForEach(RoutePreferredUnits.allCases) { units in
                             Text(units.label).tag(units)
@@ -1614,36 +1680,77 @@ private struct RouteSettingsSheet: View {
                     .pickerStyle(.segmented)
                     .accessibilityIdentifier("routeSettings.preferredUnitsPicker")
                 }
+                .padding(14)
+                .background(RouteSetupSurface.solidInputFill(colorScheme), in: RoundedRectangle(cornerRadius: 20))
+                .overlay(RoundedRectangle(cornerRadius: 20).stroke(RouteSetupSurface.subtleBorder(colorScheme), lineWidth: 1))
+            }
 
-                Section("GPX") {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("GPX")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.secondary)
+                    .textCase(.uppercase)
+                    .tracking(1.2)
+
+                VStack(spacing: 0) {
                     Button {
                         onImportGPX()
                     } label: {
-                        Label("Import GPX", systemImage: "square.and.arrow.down")
+                        RouteSettingsActionRow(title: "Import GPX", subtitle: "Preview and save a GPX route", systemImage: "square.and.arrow.down")
                     }
+                    .buttonStyle(.plain)
                     .accessibilityIdentifier("routeSettings.importGPXButton")
 
-                    HStack {
-                        Label("Export GPX", systemImage: "square.and.arrow.up")
-                        Spacer()
-                        Text(canExportGPX ? "Later" : "No route")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .foregroundStyle(.secondary)
+                    Divider()
+                        .padding(.leading, 44)
+
+                    RouteSettingsActionRow(
+                        title: "Export GPX",
+                        subtitle: canExportGPX ? "Coming later" : "No route available",
+                        systemImage: "square.and.arrow.up",
+                        isDisabled: true
+                    )
                     .accessibilityElement(children: .combine)
                     .accessibilityLabel(canExportGPX ? "Export GPX coming later" : "Export GPX unavailable without a route")
                 }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 6)
+                .background(RouteSetupSurface.solidInputFill(colorScheme), in: RoundedRectangle(cornerRadius: 20))
+                .overlay(RoundedRectangle(cornerRadius: 20).stroke(RouteSetupSurface.subtleBorder(colorScheme), lineWidth: 1))
             }
-            .navigationTitle("Route Settings")
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") {
-                        dismiss()
-                    }
-                }
-            }
+
+            Spacer(minLength: 0)
         }
+        .padding(.horizontal, 24)
+        .padding(.top, 28)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(RouteSetupSurface.sheetFill(colorScheme))
+    }
+}
+
+private struct RouteSettingsActionRow: View {
+    let title: String
+    let subtitle: String
+    let systemImage: String
+    var isDisabled = false
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: systemImage)
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(isDisabled ? Color.secondary : Color.accentColor)
+                .frame(width: 32)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(isDisabled ? .secondary : .primary)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+        .padding(.vertical, 12)
     }
 }
 
@@ -1659,12 +1766,41 @@ private struct RouteStopSelectionSheet: View {
     @State private var isSearching = false
     @State private var message: String?
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        NavigationStack {
-            List {
-                Section {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack {
+                Button("Cancel") {
+                    dismiss()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+
+                Spacer()
+
+                Button("Search") {
+                    Task {
+                        await search()
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .disabled(query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+
+            Text(title)
+                .font(.title.weight(.bold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
+
+            VStack(spacing: 0) {
+                HStack(spacing: 10) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(.secondary)
                     TextField("Search for a place", text: $query)
+                        .font(.headline)
                         .textInputAutocapitalization(.words)
                         .autocorrectionDisabled()
                         .submitLabel(.search)
@@ -1674,89 +1810,96 @@ private struct RouteStopSelectionSheet: View {
                             }
                         }
                         .accessibilityIdentifier("routeStopPicker.searchField")
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 14)
 
+                Divider()
+                    .padding(.leading, 54)
+
+                VStack(spacing: 0) {
                     Button {
                         onPinDrop()
                         dismiss()
                     } label: {
-                        Label("Drop a pin on the map", systemImage: "pin.fill")
+                        RouteStopPickerActionRow(title: "Drop a pin on the map", subtitle: "Fine tune the point directly on the map", systemImage: "pin.fill")
                     }
+                    .buttonStyle(.plain)
 
                     if let onUseDevelopmentCurrentLocation {
+                        Divider()
+                            .padding(.leading, 54)
+
                         Button {
                             onUseDevelopmentCurrentLocation()
                             dismiss()
                         } label: {
-                            Label("Use development current location", systemImage: "location.fill")
+                            RouteStopPickerActionRow(title: "Use development current location", subtitle: "Temporary testing shortcut", systemImage: "location.fill")
                         }
+                        .buttonStyle(.plain)
                     }
                 }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 6)
+            }
+            .background(RouteSetupSurface.solidInputFill(colorScheme), in: RoundedRectangle(cornerRadius: 24))
+            .overlay(RoundedRectangle(cornerRadius: 24).stroke(RouteSetupSurface.subtleBorder(colorScheme), lineWidth: 1))
 
-                if isSearching {
-                    Section {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 10) {
+                    if isSearching {
                         ProgressView()
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
                     }
-                }
 
-                if let message {
-                    Section {
+                    if let message {
                         Text(message)
+                            .font(.subheadline)
                             .foregroundStyle(.secondary)
+                            .padding(.vertical, 10)
                     }
-                }
 
-                if !results.isEmpty {
-                    Section("Results") {
-                        ForEach(results) { result in
-                            Button {
-                                onSelect(result)
-                                dismiss()
-                            } label: {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(result.title)
-                                        .font(.headline)
-                                    if !result.subtitle.isEmpty {
-                                        Text(result.subtitle)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(2)
-                                    }
+                    if !results.isEmpty {
+                        Text("Results")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.secondary)
+                            .textCase(.uppercase)
+                            .tracking(1.2)
+
+                        VStack(spacing: 8) {
+                            ForEach(results) { result in
+                                Button {
+                                    onSelect(result)
+                                    dismiss()
+                                } label: {
+                                    RouteStopPickerResultRow(result: result)
                                 }
+                                .buttonStyle(.plain)
+                                .accessibilityIdentifier("routeStopPicker.result")
                             }
-                            .accessibilityIdentifier("routeStopPicker.result")
                         }
                     }
                 }
+                .padding(.bottom, 12)
             }
-            .scrollContentBackground(.hidden)
-            .background(Color.clear)
-            .navigationTitle(title)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Search") {
-                        Task {
-                            await search()
-                        }
-                    }
-                    .disabled(query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-            }
-            .task(id: query) {
-                guard query.trimmingCharacters(in: .whitespacesAndNewlines).count >= 3 else {
-                    results = []
-                    message = nil
-                    return
-                }
 
-                try? await Task.sleep(nanoseconds: 350_000_000)
-                if !Task.isCancelled {
-                    await search()
-                }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 22)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(RouteSetupSurface.sheetFill(colorScheme))
+        .task(id: query) {
+            guard query.trimmingCharacters(in: .whitespacesAndNewlines).count >= 3 else {
+                results = []
+                message = nil
+                return
+            }
+
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            if !Task.isCancelled {
+                await search()
             }
         }
     }
@@ -1788,6 +1931,62 @@ private struct RouteStopSelectionSheet: View {
             results = []
             message = "Search is unavailable. Try dropping a pin."
         }
+    }
+}
+
+private struct RouteStopPickerActionRow: View {
+    let title: String
+    let subtitle: String
+    let systemImage: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: systemImage)
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 30)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.subheadline.weight(.semibold))
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+        .padding(.vertical, 12)
+    }
+}
+
+private struct RouteStopPickerResultRow: View {
+    let result: RouteStopSearchResult
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "mappin.circle.fill")
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 34)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(result.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                if !result.subtitle.isEmpty {
+                    Text(result.subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(RouteSetupSurface.solidInputFill(colorScheme), in: RoundedRectangle(cornerRadius: 18))
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(RouteSetupSurface.subtleBorder(colorScheme), lineWidth: 1))
     }
 }
 
