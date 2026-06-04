@@ -296,6 +296,24 @@ struct HazardConfirmation: Codable, Equatable {
     let confirmedBy: String
     let reporterName: String
     let confirmedAt: Int64
+    let outcome: HazardConfirmationOutcome?
+
+    init(
+        confirmedBy: String,
+        reporterName: String,
+        confirmedAt: Int64,
+        outcome: HazardConfirmationOutcome? = nil
+    ) {
+        self.confirmedBy = confirmedBy
+        self.reporterName = reporterName
+        self.confirmedAt = confirmedAt
+        self.outcome = outcome
+    }
+}
+
+enum HazardConfirmationOutcome: String, Codable, Equatable {
+    case stillThere = "still_there"
+    case gone
 }
 
 enum DriverPresence: String, Codable, Equatable {

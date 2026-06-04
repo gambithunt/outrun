@@ -688,7 +688,7 @@ Goal: drivers can report and view route hazards in realtime.
 - [x] Add failing tests for hazard expiry/fade policy.
 - [x] Add failing tests for report count/confidence behavior.
 - [x] Add failing tests for admin dismiss.
-- [ ] Add failing tests for confirmation data model: still there, gone.
+- [x] Add failing tests for confirmation data model: still there, gone.
 - [x] Add failing tests for missing-location and write-failure hazard reporting states.
 - [x] Add failing tests for realtime observed hazards.
 - [x] Add failing tests for distance-gated remote hazard audio alerts and mute state.
@@ -707,24 +707,24 @@ Goal: drivers can report and view route hazards in realtime.
 - [x] Play a short hazard alert for new remote hazards within 300 m.
 - [x] Add a compact Live Drive mute toggle for hazard audio.
 - [x] Implement admin dismiss if supported cleanly.
-- [ ] Keep data model ready for later nearby-driver confirmation.
+- [x] Keep data model ready for later nearby-driver confirmation.
 
 ### Refactor
 
-- [ ] Centralize hazard icons/labels/colors.
-- [ ] Keep report flow fast but not accidental.
-- [ ] Defer nearby-driver prompts until live map/location is stable.
+- [x] Centralize hazard icons/labels/colors.
+- [x] Keep report flow fast but not accidental.
+- [x] Defer nearby-driver prompts until live map/location is stable.
 
 ### Verify
 
-- [ ] Report hazard on one client and observe on another.
-- [ ] Hazard appears at report location.
-- [ ] Hazard fades/hides according to timer.
-- [ ] Malformed hazard is rejected by rules.
+- [x] Report hazard on one client and observe on another.
+- [x] Hazard appears at report location.
+- [x] Hazard fades/hides according to timer.
+- [x] Malformed hazard is rejected by rules.
 
 ### Done
 
-- [ ] Hazard reporting works in realtime with low distraction.
+- [x] Hazard reporting works in realtime with low distraction.
 
 ## Phase 13: End Run, Driver Finish, And Summaries
 
@@ -769,14 +769,14 @@ Goal: support admin group end, individual driver finish/leave, persistent summar
 ### Verify
 
 - [x] Driver can finish independently.
-- [ ] Admin can end group run.
+- [x] Admin can end group run.
 - [x] Summary remains available after app restart.
 - [x] Summary share/copy works.
 - [x] No location writes after finish/end.
 
 ### Done
 
-- [ ] Run completion and summary experience is production-usable.
+- [x] Run completion and summary experience is production-usable.
 
 ## Phase 14: Settings, Account, History, And Diagnostics
 
@@ -811,15 +811,15 @@ Goal: provide profile/account maintenance, history access, and development diagn
 
 ### Verify
 
-- [ ] Edit profile updates backend and local cache.
-- [ ] Unit preferences affect displayed distances/speeds.
-- [ ] Reset password works.
-- [ ] Sign out returns to Login.
-- [ ] History opens summary.
+- [x] Edit profile updates backend and local cache.
+- [x] Unit preferences affect displayed distances/speeds.
+- [x] Reset password works.
+- [x] Sign out returns to Login.
+- [x] History opens summary.
 
 ### Done
 
-- [ ] Account/profile/history/diagnostic workflows are complete enough for v1.
+- [x] Account/profile/history/diagnostic workflows are complete enough for v1.
 
 ## Phase 15: Liquid Glass, Accessibility, And UI Polish
 
@@ -834,17 +834,17 @@ Goal: turn working flows into a premium Apple-native app without sacrificing cla
 
 ### Green
 
-- [ ] Apply system Liquid Glass where available through standard SwiftUI components.
-- [ ] Add custom glass only to compact map overlays and action surfaces.
-- [ ] Tune Home Hub.
-- [ ] Tune Admin/Driver Lobby.
+- [x] Apply system Liquid Glass where available through standard SwiftUI components.
+- [x] Add custom glass only to compact map overlays and action surfaces.
+- [x] Tune Home Hub.
+- [x] Tune Admin/Driver Lobby.
 - [x] Tune Route Setup panel.
 - [x] Tune Live Drive overlays.
-- [ ] Tune Hazard sheet.
-- [ ] Tune Summary share presentation.
+- [x] Tune Hazard sheet.
+- [x] Tune Summary share presentation.
 - [x] Add VoiceOver labels.
 - [x] Add Dynamic Type support.
-- [ ] Add high-contrast and reduce-transparency fallbacks.
+- [x] Add high-contrast and reduce-transparency fallbacks.
 
 ### Refactor
 

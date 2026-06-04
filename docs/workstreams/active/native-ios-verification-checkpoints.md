@@ -291,20 +291,20 @@ Run simulator: Yes
 
 Check:
 
-- [ ] Bottom-right hazard button opens sheet.
-- [ ] Sheet has large hazard type buttons.
-- [ ] Includes police and mobile camera.
-- [ ] Selecting type writes hazard.
-- [ ] Sheet dismisses.
-- [ ] Confirmation appears.
-- [ ] Hazard marker appears at reported location.
-- [ ] Hazard detail opens.
-- [ ] Admin hazard detail shows dismiss and removes the marker for all clients.
-- [ ] Announced hazard audio plays by default for actionable remote hazards.
-- [ ] Settings > Drive Alerts can switch to the simple alert sound.
-- [ ] Live Drive mute toggle suppresses hazard audio without hiding hazards.
-- [ ] Fade/hide timer works.
-- [ ] Admin dismiss works if implemented.
+- [x] Bottom-right hazard button opens the horizontal hazard rail.
+- [x] Hazard rail has large hazard type buttons.
+- [x] Includes police and mobile camera.
+- [x] Selecting type writes hazard.
+- [x] Hazard rail collapses after selection.
+- [x] Confirmation appears.
+- [x] Hazard marker appears at reported location.
+- [x] Hazard detail opens.
+- [x] Admin hazard detail shows dismiss and removes the marker for all clients.
+- [x] Announced hazard audio plays by default for actionable remote hazards.
+- [x] Settings > Drive Alerts can switch to the simple alert sound.
+- [x] Live Drive mute toggle suppresses hazard audio without hiding hazards.
+- [x] Fade/hide timer works.
+- [x] Admin dismiss works if implemented.
 
 Physical device: Recommended during live-drive testing.
 
@@ -314,15 +314,15 @@ Run simulator: Yes
 
 Check:
 
-- [ ] Admin end requires confirmation.
-- [ ] Driver can finish/leave personally.
-- [ ] Driver finish does not end global run.
-- [ ] Arrival prompt appears where testable.
-- [ ] Tracking stops after finish/end.
-- [ ] Summary screen opens.
-- [ ] Summary remains available after restart.
-- [ ] Share/copy summary works.
-- [ ] Max speed/max g-force show but are not ranked.
+- [x] Admin end requires confirmation.
+- [x] Driver can finish/leave personally.
+- [x] Driver finish does not end global run.
+- [x] Arrival prompt appears where testable.
+- [x] Tracking stops after finish/end.
+- [x] Summary screen opens.
+- [x] Summary remains available after restart.
+- [x] Share/copy summary works.
+- [x] Max speed/max g-force show but are not ranked.
 
 Physical device: Required during full drive matrix.
 
@@ -332,14 +332,14 @@ Run simulator: Yes
 
 Check:
 
-- [ ] Profile edit works.
-- [ ] Car edit supports suggestions and free text fallback.
-- [ ] Unit preferences save.
-- [ ] Unit preferences affect displayed values.
-- [ ] Password reset flow works.
-- [ ] Sign out returns to Login.
-- [ ] History lists past runs/summaries.
-- [ ] Debug diagnostics are visible only where intended.
+- [x] Profile edit works.
+- [x] Car edit supports suggestions and free text fallback.
+- [x] Unit preferences save.
+- [x] Unit preferences affect displayed values.
+- [x] Password reset flow works.
+- [x] Sign out returns to Login.
+- [x] History lists past runs/summaries.
+- [x] Debug diagnostics are visible only where intended.
 
 Physical device: Optional.
 

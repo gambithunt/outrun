@@ -248,6 +248,60 @@ final class HomeHubTests: XCTestCase {
         )
     }
 
+    func testSummaryUsesBackendSummaryBeforeCalculatedFallback() async {
+        let backendSummary = RunSummary(
+            totalDistanceKm: 55.5,
+            totalDriveTimeMinutes: 66,
+            driverStats: [
+                "uid_1": PersonalSummary(
+                    name: "Backend Alex",
+                    carMake: "Porsche",
+                    carModel: "911",
+                    badge: DriverBadge(text: "BA", colorHex: "#1E88E5"),
+                    driverStatus: .finished,
+                    topSpeedKmh: 123,
+                    avgMovingSpeedKmh: nil,
+                    totalDistanceKm: 55.5,
+                    totalDriveTimeMinutes: 66,
+                    stopCount: 2,
+                    avgStopTimeSec: nil,
+                    maxGForce: 0.31,
+                    fuelUsedLitres: nil,
+                    fuelUsedKwh: nil,
+                    fuelType: .petrol
+                )
+            ],
+            collectiveFuel: CollectiveFuelSummary(petrolLitres: 0, dieselLitres: 0, hybridLitres: 0, electricKwh: 0),
+            hazardSummary: HazardSummary(total: 3, byType: [.pothole: 2, .police: 1]),
+            routePreview: nil,
+            generatedAt: 1_800_000_200_000
+        )
+        let runReader = InMemoryRunReader(runs: [
+            "run_ended_1": makeRun(
+                name: "Backend Drive",
+                adminId: "uid_1",
+                status: .ended,
+                endedAt: 1_800_000_200_000,
+                summary: backendSummary
+            )
+        ])
+        let viewModel = SummaryViewModel(
+            uid: "uid_1",
+            runId: "run_ended_1",
+            runReader: runReader
+        )
+
+        await viewModel.load()
+
+        XCTAssertEqual(viewModel.title, "Backend Drive")
+        XCTAssertEqual(viewModel.distanceText, "55.5 km")
+        XCTAssertEqual(viewModel.timeText, "66 min")
+        XCTAssertEqual(viewModel.hazardText, "3 hazards")
+        XCTAssertEqual(viewModel.currentUserSummary?.title, "Backend Alex · Porsche 911 · You")
+        XCTAssertEqual(viewModel.currentUserSummary?.speedText, "Top 123 km/h")
+        XCTAssertEqual(viewModel.currentUserSummary?.gForceText, "0.31 g max")
+    }
+
     func testSummaryLoadRetriesUntilLatestEndedRunIsReadable() async {
         let historyStore = InMemorySummaryHistoryStore()
         let runReader = SequencedRunReader(results: [

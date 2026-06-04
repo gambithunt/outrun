@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import UIKit
 #if canImport(FirebaseAuth)
 import FirebaseAuth
 #endif
@@ -425,41 +426,60 @@ struct LoginView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
+            AuthScreen(title: "ClubRun", subtitle: "Sign in to create or join a drive.") {
+                AuthFieldGroup {
                     TextField("Email", text: $viewModel.email)
                         .textContentType(.emailAddress)
                         .textInputAutocapitalization(.never)
                         .keyboardType(.emailAddress)
+
+                    Divider()
+
                     SecureField("Password", text: $viewModel.password)
                         .textContentType(.password)
                 }
 
                 if let message = viewModel.message {
-                    Text(message)
-                        .foregroundStyle(.red)
+                    AuthMessage(text: message)
                 }
 
-                Section {
-                    Button("Log In") {
-                        Task {
-                            if await viewModel.login() != nil {
-                                onAuthenticated()
-                            }
+                Button {
+                    Task {
+                        if await viewModel.login() != nil {
+                            onAuthenticated()
                         }
                     }
-                    .disabled(viewModel.isWorking)
+                } label: {
+                    AuthPrimaryLabel(title: "Log In", isWorking: viewModel.isWorking)
+                }
+                .buttonStyle(.plain)
+                .disabled(viewModel.isWorking)
 
+                VStack(spacing: 0) {
                     Button("Create Account") {
                         showsRegister = true
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 14)
+
+                    Divider()
 
                     Button("Forgot Password") {
                         showsReset = true
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 14)
+                }
+                .font(.body.weight(.medium))
+                .padding(.horizontal, 20)
+                .background(Color.authCardFill, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
                 }
             }
             .navigationTitle("Log In")
+            .navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: $showsRegister) {
                 RegisterView(viewModel: AuthFormViewModel(authService: viewModel.authServiceForChild)) {
                     showsRegister = false
@@ -479,32 +499,46 @@ struct RegisterView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
+            AuthScreen(
+                title: "Create Account",
+                subtitle: "Set up your account, then add your driver profile.",
+                showsHeroTitle: false
+            ) {
+                AuthFieldGroup {
                     TextField("Email", text: $viewModel.email)
                         .textContentType(.emailAddress)
                         .textInputAutocapitalization(.never)
+                        .keyboardType(.emailAddress)
+
+                    Divider()
+
                     SecureField("Password", text: $viewModel.password)
                         .textContentType(.newPassword)
+
+                    Divider()
+
                     SecureField("Confirm Password", text: $viewModel.confirmPassword)
                         .textContentType(.newPassword)
                 }
 
                 if let message = viewModel.message {
-                    Text(message)
-                        .foregroundStyle(.red)
+                    AuthMessage(text: message)
                 }
 
-                Button("Create Account") {
+                Button {
                     Task {
                         if await viewModel.register() != nil {
                             onAuthenticated()
                         }
                     }
+                } label: {
+                    AuthPrimaryLabel(title: "Create Account", isWorking: viewModel.isWorking)
                 }
+                .buttonStyle(.plain)
                 .disabled(viewModel.isWorking)
             }
             .navigationTitle("Create Account")
+            .navigationBarTitleDisplayMode(.inline)
         }
     }
 }
@@ -514,23 +548,32 @@ struct ForgotPasswordView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                TextField("Email", text: $viewModel.email)
-                    .textContentType(.emailAddress)
-                    .textInputAutocapitalization(.never)
-                    .keyboardType(.emailAddress)
+            AuthScreen(
+                title: "Reset Password",
+                subtitle: "Enter your email and we will send a reset link.",
+                showsHeroTitle: false
+            ) {
+                AuthFieldGroup {
+                    TextField("Email", text: $viewModel.email)
+                        .textContentType(.emailAddress)
+                        .textInputAutocapitalization(.never)
+                        .keyboardType(.emailAddress)
+                }
 
                 if let message = viewModel.message {
-                    Text(message)
-                        .foregroundStyle(.red)
+                    AuthMessage(text: message)
                 }
 
-                Button("Send Reset Email") {
+                Button {
                     Task { _ = await viewModel.resetPassword() }
+                } label: {
+                    AuthPrimaryLabel(title: "Send Reset Email", isWorking: viewModel.isWorking)
                 }
+                .buttonStyle(.plain)
                 .disabled(viewModel.isWorking)
             }
             .navigationTitle("Reset Password")
+            .navigationBarTitleDisplayMode(.inline)
         }
     }
 }
@@ -541,29 +584,42 @@ struct ProfileSetupView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
+            AuthScreen(
+                title: "Driver Profile",
+                subtitle: "This is what other drivers see in the run.",
+                showsHeroTitle: false
+            ) {
+                AuthFieldGroup {
                     TextField("Display Name", text: $viewModel.displayName)
                         .textContentType(.name)
+
+                    Divider()
+
                     TextField("Car Make", text: $viewModel.carMake)
+
+                    Divider()
+
                     TextField("Car Model", text: $viewModel.carModel)
                 }
 
                 if let message = viewModel.message {
-                    Text(message)
-                        .foregroundStyle(.red)
+                    AuthMessage(text: message)
                 }
 
-                Button("Save Profile") {
+                Button {
                     Task {
                         if let profile = await viewModel.save() {
                             onSaved(profile)
                         }
                     }
+                } label: {
+                    AuthPrimaryLabel(title: "Save Profile", isWorking: viewModel.isSaving)
                 }
+                .buttonStyle(.plain)
                 .disabled(viewModel.isSaving)
             }
             .navigationTitle("Driver Profile")
+            .navigationBarTitleDisplayMode(.inline)
         }
     }
 }
@@ -577,5 +633,107 @@ private extension String {
 private extension AuthFormViewModel {
     var authServiceForChild: AuthServicing {
         authService
+    }
+}
+
+private struct AuthScreen<Content: View>: View {
+    let title: String
+    let subtitle: String
+    var showsHeroTitle = true
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                if showsHeroTitle {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(title)
+                            .font(.system(size: 44, weight: .bold, design: .rounded))
+                            .lineLimit(2)
+                        Text(subtitle)
+                            .font(.headline)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.top, 24)
+                } else {
+                    Text(subtitle)
+                        .font(.headline)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 24)
+                }
+
+                content
+            }
+            .padding(.horizontal, 24)
+            .padding(.bottom, 32)
+        }
+        .background(Color(.systemGroupedBackground).ignoresSafeArea())
+    }
+}
+
+private struct AuthFieldGroup<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(spacing: 0) {
+            content
+                .padding(.vertical, 16)
+        }
+        .padding(.horizontal, 18)
+        .font(.body.weight(.medium))
+        .foregroundStyle(.primary)
+        .background(Color.authCardFill, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+        }
+        .tint(.accentColor)
+    }
+}
+
+private struct AuthPrimaryLabel: View {
+    let title: String
+    let isWorking: Bool
+
+    var body: some View {
+        HStack {
+            Spacer()
+            if isWorking {
+                ProgressView()
+                    .tint(.white)
+            } else {
+                Text(title)
+                    .font(.headline.weight(.semibold))
+            }
+            Spacer()
+        }
+        .foregroundStyle(.white)
+        .padding(.vertical, 16)
+        .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+    }
+}
+
+private struct AuthMessage: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.callout.weight(.medium))
+            .foregroundStyle(.red)
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+}
+
+private extension Color {
+    static var authCardFill: Color {
+        Color(UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(white: 0.12, alpha: 1)
+                : UIColor.secondarySystemGroupedBackground
+        })
     }
 }

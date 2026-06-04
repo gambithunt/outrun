@@ -80,6 +80,81 @@ When done:
 END PROMPT
 ```
 
+## Todo: Proximity-Based Hazard Confirmation UI
+
+Status: Deferred
+Reason: Hazard reporting, realtime visibility, admin dismiss, announced alerts, simple-alert preference, and mute are working. The data model already supports `still_there` and `gone` confirmations, but the nearby-driver confirmation prompt should wait until live drive/location behavior is stable enough for low-distraction prompts.
+
+Copy from here:
+
+```text
+START PROMPT
+
+You are working in /Users/delon/Documents/code/projects/outrun.
+
+Read and follow:
+- AGENTS.md
+- docs/workstreams/active/native-ios-app-flow-spec.md
+- docs/workstreams/active/native-ios-implementation-phases.md
+- docs/workstreams/active/native-ios-deferred-todos.md
+- current native iOS Live Drive, hazard, location, and Firebase repository code
+
+Goal:
+Implement proximity-based hazard confirmation UI for nearby drivers.
+
+Context:
+- Hazard reporting already works in realtime.
+- Hazard markers appear across clients.
+- Admin dismiss works.
+- Hazard audio is announced by default, with a simple alert option in Settings.
+- The `HazardConfirmation` model already supports `outcome: still_there` and `outcome: gone`.
+- Do not redesign the hazard rail or audio flow unless needed for confirmation.
+
+Requirements:
+1. Prompt a driver only when they approach an active hazard within an actionable distance, initially 300 m.
+2. Keep the prompt low-distraction and non-blocking.
+3. Offer exactly two confirmation actions: "Still There" and "Gone".
+4. Write the confirmation under the existing hazard confirmation payload shape without Firebase SDK calls in SwiftUI views.
+5. Prevent repeated prompts for the same hazard after the driver has answered or dismissed the prompt.
+6. Do not prompt the original reporter for their own hazard.
+7. Do not prompt for dismissed or expired hazards.
+8. Update marker/detail state after confirmations.
+9. If rules must change, update rules tests in the same pass.
+10. Add tests proving:
+   - only nearby active hazards prompt
+   - own hazards do not prompt
+   - dismissed/expired hazards do not prompt
+   - still_there writes the expected outcome
+   - gone writes the expected outcome
+   - answered hazards do not prompt again
+   - SwiftUI views still have no Firebase SDK calls
+
+Verification:
+Run native unit tests:
+
+xcodebuild -project native-ios/ClubRunNative/ClubRunNative.xcodeproj -scheme ClubRunNative -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -derivedDataPath native-ios/DerivedData test
+
+If backend rules change, run:
+
+npm run test:rules
+
+Manual verification:
+- Start two simulators in one run.
+- Report a hazard from the lead/client simulator.
+- Move the second simulator within 300 m.
+- Confirm the prompt appears once.
+- Tap "Still There" and verify Firebase writes `outcome: "still_there"`.
+- Repeat with a different hazard and tap "Gone".
+- Confirm no prompt appears for dismissed or expired hazards.
+
+When done:
+- Summarize files changed.
+- List verification commands and results.
+- Mark this todo complete in docs/workstreams/active/native-ios-deferred-todos.md.
+
+END PROMPT
+```
+
 ## Todo: GPX Export From Route Settings
 
 Status: Deferred

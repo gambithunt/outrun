@@ -414,64 +414,77 @@ struct AdminLobbyView: View {
     @State private var showsRouteSetup = false
 
     var body: some View {
-        List {
-            Section {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(viewModel.title)
-                        .font(.headline)
-                    HStack {
-                        Text("Code \(viewModel.joinCode)")
-                            .font(.title2.weight(.semibold))
-                        Spacer()
-                        ShareLink(item: viewModel.joinCode) {
-                            Label("Share", systemImage: "square.and.arrow.up")
-                        }
-                        Button {
-                            UIPasteboard.general.string = viewModel.joinCode
-                        } label: {
-                            Label("Copy", systemImage: "doc.on.doc")
-                        }
-                    }
-                    Text(viewModel.startReadinessLabel)
-                        .foregroundStyle(.secondary)
-                        .accessibilityIdentifier("adminLobby.readinessLabel")
-                }
-            }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                adminHeader
 
-            Section {
                 Button {
                     Task {
                         await viewModel.startDrive()
                     }
                 } label: {
-                    Label("Start Drive", systemImage: "flag.checkered")
+                    HStack {
+                        Image(systemName: "flag.checkered")
+                        Text("Start Drive")
+                        Spacer()
+                    }
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(viewModel.canStartDrive ? .white : .secondary)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 19)
+                    .background(
+                        viewModel.canStartDrive ? Color.accentColor : Color.lobbyDisabledFill,
+                        in: RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .stroke(Color.primary.opacity(viewModel.canStartDrive ? 0 : 0.08), lineWidth: 1)
+                    }
                 }
+                .buttonStyle(.plain)
                 .disabled(!viewModel.canStartDrive)
+                .accessibilityLabel("Start Drive")
                 .accessibilityIdentifier("adminLobby.startDriveButton")
-            }
 
-            Section {
                 Button {
                     showsRouteSetup = true
                 } label: {
-                    LabeledContent("Route", value: viewModel.routeSummary)
+                    LobbyInfoCard(
+                        title: "Route",
+                        value: viewModel.routeSummary,
+                        systemImage: "map.fill",
+                        tint: .blue
+                    )
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Route")
                 .accessibilityIdentifier("adminLobby.routeRow")
 
                 Button {
                     viewModel.showsDriversSheet = true
                 } label: {
-                    LabeledContent("Drivers", value: viewModel.driverSummary)
+                    LobbyInfoCard(
+                        title: "Drivers",
+                        value: viewModel.driverSummary,
+                        systemImage: "person.2.fill",
+                        tint: .green
+                    )
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Drivers")
                 .accessibilityIdentifier("adminLobby.driversRow")
-            }
 
-            if let message = viewModel.message {
-                Text(message)
-                    .foregroundStyle(.red)
+                if let message = viewModel.message {
+                    LobbyMessage(text: message)
+                }
             }
+            .padding(.horizontal, 24)
+            .padding(.top, 20)
+            .padding(.bottom, 32)
         }
+        .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .navigationTitle("Admin Lobby")
+        .navigationBarTitleDisplayMode(.inline)
         .task {
             await viewModel.load()
             viewModel.startObservingRun()
@@ -508,35 +521,57 @@ struct AdminLobbyView: View {
             Button("Cancel", role: .cancel) {}
         }
     }
+
+    private var adminHeader: some View {
+        AdminLobbyAccessCard(
+            runName: viewModel.title.isEmpty ? "Run" : viewModel.title,
+            joinCode: viewModel.joinCode,
+            readinessLabel: viewModel.startReadinessLabel,
+            canStartDrive: viewModel.canStartDrive
+        )
+    }
 }
 
 struct DriverLobbyView: View {
     @StateObject var viewModel: DriverLobbyViewModel
 
     var body: some View {
-        List {
-            Section {
-                Text(viewModel.title)
-                    .font(.headline)
-                LabeledContent("Route", value: viewModel.routeSummary)
-                LabeledContent("Drivers", value: viewModel.driverSummary)
-            }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                driverHeader
 
-            Section {
+                LobbyInfoCard(
+                    title: "Route",
+                    value: viewModel.routeSummary,
+                    systemImage: "map.fill",
+                    tint: .blue
+                )
+
                 Button {
                     viewModel.showsDriversSheet = true
                 } label: {
-                    Label("Drivers", systemImage: "person.2.fill")
+                    LobbyInfoCard(
+                        title: "Drivers",
+                        value: viewModel.driverSummary,
+                        systemImage: "person.2.fill",
+                        tint: .green
+                    )
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Drivers")
                 .accessibilityIdentifier("driverLobby.driversButton")
-            }
 
-            if let message = viewModel.message {
-                Text(message)
-                    .foregroundStyle(.red)
+                if let message = viewModel.message {
+                    LobbyMessage(text: message)
+                }
             }
+            .padding(.horizontal, 24)
+            .padding(.top, 20)
+            .padding(.bottom, 32)
         }
+        .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .navigationTitle("Driver Lobby")
+        .navigationBarTitleDisplayMode(.inline)
         .task {
             await viewModel.load()
             viewModel.startObservingRun()
@@ -548,6 +583,10 @@ struct DriverLobbyView: View {
             DriversSheetView(rows: viewModel.driverRows)
         }
     }
+
+    private var driverHeader: some View {
+        DriverLobbyStatusCard(runName: viewModel.title.isEmpty ? "Run" : viewModel.title)
+    }
 }
 
 private struct DriversSheetView: View {
@@ -555,32 +594,329 @@ private struct DriversSheetView: View {
 
     var body: some View {
         NavigationStack {
-            List(rows) { row in
-                HStack(spacing: 12) {
-                    if let badge = row.badge {
-                        Text(badge.text)
-                            .font(.headline.weight(.semibold))
-                            .foregroundStyle(.white)
-                            .frame(width: 38, height: 38)
-                            .background(Color(hex: badge.colorHex), in: Circle())
+            ScrollView {
+                LazyVStack(spacing: 12) {
+                    if rows.isEmpty {
+                        ContentUnavailableView(
+                            "No Drivers Yet",
+                            systemImage: "person.2.slash",
+                            description: Text("Drivers will appear here after they join the run.")
+                        )
+                        .padding(.top, 60)
                     }
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(row.displayName)
-                            .font(.headline)
-                        Text(row.vehicle)
-                            .foregroundStyle(.secondary)
+
+                    ForEach(rows) { row in
+                        HStack(spacing: 12) {
+                            if let badge = row.badge {
+                                Text(badge.text)
+                                    .font(.headline.weight(.semibold))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 42, height: 42)
+                                    .background(Color(hex: badge.colorHex), in: Circle())
+                            } else {
+                                Image(systemName: "person.fill")
+                                    .font(.headline)
+                                    .foregroundStyle(.white)
+                                    .frame(width: 42, height: 42)
+                                    .background(Color.gray, in: Circle())
+                            }
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(row.displayName)
+                                    .font(.headline)
+                                Text(row.vehicle)
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Spacer()
+
+                            Text(row.statusText)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(statusColor(row.classification))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(statusColor(row.classification).opacity(0.12), in: Capsule())
+                        }
+                        .padding(16)
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                        .accessibilityElement(children: .combine)
                     }
-                    Spacer()
-                    Text(row.statusText)
-                        .foregroundStyle(.secondary)
                 }
+                .padding(20)
             }
+            .background(Color(.systemGroupedBackground).ignoresSafeArea())
             .navigationTitle("Drivers")
+        }
+    }
+
+    private func statusColor(_ classification: LobbyDriverClassification) -> Color {
+        switch classification {
+        case .waiting:
+            .green
+        case .offline:
+            .secondary
+        case .left:
+            .orange
         }
     }
 }
 
+private struct LobbyInfoCard: View {
+    let title: String
+    let value: String
+    let systemImage: String
+    let tint: Color
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Image(systemName: systemImage)
+                .font(.title2.weight(.semibold))
+                .foregroundStyle(.white)
+                .frame(width: 52, height: 52)
+                .background(tint, in: Circle())
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title.uppercased())
+                    .font(.caption.weight(.bold))
+                    .tracking(1.2)
+                    .foregroundStyle(.secondary)
+                Text(value)
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.85)
+            }
+
+            Spacer()
+
+            Image(systemName: "chevron.right")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.tertiary)
+        }
+        .padding(18)
+        .background(Color.lobbyCardFill, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
+                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+        }
+    }
+}
+
+private struct AdminLobbyAccessCard: View {
+    let runName: String
+    let joinCode: String
+    let readinessLabel: String
+    let canStartDrive: Bool
+
+    var body: some View {
+        VStack(spacing: 20) {
+            HStack(alignment: .center) {
+                Text("Lobby Access")
+                    .font(.caption.weight(.bold))
+                    .tracking(2.2)
+                    .foregroundStyle(.secondary)
+                    .textCase(.uppercase)
+
+                Spacer()
+
+                LobbyStatusPill(
+                    text: statusText,
+                    tint: statusTint
+                )
+            }
+
+            VStack(spacing: 8) {
+                Text(runName)
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+
+                Text(joinCode.isEmpty ? "------" : joinCode)
+                    .font(.system(size: 58, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .minimumScaleFactor(0.55)
+                    .frame(maxWidth: .infinity)
+            }
+            .padding(.vertical, 8)
+
+            HStack(spacing: 18) {
+                ShareLink(item: joinCode) {
+                    AdminLobbyAccessAction(title: "Share", systemImage: "square.and.arrow.up")
+                }
+                .accessibilityLabel("Share")
+
+                Button {
+                    UIPasteboard.general.string = joinCode
+                } label: {
+                    AdminLobbyAccessAction(title: "Copy", systemImage: "doc.on.doc")
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Copy")
+            }
+
+            Text(readinessLabel)
+                .font(.footnote.weight(.medium))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+                .accessibilityIdentifier("adminLobby.readinessLabel")
+        }
+        .padding(24)
+        .background(Color.lobbyCardFill, in: RoundedRectangle(cornerRadius: 32, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 32, style: .continuous)
+                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+        }
+    }
+
+    private var statusText: String {
+        if readinessLabel == "Drive active." {
+            return "Active"
+        }
+
+        return canStartDrive ? "Ready" : "Needs Route"
+    }
+
+    private var statusTint: Color {
+        if readinessLabel == "Drive active." {
+            return .blue
+        }
+
+        return canStartDrive ? .green : .orange
+    }
+}
+
+private struct DriverLobbyStatusCard: View {
+    let runName: String
+
+    var body: some View {
+        VStack(spacing: 22) {
+            HStack(alignment: .center) {
+                Text("Run Status")
+                    .font(.caption.weight(.bold))
+                    .tracking(2.2)
+                    .foregroundStyle(.secondary)
+                    .textCase(.uppercase)
+
+                Spacer()
+
+                LobbyStatusPill(text: "Waiting", tint: .orange)
+            }
+
+            VStack(spacing: 10) {
+                Image(systemName: "clock.fill")
+                    .font(.title2.weight(.bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 58, height: 58)
+                    .background(Color.orange, in: Circle())
+
+                Text(runName)
+                    .font(.system(size: 34, weight: .bold, design: .rounded))
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.72)
+                    .multilineTextAlignment(.center)
+
+                Text("Waiting for admin")
+                    .font(.headline.weight(.semibold))
+
+                Text("Live Drive opens automatically when the run starts.")
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .padding(24)
+        .background(Color.lobbyCardFill, in: RoundedRectangle(cornerRadius: 32, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 32, style: .continuous)
+                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+        }
+    }
+}
+
+private struct LobbyStatusPill: View {
+    let text: String
+    let tint: Color
+
+    var body: some View {
+        Text(text.uppercased())
+            .font(.caption2.weight(.bold))
+            .tracking(1)
+            .foregroundStyle(tint)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(tint.opacity(0.14), in: Capsule())
+            .overlay {
+                Capsule()
+                    .stroke(tint.opacity(0.34), lineWidth: 1)
+            }
+    }
+}
+
+private struct AdminLobbyAccessAction: View {
+    let title: String
+    let systemImage: String
+
+    var body: some View {
+        VStack(spacing: 8) {
+            Image(systemName: systemImage)
+                .font(.title3.weight(.semibold))
+                .frame(width: 54, height: 54)
+                .background(Color.lobbyActionFill, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                }
+
+            Text(title.uppercased())
+                .font(.caption.weight(.bold))
+                .tracking(1.1)
+        }
+        .foregroundStyle(Color.accentColor)
+    }
+}
+
+private struct LobbyMessage: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.callout.weight(.medium))
+            .foregroundStyle(.red)
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+}
+
 private extension Color {
+    static var lobbyCardFill: Color {
+        Color(UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(white: 0.115, alpha: 1)
+                : UIColor.secondarySystemGroupedBackground
+        })
+    }
+
+    static var lobbyActionFill: Color {
+        Color(UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(white: 0.16, alpha: 1)
+                : UIColor.systemBackground
+        })
+    }
+
+    static var lobbyDisabledFill: Color {
+        Color(UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(white: 0.075, alpha: 1)
+                : UIColor.tertiarySystemFill
+        })
+    }
+
     init(hex: String) {
         let scanner = Scanner(string: hex.trimmingCharacters(in: CharacterSet(charactersIn: "#")))
         var value: UInt64 = 0

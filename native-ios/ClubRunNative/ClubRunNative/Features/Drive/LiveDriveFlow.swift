@@ -1890,6 +1890,7 @@ final class LiveDriveViewModel: ObservableObject {
 }
 
 struct LiveDriveView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject var viewModel: LiveDriveViewModel
     @State private var foregroundLocationService = CoreLocationForegroundLocationService()
     @State private var mapPosition: MapCameraPosition = .automatic
@@ -1951,7 +1952,7 @@ struct LiveDriveView: View {
                     if let confirmationText = viewModel.hazardConfirmationText {
                         LiveDriveConfirmationToast(text: confirmationText)
                             .padding(.bottom, 144)
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                            .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
                     }
 
                     HStack(spacing: 8) {
@@ -1964,7 +1965,7 @@ struct LiveDriveView: View {
                             ) { type in
                                 Task {
                                     await viewModel.reportHazard(type)
-                                    withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+                                    updateHazardRail {
                                         isHazardRailExpanded = false
                                     }
                                 }
@@ -1979,15 +1980,14 @@ struct LiveDriveView: View {
                                         .font(.subheadline.weight(.semibold))
                                         .foregroundStyle(viewModel.isHazardAudioMuted ? .secondary : .primary)
                                         .frame(width: 42, height: 42)
-                                        .background(.thinMaterial, in: Circle())
-                                        .overlay(Circle().stroke(.white.opacity(0.75), lineWidth: 1.5))
+                                        .liveDriveGlassSurface(Circle(), tintOpacity: 0.84, strokeOpacity: 0.75, strokeWidth: 1.5)
                                         .shadow(color: .black.opacity(0.12), radius: 8, y: 3)
                                 }
                                 .accessibilityLabel(viewModel.isHazardAudioMuted ? "Unmute hazard alerts" : "Mute hazard alerts")
                                 .accessibilityIdentifier("liveDrive.hazardMuteButton")
 
                                 Button {
-                                    withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+                                    updateHazardRail {
                                         isHazardRailExpanded.toggle()
                                     }
                                 } label: {
@@ -1998,7 +1998,7 @@ struct LiveDriveView: View {
                                         .background(.yellow, in: Circle())
                                         .overlay(Circle().stroke(.white.opacity(0.85), lineWidth: 2))
                                         .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
-                                        .rotationEffect(.degrees(isHazardRailExpanded ? 180 : 0))
+                                        .rotationEffect(.degrees(!reduceMotion && isHazardRailExpanded ? 180 : 0))
                                 }
                                 .accessibilityLabel("Report Hazard")
                                 .accessibilityIdentifier("liveDrive.hazardButton")
@@ -2042,7 +2042,7 @@ struct LiveDriveView: View {
                 }
 
                 await MainActor.run {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.9)) {
+                    updateHazardConfirmation {
                         viewModel.clearHazardConfirmation()
                     }
                 }
@@ -2193,9 +2193,32 @@ struct LiveDriveView: View {
             }
         }
     }
+
+    private func updateHazardRail(_ updates: () -> Void) {
+        guard !reduceMotion else {
+            updates()
+            return
+        }
+
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+            updates()
+        }
+    }
+
+    private func updateHazardConfirmation(_ updates: () -> Void) {
+        guard !reduceMotion else {
+            updates()
+            return
+        }
+
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.9)) {
+            updates()
+        }
+    }
 }
 
 private struct LiveDriveHazardRail: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let options: [LiveDriveHazardOption]
     let isExpanded: Bool
     let onSelect: (HazardType) -> Void
@@ -2216,11 +2239,11 @@ private struct LiveDriveHazardRail: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(option.title)
-                .scaleEffect(isExpanded ? 1 : 0.35)
+                .scaleEffect(reduceMotion || isExpanded ? 1 : 0.35)
                 .opacity(isExpanded ? 1 : 0)
-                .offset(x: isExpanded ? 0 : CGFloat((options.count - index) * 44))
+                .offset(x: reduceMotion || isExpanded ? 0 : CGFloat((options.count - index) * 44))
                 .animation(
-                    .spring(response: 0.28, dampingFraction: 0.82)
+                    reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.82)
                         .delay(isExpanded ? Double(index) * 0.018 : Double(options.count - index) * 0.01),
                     value: isExpanded
                 )
@@ -2240,8 +2263,7 @@ private struct LiveDriveConfirmationToast: View {
             .foregroundStyle(.primary)
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
-            .background(.thinMaterial, in: Capsule())
-            .overlay(Capsule().stroke(.white.opacity(0.55), lineWidth: 1))
+            .liveDriveGlassSurface(Capsule(), tintOpacity: 0.88)
             .shadow(color: .black.opacity(0.14), radius: 10, y: 4)
             .accessibilityIdentifier("liveDrive.hazardConfirmation")
     }
@@ -2360,8 +2382,7 @@ private struct LiveDriveRouteEndpointMarkerView: View {
             .font(.headline.weight(.bold))
             .foregroundStyle(foregroundColor)
             .frame(width: 38, height: 38)
-            .background(.regularMaterial, in: Circle())
-            .overlay(Circle().stroke(.white.opacity(0.9), lineWidth: 2))
+            .liveDriveGlassSurface(Circle(), tintOpacity: 0.86, strokeOpacity: 0.9, strokeWidth: 2)
             .shadow(color: .black.opacity(0.18), radius: 8, y: 3)
             .accessibilityLabel(marker.title)
     }
@@ -2474,11 +2495,7 @@ private struct LiveDriveStatusOverlay: View {
             }
         }
         .padding(14)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(.white.opacity(0.45), lineWidth: 1)
-        )
+        .liveDriveGlassSurface(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
         .accessibilityIdentifier("liveDrive.statusOverlay")
     }
@@ -2515,11 +2532,7 @@ private struct LiveDriveBottomControls: View {
         .foregroundStyle(.blue)
         .controlSize(.large)
         .padding(8)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(.white.opacity(0.45), lineWidth: 1)
-        )
+        .liveDriveGlassSurface(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
         .accessibilityIdentifier("liveDrive.bottomControls")
     }
@@ -2561,35 +2574,61 @@ private struct LiveDriveHazardDetailView: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                Section {
-                    HStack(spacing: 12) {
-                        Image(systemName: marker.iconSystemName)
-                            .font(.headline.weight(.semibold))
-                            .foregroundStyle(.white)
-                            .frame(width: 44, height: 44)
-                            .background(Color(hex: marker.colorHex), in: Circle())
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    VStack(alignment: .leading, spacing: 18) {
+                        HStack(alignment: .top, spacing: 14) {
+                            Image(systemName: marker.iconSystemName)
+                                .font(.title2.weight(.semibold))
+                                .foregroundStyle(.white)
+                                .frame(width: 58, height: 58)
+                                .background(Color(hex: marker.colorHex), in: Circle())
+                                .overlay(Circle().stroke(.white.opacity(0.88), lineWidth: 2))
+                                .shadow(color: .black.opacity(0.14), radius: 8, y: 3)
 
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(marker.title)
-                                .font(.headline)
-                            Text(marker.detail)
-                                .foregroundStyle(.secondary)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(marker.title)
+                                    .font(.title2.weight(.bold))
+                                    .lineLimit(2)
+                                    .minimumScaleFactor(0.82)
+                                Text(marker.detail)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Spacer()
+                        }
+
+                        VStack(spacing: 10) {
+                            LiveDriveHazardDetailRow(title: "Reported by", value: marker.reporterName)
+                            LiveDriveHazardDetailRow(title: "Reports", value: "\(marker.reportCount)")
+                            LiveDriveHazardDetailRow(title: "Time", value: reportedTimeText)
                         }
                     }
+                    .padding(18)
+                    .liveDriveGlassSurface(RoundedRectangle(cornerRadius: 28, style: .continuous), tintOpacity: 0.9)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel(
+                        "\(marker.title). \(marker.detail). Reported by \(marker.reporterName). \(marker.reportCount) reports. Reported at \(reportedTimeText)."
+                    )
 
-                    LabeledContent("Reported by", value: marker.reporterName)
-                    LabeledContent("Reports", value: "\(marker.reportCount)")
-                    LabeledContent("Time", value: reportedTimeText)
-                }
-
-                if canDismiss {
-                    Section {
-                        Button("Dismiss Hazard", role: .destructive, action: onDismiss)
-                            .accessibilityIdentifier("liveDrive.dismissHazardButton")
+                    if canDismiss {
+                        Button(role: .destructive, action: onDismiss) {
+                            Label("Dismiss Hazard", systemImage: "xmark.circle.fill")
+                                .font(.headline.weight(.semibold))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.red)
+                        .accessibilityIdentifier("liveDrive.dismissHazardButton")
                     }
                 }
+                .padding(.horizontal, 20)
+                .padding(.top, 18)
+                .padding(.bottom, 28)
             }
+            .background(Color(.systemGroupedBackground).ignoresSafeArea())
             .navigationTitle("Hazard")
         }
     }
@@ -2597,6 +2636,79 @@ private struct LiveDriveHazardDetailView: View {
     private var reportedTimeText: String {
         let date = Date(timeIntervalSince1970: TimeInterval(marker.reportedAt) / 1_000)
         return date.formatted(date: .omitted, time: .shortened)
+    }
+}
+
+private struct LiveDriveHazardDetailRow: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 12)
+            Text(value)
+                .font(.subheadline.weight(.semibold))
+                .multilineTextAlignment(.trailing)
+                .lineLimit(2)
+                .minimumScaleFactor(0.82)
+        }
+        .padding(.vertical, 3)
+    }
+}
+
+private struct LiveDriveGlassSurface<S: InsettableShape>: ViewModifier {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+
+    let shape: S
+    let tintOpacity: Double
+    let strokeOpacity: Double
+    let strokeWidth: CGFloat
+
+    func body(content: Content) -> some View {
+        content
+            .background {
+                if reduceTransparency || colorSchemeContrast == .increased {
+                    shape.fill(Color(.systemBackground).opacity(colorSchemeContrast == .increased ? 0.98 : tintOpacity))
+                } else {
+                    shape.fill(.thinMaterial)
+                }
+            }
+            .overlay {
+                shape.strokeBorder(
+                    borderColor,
+                    lineWidth: colorSchemeContrast == .increased ? max(strokeWidth, 1.5) : strokeWidth
+                )
+            }
+    }
+
+    private var borderColor: Color {
+        if colorSchemeContrast == .increased {
+            return .primary.opacity(0.34)
+        }
+
+        return .white.opacity(strokeOpacity)
+    }
+}
+
+private extension View {
+    func liveDriveGlassSurface<S: InsettableShape>(
+        _ shape: S,
+        tintOpacity: Double = 0.86,
+        strokeOpacity: Double = 0.45,
+        strokeWidth: CGFloat = 1
+    ) -> some View {
+        modifier(
+            LiveDriveGlassSurface(
+                shape: shape,
+                tintOpacity: tintOpacity,
+                strokeOpacity: strokeOpacity,
+                strokeWidth: strokeWidth
+            )
+        )
     }
 }
 

@@ -806,6 +806,39 @@ final class LiveDriveTests: XCTestCase {
         XCTAssertEqual(viewModel.hazardMarkers.first?.type, .police)
     }
 
+    func testObservedDismissedHazardDisappearsFromMarkerState() async throws {
+        let observer = ManualRunObserver()
+        let viewModel = LiveDriveViewModel(
+            uid: "uid_driver_1",
+            runId: "run_1",
+            role: .driver,
+            runReader: InMemoryLiveDriveRunReader(run: makeRun()),
+            runObserver: observer,
+            nowMilliseconds: { 1_800_000_010_000 }
+        )
+
+        await viewModel.load()
+        let marker = try XCTUnwrap(viewModel.hazardMarkers.first)
+        viewModel.selectHazard(marker)
+        viewModel.startObservingRun()
+        observer.emit(Self.makeRun(hazards: [
+            "hazard_1": Hazard(
+                type: .pothole,
+                reportedBy: "uid_driver_1",
+                reporterName: "Alex",
+                lat: -33.94,
+                lng: 18.44,
+                timestamp: 1_800_000_003_000,
+                dismissed: true,
+                reportCount: 1
+            )
+        ]))
+        await Task.yield()
+
+        XCTAssertTrue(viewModel.hazardMarkers.isEmpty)
+        XCTAssertNil(viewModel.selectedHazard)
+    }
+
     func testObservedRunFailureShowsRecoverableMessage() async {
         let observer = ManualRunObserver()
         let viewModel = LiveDriveViewModel(

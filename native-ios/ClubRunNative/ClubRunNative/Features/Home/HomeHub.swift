@@ -442,37 +442,61 @@ struct HomeHubView: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                identitySection
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    identitySection
 
-                Section {
-                    Button {
-                        viewModel.openCreateRun()
-                    } label: {
-                        Label("Create Run", systemImage: "plus.circle.fill")
-                    }
-                    .accessibilityIdentifier("homeHub.createRunButton")
-
-                    Button {
-                        viewModel.openJoinRun()
-                    } label: {
-                        Label("Join Run", systemImage: "number.circle.fill")
-                    }
-                    .accessibilityIdentifier("homeHub.joinRunButton")
-                }
-
-                if let activeRunCard = viewModel.activeRunCard {
-                    Section("Active Run") {
+                    VStack(spacing: 12) {
                         Button {
-                            viewModel.openActiveRun()
+                            viewModel.openCreateRun()
                         } label: {
-                            ActiveRunCardRow(card: activeRunCard)
+                            HomeActionRow(
+                                title: "Create Run",
+                                subtitle: "Start a new group drive",
+                                systemImage: "plus.circle.fill",
+                                tint: .blue
+                            )
                         }
                         .buttonStyle(.plain)
-                        .accessibilityIdentifier("homeHub.activeRunCard")
+                        .accessibilityLabel("Create Run")
+                        .accessibilityIdentifier("homeHub.createRunButton")
+
+                        Button {
+                            viewModel.openJoinRun()
+                        } label: {
+                            HomeActionRow(
+                                title: "Join Run",
+                                subtitle: "Enter a six-digit code",
+                                systemImage: "number.circle.fill",
+                                tint: .green
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Join Run")
+                        .accessibilityIdentifier("homeHub.joinRunButton")
+                    }
+
+                    if let activeRunCard = viewModel.activeRunCard {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Active Run")
+                                .font(.headline)
+                                .foregroundStyle(.secondary)
+
+                            Button {
+                                viewModel.openActiveRun()
+                            } label: {
+                                ActiveRunCardRow(card: activeRunCard)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("homeHub.activeRunCard")
+                        }
                     }
                 }
+                .padding(.horizontal, 24)
+                .padding(.top, 20)
+                .padding(.bottom, 32)
             }
+            .background(Color(.systemGroupedBackground).ignoresSafeArea())
             .navigationTitle("ClubRun")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -494,8 +518,8 @@ struct HomeHubView: View {
     }
 
     private var identitySection: some View {
-        Section {
-            HStack(spacing: 12) {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(spacing: 14) {
                 BadgeView(badge: viewModel.identity.badge)
 
                 VStack(alignment: .leading, spacing: 2) {
@@ -504,11 +528,19 @@ struct HomeHubView: View {
                     Text(viewModel.identity.vehicle)
                         .foregroundStyle(.secondary)
                 }
+
+                Spacer()
             }
-            .padding(.vertical, 4)
             .accessibilityElement(children: .combine)
             .accessibilityIdentifier("homeHub.identityRow")
+
+            Text("Create a run, join with a code, or reopen an active drive.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
+        .padding(20)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
     }
 
     @ViewBuilder
@@ -647,11 +679,17 @@ private struct ActiveRunCardRow: View {
     let card: ActiveRunCard
 
     var body: some View {
-        HStack {
+        HStack(spacing: 14) {
+            Image(systemName: card.role == .admin ? "person.2.badge.gearshape.fill" : "steeringwheel")
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(.white)
+                .frame(width: 44, height: 44)
+                .background(Color.accentColor, in: Circle())
+
             VStack(alignment: .leading, spacing: 4) {
                 Text(card.runName)
                     .font(.headline)
-                Text(card.statusText)
+                Text("\(card.statusText) · \(card.role.rawValue.capitalized)")
                     .foregroundStyle(.secondary)
             }
 
@@ -661,7 +699,42 @@ private struct ActiveRunCardRow: View {
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(.tertiary)
         }
-        .padding(.vertical, 8)
+        .padding(18)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+    }
+}
+
+private struct HomeActionRow: View {
+    let title: String
+    let subtitle: String
+    let systemImage: String
+    let tint: Color
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Image(systemName: systemImage)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(.white)
+                .frame(width: 46, height: 46)
+                .background(tint, in: Circle())
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+                Text(subtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Image(systemName: "chevron.right")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.tertiary)
+        }
+        .padding(18)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
     }
 }
 
@@ -1020,45 +1093,69 @@ struct SummaryView: View {
     @StateObject var viewModel: SummaryViewModel
 
     var body: some View {
-        List {
-            if viewModel.isLoading {
-                Section {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(viewModel.title)
+                        .font(.system(size: 44, weight: .bold, design: .rounded))
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.75)
+
+                    Text("Drive Summary")
+                        .font(.headline)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.top, 20)
+
+                if viewModel.isLoading {
                     HStack(spacing: 10) {
                         ProgressView()
                         Text("Loading summary")
                             .foregroundStyle(.secondary)
                     }
+                    .padding(18)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
                 }
-            }
 
-            Section {
                 HStack(spacing: 12) {
-                    SummaryMetricView(title: "Route", value: viewModel.distanceText)
+                    SummaryMetricView(title: "Distance", value: viewModel.distanceText)
                     SummaryMetricView(title: "Time", value: viewModel.timeText)
                     SummaryMetricView(title: "Hazards", value: viewModel.hazardText)
                 }
-                .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
-            }
+                .padding(16)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
 
-            if let currentUserSummary = viewModel.currentUserSummary {
-                Section("Your drive") {
-                    SummaryDriverRow(participant: currentUserSummary)
-                }
-            }
-
-            Section("Other drivers") {
-                if viewModel.otherDriverSummaries.isEmpty {
-                    Text("No other driver summaries yet.")
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Drivers")
+                        .font(.title3.weight(.bold))
                         .foregroundStyle(.secondary)
-                } else {
-                    ForEach(viewModel.otherDriverSummaries) { participant in
-                        SummaryDriverRow(participant: participant)
+
+                    if let currentUserSummary = viewModel.currentUserSummary {
+                        SummaryDriverRow(participant: currentUserSummary)
+                    }
+
+                    if viewModel.otherDriverSummaries.isEmpty {
+                        Text("No other driver summaries yet.")
+                            .font(.body)
+                            .foregroundStyle(.secondary)
+                            .padding(18)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    } else {
+                        ForEach(viewModel.otherDriverSummaries) { participant in
+                            SummaryDriverRow(participant: participant)
+                        }
                     }
                 }
+                .padding(16)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 30, style: .continuous))
             }
+            .padding(.horizontal, 24)
+            .padding(.bottom, 32)
         }
-        .navigationTitle(viewModel.title)
+        .background(Color(.systemGroupedBackground).ignoresSafeArea())
+        .navigationTitle("")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
@@ -1103,27 +1200,36 @@ private struct SummaryDriverRow: View {
     let participant: SummaryDriverDisplay
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label(participant.title, systemImage: "person.fill")
-                .font(.headline)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                Image(systemName: participant.isCurrentUser ? "person.fill.checkmark" : "person.fill")
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 42, height: 42)
+                    .background(Color.accentColor, in: Circle())
+
+                Text(participant.title)
+                    .font(.headline)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.85)
+            }
+
             if participant.hasPersonalStats {
-                HStack(spacing: 8) {
-                    SummaryStatChip(title: "Driven", value: participant.distanceText)
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                    SummaryStatChip(title: "Distance", value: participant.distanceText)
                     SummaryStatChip(title: "Time", value: participant.timeText)
-                }
-                HStack(spacing: 8) {
                     SummaryStatChip(title: "Speed", value: participant.speedText)
                     SummaryStatChip(title: "Force", value: participant.gForceText)
-                }
-                HStack(spacing: 8) {
                     SummaryStatChip(title: "Stops", value: participant.stopText)
-                    SummaryStatChip(title: "Status", value: participant.statusText)
                 }
+                SummaryStatChip(title: "Status", value: participant.statusText)
             } else {
                 SummaryStatChip(title: "Status", value: participant.statusText)
             }
         }
-        .padding(.vertical, 6)
+        .padding(14)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -1137,9 +1243,9 @@ private struct SummaryMetricView: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
             Text(value)
-                .font(.headline.weight(.semibold))
+                .font(.title3.weight(.bold))
                 .lineLimit(1)
-                .minimumScaleFactor(0.75)
+                .minimumScaleFactor(0.65)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -1155,14 +1261,13 @@ private struct SummaryStatChip: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
             Text(value)
-                .font(.subheadline.weight(.semibold))
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
+                .font(.headline.weight(.semibold))
+                .lineLimit(2)
+                .minimumScaleFactor(0.75)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(10)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
 
@@ -1400,90 +1505,98 @@ private struct SettingsDestinationView: View {
     let onOpenSummary: (String) -> Void
 
     var body: some View {
-        List {
-            Section {
-                HStack(spacing: 12) {
-                    BadgeView(badge: viewModel.badge)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(viewModel.displayName)
-                            .font(.headline)
-                        Text(viewModel.vehicleText)
-                            .foregroundStyle(.secondary)
-                    }
-                }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                settingsHeader
 
-                Button("Edit Profile") {
-                    showsProfileEditor = true
-                }
-                .accessibilityIdentifier("settings.editProfileButton")
-            }
-
-            Section("Units") {
-                Picker("Distance", selection: Binding(
-                    get: { viewModel.selectedUnits },
-                    set: { viewModel.updateUnits($0) }
-                )) {
-                    ForEach(RoutePreferredUnits.allCases) { units in
-                        Text(units.label).tag(units)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .accessibilityIdentifier("settings.unitsPicker")
-            }
-
-            Section("Drive Alerts") {
-                Picker("Hazard Sound", selection: Binding(
-                    get: { viewModel.selectedHazardAlertAudioMode },
-                    set: { viewModel.updateHazardAlertAudioMode($0) }
-                )) {
-                    ForEach(HazardAlertAudioMode.allCases) { mode in
-                        Text(mode.label).tag(mode)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .accessibilityIdentifier("settings.hazardAlertAudioModePicker")
-            }
-
-            Section("Account") {
-                LabeledContent("Email", value: viewModel.emailText)
-
-                Button("Send Password Reset Email") {
-                    Task { await viewModel.resetPassword() }
-                }
-                .disabled(viewModel.isResettingPassword)
-                .accessibilityIdentifier("settings.passwordResetButton")
-
-                Button("Sign Out", role: .destructive) {
-                    viewModel.signOut()
-                }
-                .accessibilityIdentifier("settings.signOutButton")
-            }
-
-            Section("History") {
-                if viewModel.historyEntries.isEmpty {
-                    Text("No completed drives yet.")
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(viewModel.historyEntries) { entry in
-                        Button {
-                            onOpenSummary(entry.runId)
-                        } label: {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(entry.runName)
-                                    .font(.headline)
-                                    .foregroundStyle(.primary)
-                                Text("\(entry.distanceText) · \(entry.timeText)")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                            }
+                SettingsSection(title: "Units") {
+                    Picker("Distance", selection: Binding(
+                        get: { viewModel.selectedUnits },
+                        set: { viewModel.updateUnits($0) }
+                    )) {
+                        ForEach(RoutePreferredUnits.allCases) { units in
+                            Text(units.label).tag(units)
                         }
-                        .accessibilityLabel("Open summary for \(entry.runName)")
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityIdentifier("settings.unitsPicker")
+                }
+
+                SettingsSection(title: "Drive Alerts") {
+                    Picker("Hazard Sound", selection: Binding(
+                        get: { viewModel.selectedHazardAlertAudioMode },
+                        set: { viewModel.updateHazardAlertAudioMode($0) }
+                    )) {
+                        ForEach(HazardAlertAudioMode.allCases) { mode in
+                            Text(mode.label).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityIdentifier("settings.hazardAlertAudioModePicker")
+                }
+
+                SettingsSection(title: "Account") {
+                    SettingsValueRow(title: "Email", value: viewModel.emailText, systemImage: "envelope.fill")
+
+                    Divider()
+
+                    Button {
+                        Task { await viewModel.resetPassword() }
+                    } label: {
+                        SettingsActionRow(
+                            title: "Send Password Reset Email",
+                            systemImage: "key.fill",
+                            tint: .blue,
+                            isWorking: viewModel.isResettingPassword
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(viewModel.isResettingPassword)
+                    .accessibilityLabel("Send Password Reset Email")
+                    .accessibilityIdentifier("settings.passwordResetButton")
+
+                    Divider()
+
+                    Button(role: .destructive) {
+                        viewModel.signOut()
+                    } label: {
+                        SettingsActionRow(
+                            title: "Sign Out",
+                            systemImage: "rectangle.portrait.and.arrow.right",
+                            tint: .red,
+                            isDestructive: true
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Sign Out")
+                    .accessibilityIdentifier("settings.signOutButton")
+                }
+
+                SettingsSection(title: "History") {
+                    if viewModel.historyEntries.isEmpty {
+                        Text("No completed drives yet.")
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.vertical, 8)
+                    } else {
+                        ForEach(Array(viewModel.historyEntries.enumerated()), id: \.element.id) { index, entry in
+                            if index > 0 {
+                                Divider()
+                            }
+
+                            Button {
+                                onOpenSummary(entry.runId)
+                            } label: {
+                                SettingsHistoryRow(entry: entry)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Open summary for \(entry.runName)")
+                        }
                     }
                 }
-            }
 
-            if viewModel.showsDiagnostics {
-                Section("Debug") {
+                if viewModel.showsDiagnostics {
+                    SettingsSection(title: "Debug") {
                     DisclosureGroup {
                         ForEach(viewModel.diagnosticsRows) { row in
                             LabeledContent(row.title, value: row.value)
@@ -1494,7 +1607,12 @@ private struct SettingsDestinationView: View {
                     .accessibilityIdentifier("settings.diagnosticsDisclosure")
                 }
             }
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 20)
+            .padding(.bottom, 32)
         }
+        .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .navigationTitle("Settings")
         .task {
             await viewModel.loadAccount()
@@ -1521,6 +1639,154 @@ private struct SettingsDestinationView: View {
             Text(viewModel.message ?? "")
         }
     }
+
+    private var settingsHeader: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(spacing: 14) {
+                BadgeView(badge: viewModel.badge)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(viewModel.displayName)
+                        .font(.title3.weight(.bold))
+                    Text(viewModel.vehicleText)
+                        .font(.headline)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+            }
+
+            Button {
+                showsProfileEditor = true
+            } label: {
+                HStack {
+                    Image(systemName: "person.crop.circle.badge.pencil")
+                    Text("Edit Profile")
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .font(.headline.weight(.semibold))
+                .padding(16)
+                .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Edit Profile")
+            .accessibilityIdentifier("settings.editProfileButton")
+        }
+        .padding(20)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 30, style: .continuous))
+    }
+}
+
+private struct SettingsSection<Content: View>: View {
+    let title: String
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title)
+                .font(.headline)
+                .foregroundStyle(.secondary)
+
+            VStack(spacing: 12) {
+                content
+            }
+            .padding(16)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+        }
+    }
+}
+
+private struct SettingsValueRow: View {
+    let title: String
+    let value: String
+    let systemImage: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: systemImage)
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(.white)
+                .frame(width: 38, height: 38)
+                .background(Color.accentColor, in: Circle())
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text(value)
+                    .font(.body.weight(.medium))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            }
+
+            Spacer()
+        }
+    }
+}
+
+private struct SettingsActionRow: View {
+    let title: String
+    let systemImage: String
+    let tint: Color
+    var isWorking = false
+    var isDestructive = false
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(tint)
+                if isWorking {
+                    ProgressView()
+                        .tint(.white)
+                } else {
+                    Image(systemName: systemImage)
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(.white)
+                }
+            }
+            .frame(width: 38, height: 38)
+
+            Text(title)
+                .font(.body.weight(.medium))
+                .foregroundStyle(isDestructive ? .red : .primary)
+
+            Spacer()
+        }
+    }
+}
+
+private struct SettingsHistoryRow: View {
+    let entry: SummaryHistoryEntry
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "flag.checkered")
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(.white)
+                .frame(width: 38, height: 38)
+                .background(Color.blue, in: Circle())
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(entry.runName)
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+                Text("\(entry.distanceText) · \(entry.timeText)")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Image(systemName: "chevron.right")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.vertical, 2)
+    }
 }
 
 private struct SettingsProfileEditView: View {
@@ -1540,20 +1806,48 @@ private struct SettingsProfileEditView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 22) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Edit Profile")
+                            .font(.system(size: 40, weight: .bold, design: .rounded))
+                        Text("Keep your display name and vehicle visible to other drivers.")
+                            .font(.headline)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.top, 20)
+
+                    VStack(spacing: 0) {
                     TextField("Display Name", text: $displayName)
                         .textContentType(.name)
+                            .padding(.vertical, 14)
+
+                        Divider()
+
                     TextField("Car Make", text: $carMake)
+                            .padding(.vertical, 14)
+
                     SettingsSuggestionRow(suggestions: viewModel.carMakeSuggestions(query: carMake)) { suggestion in
                         carMake = suggestion
                     }
+
+                        Divider()
+
                     TextField("Car Model", text: $carModel)
+                            .padding(.vertical, 14)
+
                     SettingsSuggestionRow(suggestions: viewModel.carModelSuggestions(make: carMake, query: carModel)) { suggestion in
                         carModel = suggestion
                     }
+                    }
+                    .padding(.horizontal, 18)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
                 }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 32)
             }
+            .background(Color(.systemGroupedBackground).ignoresSafeArea())
             .navigationTitle("Edit Profile")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

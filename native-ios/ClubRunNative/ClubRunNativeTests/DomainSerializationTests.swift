@@ -253,7 +253,8 @@ final class DomainSerializationTests: XCTestCase {
                 "uid_driver_2": HazardConfirmation(
                     confirmedBy: "uid_driver_2",
                     reporterName: "Sam Driver",
-                    confirmedAt: 1_800_000_030_000
+                    confirmedAt: 1_800_000_030_000,
+                    outcome: .stillThere
                 )
             ]
         )
@@ -265,6 +266,45 @@ final class DomainSerializationTests: XCTestCase {
         XCTAssertEqual(object["expiresAt"] as? Int64, 1_800_000_600_000)
         XCTAssertEqual(confirmations["uid_driver_2"]?["confirmedBy"] as? String, "uid_driver_2")
         XCTAssertEqual(confirmations["uid_driver_2"]?["confirmedAt"] as? Int64, 1_800_000_030_000)
+        XCTAssertEqual(confirmations["uid_driver_2"]?["outcome"] as? String, "still_there")
+    }
+
+    func testEncodesHazardConfirmationGoneOutcome() throws {
+        let hazard = makeHazard(
+            type: .debris,
+            confirmations: [
+                "uid_driver_3": HazardConfirmation(
+                    confirmedBy: "uid_driver_3",
+                    reporterName: "Mia Driver",
+                    confirmedAt: 1_800_000_040_000,
+                    outcome: .gone
+                )
+            ]
+        )
+
+        let object = try encodeObject(hazard)
+        let confirmations = try XCTUnwrap(object["confirmations"] as? [String: [String: Any]])
+
+        XCTAssertEqual(confirmations["uid_driver_3"]?["outcome"] as? String, "gone")
+    }
+
+    func testDecodesLegacyHazardConfirmationWithoutOutcome() throws {
+        let data = Data(
+            """
+            {
+              "confirmedBy": "uid_driver_2",
+              "reporterName": "Sam Driver",
+              "confirmedAt": 1800000030000
+            }
+            """.utf8
+        )
+
+        let confirmation = try JSONDecoder.clubRunFirebase.decode(HazardConfirmation.self, from: data)
+
+        XCTAssertEqual(confirmation.confirmedBy, "uid_driver_2")
+        XCTAssertEqual(confirmation.reporterName, "Sam Driver")
+        XCTAssertEqual(confirmation.confirmedAt, 1_800_000_030_000)
+        XCTAssertNil(confirmation.outcome)
     }
 
     func testEncodesGroupAndPersonalSummaryPayloads() throws {

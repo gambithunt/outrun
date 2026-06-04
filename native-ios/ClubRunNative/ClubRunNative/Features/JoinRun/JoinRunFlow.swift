@@ -229,46 +229,167 @@ struct JoinRunView: View {
     @StateObject var viewModel: JoinRunViewModel
 
     var body: some View {
-        Form {
-            Section {
-                TextField("Join Code", text: $viewModel.code)
-                    .font(.system(size: 34, weight: .semibold, design: .rounded))
-                    .keyboardType(.numberPad)
-                    .textContentType(.oneTimeCode)
-                    .multilineTextAlignment(.center)
-                    .accessibilityIdentifier("joinRun.codeField")
-
-                Button("Find Run") {
-                    Task {
-                        await viewModel.resolve()
-                    }
-                }
-                .disabled(viewModel.isResolving)
-                .accessibilityIdentifier("joinRun.resolveButton")
-            }
-
-            if let resolvedRunName = viewModel.resolvedRunName {
-                Section("Run") {
-                    Text(resolvedRunName)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Paste or type the six-digit code from the run admin.")
                         .font(.headline)
-                        .accessibilityIdentifier("joinRun.resolvedRunName")
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.top, 20)
 
-                    Button("Join Run") {
-                        Task {
-                            await viewModel.join()
-                        }
+                VStack(spacing: 16) {
+                    VStack(spacing: 10) {
+                        Text("Join Code")
+                            .font(.caption.weight(.bold))
+                            .tracking(1.6)
+                            .foregroundStyle(.secondary)
+                            .textCase(.uppercase)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                        TextField("000000", text: $viewModel.code)
+                            .font(.system(size: 44, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                            .keyboardType(.numberPad)
+                            .textContentType(.oneTimeCode)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 18)
+                            .background(
+                                Color.joinRunFieldFill,
+                                in: RoundedRectangle(cornerRadius: 22, style: .continuous)
+                            )
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                                    .stroke(Color.primary.opacity(0.12), lineWidth: 1)
+                            }
+                            .accessibilityIdentifier("joinRun.codeField")
                     }
-                    .disabled(viewModel.isJoining)
-                    .accessibilityIdentifier("joinRun.submitButton")
+
+                    Button {
+                        Task {
+                            await viewModel.resolve()
+                        }
+                    } label: {
+                        HStack {
+                            Spacer()
+                            if viewModel.isResolving {
+                                ProgressView()
+                                    .tint(.white)
+                            } else {
+                                Label("Find Run", systemImage: "magnifyingglass")
+                                    .font(.headline.weight(.semibold))
+                            }
+                            Spacer()
+                        }
+                        .foregroundStyle(.white)
+                        .padding(.vertical, 16)
+                        .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(viewModel.isResolving)
+                    .accessibilityLabel("Find Run")
+                    .accessibilityIdentifier("joinRun.resolveButton")
+                }
+                .padding(16)
+                .background(
+                    Color.joinRunCardFill,
+                    in: RoundedRectangle(cornerRadius: 28, style: .continuous)
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                }
+
+                if let resolvedRunName = viewModel.resolvedRunName {
+                    VStack(spacing: 18) {
+                        HStack(alignment: .center) {
+                            Text("Run Found")
+                                .font(.caption.weight(.bold))
+                                .tracking(1.6)
+                                .foregroundStyle(.secondary)
+                                .textCase(.uppercase)
+
+                            Spacer()
+
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.title3.weight(.semibold))
+                                .foregroundStyle(.green)
+                        }
+
+                        Text(resolvedRunName)
+                            .font(.system(size: 30, weight: .bold, design: .rounded))
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.75)
+                            .frame(maxWidth: .infinity)
+                            .multilineTextAlignment(.center)
+                            .accessibilityIdentifier("joinRun.resolvedRunName")
+
+                        Button {
+                            Task {
+                                await viewModel.join()
+                            }
+                        } label: {
+                            HStack {
+                                Spacer()
+                                Text("Join Run")
+                                    .font(.headline.weight(.semibold))
+                                Spacer()
+                            }
+                            .foregroundStyle(.white)
+                            .padding(.vertical, 16)
+                            .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(viewModel.isJoining)
+                        .accessibilityLabel("Join Run")
+                        .accessibilityIdentifier("joinRun.submitButton")
+                    }
+                    .padding(20)
+                    .background(
+                        Color.joinRunCardFill,
+                        in: RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 28, style: .continuous)
+                            .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                    }
+                }
+
+                if let message = viewModel.message {
+                    Text(message)
+                        .font(.callout.weight(.medium))
+                        .foregroundStyle(.red)
+                        .padding(16)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        .accessibilityIdentifier("joinRun.message")
                 }
             }
-
-            if let message = viewModel.message {
-                Text(message)
-                    .foregroundStyle(.red)
-                    .accessibilityIdentifier("joinRun.message")
-            }
+            .padding(.horizontal, 24)
+            .padding(.bottom, 32)
         }
+        .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .navigationTitle("Join Run")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private extension Color {
+    static var joinRunCardFill: Color {
+        Color(UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(white: 0.12, alpha: 1)
+                : UIColor.secondarySystemGroupedBackground
+        })
+    }
+
+    static var joinRunFieldFill: Color {
+        Color(UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(white: 0.075, alpha: 1)
+                : UIColor.systemBackground
+        })
     }
 }
