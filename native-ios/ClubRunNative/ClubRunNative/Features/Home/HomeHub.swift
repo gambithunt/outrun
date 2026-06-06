@@ -2000,11 +2000,22 @@ private struct SettingsSuggestionRow: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     ForEach(suggestions, id: \.self) { suggestion in
-                        Button(suggestion) {
+                        Button {
                             onSelect(suggestion)
+                        } label: {
+                            Text(suggestion)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(Color.settingsSuggestionFill, in: Capsule())
+                                .overlay {
+                                    Capsule()
+                                        .stroke(Color.settingsBorder, lineWidth: 1)
+                                }
                         }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
+                        .buttonStyle(.plain)
                         .accessibilityLabel("Use \(suggestion)")
                     }
                 }
@@ -2126,6 +2137,18 @@ private extension Color {
         })
         #else
         Color(.systemGroupedBackground)
+        #endif
+    }
+
+    static var settingsSuggestionFill: Color {
+        #if canImport(UIKit)
+        Color(UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(white: 1, alpha: 0.08)
+                : UIColor(white: 0, alpha: 0.04)
+        })
+        #else
+        Color.primary.opacity(0.06)
         #endif
     }
 

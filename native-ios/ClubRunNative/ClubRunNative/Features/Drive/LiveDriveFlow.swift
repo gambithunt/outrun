@@ -2671,13 +2671,9 @@ private struct LiveDriveHazardDetailView: View {
 
                     if canDismiss {
                         Button(role: .destructive, action: onDismiss) {
-                            Label("Dismiss Hazard", systemImage: "xmark.circle.fill")
-                                .font(.headline.weight(.semibold))
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 14)
+                            LiveDriveDestructiveActionLabel(title: "Dismiss Hazard", systemName: "xmark.circle.fill")
                         }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.red)
+                        .buttonStyle(.plain)
                         .accessibilityIdentifier("liveDrive.dismissHazardButton")
                     }
                 }
@@ -2693,6 +2689,25 @@ private struct LiveDriveHazardDetailView: View {
     private var reportedTimeText: String {
         let date = Date(timeIntervalSince1970: TimeInterval(marker.reportedAt) / 1_000)
         return date.formatted(date: .omitted, time: .shortened)
+    }
+}
+
+private struct LiveDriveDestructiveActionLabel: View {
+    let title: String
+    let systemName: String
+
+    var body: some View {
+        Label(title, systemImage: systemName)
+            .font(.headline.weight(.semibold))
+            .foregroundStyle(.red)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 15)
+            .padding(.horizontal, 18)
+            .background(Color.red.opacity(0.12), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .stroke(Color.red.opacity(0.28), lineWidth: 1)
+            }
     }
 }
 

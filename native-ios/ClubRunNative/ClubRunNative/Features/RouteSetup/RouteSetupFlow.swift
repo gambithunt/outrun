@@ -1265,11 +1265,9 @@ private struct RouteEditorPanel: View {
                 Button {
                     onImportGPX()
                 } label: {
-                    Label("GPX", systemImage: "doc.badge.plus")
-                        .font(.subheadline.weight(.semibold))
+                    RouteSetupCompactPill(title: "GPX", systemImage: "doc.badge.plus", role: .secondary)
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
+                .buttonStyle(.plain)
                 .accessibilityIdentifier("routeSetup.importGPXButton")
             }
         }
@@ -1298,12 +1296,13 @@ private struct RouteEditorPanel: View {
                     await viewModel.recalculateRoute()
                 }
             } label: {
-                Label(routeActionTitle, systemImage: "point.topleft.down.curvedto.point.bottomright.up")
-                    .font(.headline.weight(.semibold))
-                    .frame(maxWidth: .infinity)
+                RouteSetupPrimaryActionPill(
+                    title: routeActionTitle,
+                    systemImage: "point.topleft.down.curvedto.point.bottomright.up",
+                    tint: viewModel.routeNeedsRecalculation ? .orange : .accentColor
+                )
             }
-            .buttonStyle(.borderedProminent)
-            .tint(viewModel.routeNeedsRecalculation ? .orange : .accentColor)
+            .buttonStyle(.plain)
             .disabled(viewModel.isCalculating)
             .accessibilityLabel(routeActionTitle)
             .accessibilityIdentifier("routeSetup.calculateButton")
@@ -1315,11 +1314,13 @@ private struct RouteEditorPanel: View {
                     await viewModel.saveRoute()
                 }
             } label: {
-                Label(viewModel.isSaving ? "Saving" : "Save Route", systemImage: "checkmark.circle.fill")
-                    .font(.headline.weight(.semibold))
-                    .frame(maxWidth: .infinity)
+                RouteSetupPrimaryActionPill(
+                    title: viewModel.isSaving ? "Saving" : "Save Route",
+                    systemImage: "checkmark.circle.fill",
+                    tint: .accentColor
+                )
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.plain)
             .disabled(viewModel.isSaving)
             .accessibilityLabel(viewModel.isSaving ? "Saving route" : "Save route")
             .accessibilityIdentifier("routeSetup.saveButton")
@@ -1348,10 +1349,9 @@ private struct RouteEditorPanel: View {
                 Button(role: .destructive) {
                     viewModel.discardGPXPreview()
                 } label: {
-                    Label("Discard", systemImage: "xmark.circle")
+                    RouteSetupCompactPill(title: "Discard", systemImage: "xmark.circle", role: .destructive)
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
+                .buttonStyle(.plain)
                 .accessibilityIdentifier("routeSetup.discardGPXButton")
             }
 
@@ -1360,11 +1360,13 @@ private struct RouteEditorPanel: View {
                     await viewModel.saveRoute()
                 }
             } label: {
-                Label(viewModel.isSaving ? "Saving" : "Save Route", systemImage: "checkmark.circle.fill")
-                    .font(.headline.weight(.semibold))
-                    .frame(maxWidth: .infinity)
+                RouteSetupPrimaryActionPill(
+                    title: viewModel.isSaving ? "Saving" : "Save Route",
+                    systemImage: "checkmark.circle.fill",
+                    tint: .accentColor
+                )
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.plain)
             .disabled(viewModel.isSaving)
             .accessibilityIdentifier("routeSetup.saveGPXButton")
         }
@@ -1657,11 +1659,12 @@ private struct RouteSettingsSheet: View {
                 Text("Route Settings")
                     .font(.title2.weight(.bold))
                 Spacer()
-                Button("Done") {
+                Button {
                     dismiss()
+                } label: {
+                    RouteSetupCompactPill(title: "Done", systemImage: "checkmark", role: .primary)
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
+                .buttonStyle(.plain)
             }
 
             VStack(alignment: .leading, spacing: 12) {
@@ -1754,6 +1757,81 @@ private struct RouteSettingsActionRow: View {
     }
 }
 
+private enum RouteSetupCompactPillRole {
+    case primary
+    case secondary
+    case destructive
+}
+
+private struct RouteSetupCompactPill: View {
+    let title: String
+    let systemImage: String
+    let role: RouteSetupCompactPillRole
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        Label(title, systemImage: systemImage)
+            .font(.subheadline.weight(.semibold))
+            .lineLimit(1)
+            .minimumScaleFactor(0.82)
+            .foregroundStyle(foregroundColor)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 11)
+            .background(backgroundColor, in: Capsule())
+            .overlay {
+                Capsule()
+                    .stroke(RouteSetupSurface.subtleBorder(colorScheme), lineWidth: 1)
+            }
+            .opacity(isEnabled ? 1 : 0.45)
+    }
+
+    private var foregroundColor: Color {
+        switch role {
+        case .primary:
+            .white
+        case .secondary:
+            .primary
+        case .destructive:
+            .red
+        }
+    }
+
+    private var backgroundColor: Color {
+        switch role {
+        case .primary:
+            return Color.accentColor
+        case .secondary:
+            return RouteSetupSurface.solidInputFill(colorScheme)
+        case .destructive:
+            return Color.red.opacity(colorScheme == .dark ? 0.18 : 0.10)
+        }
+    }
+}
+
+private struct RouteSetupPrimaryActionPill: View {
+    let title: String
+    let systemImage: String
+    let tint: Color
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        Label(title, systemImage: systemImage)
+            .font(.headline.weight(.semibold))
+            .lineLimit(1)
+            .minimumScaleFactor(0.82)
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 15)
+            .background(tint, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .stroke(.white.opacity(0.18), lineWidth: 1)
+            }
+            .opacity(isEnabled ? 1 : 0.52)
+    }
+}
+
 private struct RouteStopSelectionSheet: View {
     let kind: RouteStopKind
     let searchService: RouteStopSearching
@@ -1771,21 +1849,23 @@ private struct RouteStopSelectionSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack {
-                Button("Cancel") {
+                Button {
                     dismiss()
+                } label: {
+                    RouteSetupCompactPill(title: "Cancel", systemImage: "xmark", role: .secondary)
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
+                .buttonStyle(.plain)
 
                 Spacer()
 
-                Button("Search") {
+                Button {
                     Task {
                         await search()
                     }
+                } label: {
+                    RouteSetupCompactPill(title: "Search", systemImage: "magnifyingglass", role: .primary)
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
+                .buttonStyle(.plain)
                 .disabled(query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
 
@@ -2023,18 +2103,20 @@ private struct PinDropOverlay: View {
                             .foregroundStyle(.secondary)
 
                         HStack(spacing: 16) {
-                            Button("Cancel", role: .cancel) {
+                            Button(role: .cancel) {
                                 onCancel()
+                            } label: {
+                                RouteSetupCompactPill(title: "Cancel", systemImage: "xmark", role: .secondary)
                             }
-                            .buttonStyle(.bordered)
+                            .buttonStyle(.plain)
                             .frame(maxWidth: .infinity)
 
                             Button {
                                 onConfirm()
                             } label: {
-                                Label(confirmTitle, systemImage: "checkmark.circle.fill")
+                                RouteSetupCompactPill(title: confirmTitle, systemImage: "checkmark.circle.fill", role: .primary)
                             }
-                            .buttonStyle(.borderedProminent)
+                            .buttonStyle(.plain)
                             .frame(maxWidth: .infinity)
                         }
                         .padding(.top, 2)

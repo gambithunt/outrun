@@ -94,13 +94,17 @@ struct DriveView: View {
                     .padding(.top, 28)
                     .padding(.bottom, 36)
                 } else {
-                    ContentUnavailableView {
-                        Label("Diagnostics Hidden", systemImage: "eye.slash")
-                    } description: {
-                        Text("Development diagnostics are disabled.")
+                    VStack(alignment: .leading, spacing: 22) {
+                        diagnosticsHeader
+
+                        DiagnosticsCard(title: "Diagnostics Hidden", systemImage: "eye.slash") {
+                            DiagnosticsValueRow(title: "Status", value: "Development diagnostics are disabled.")
+                                .accessibilityIdentifier("diagnostics.hiddenStatus")
+                        }
                     }
-                    .frame(maxWidth: .infinity, minHeight: 360)
                     .padding(.horizontal, 22)
+                    .padding(.top, 28)
+                    .padding(.bottom, 36)
                 }
             }
             .background(Color.diagnosticsBackground.ignoresSafeArea())

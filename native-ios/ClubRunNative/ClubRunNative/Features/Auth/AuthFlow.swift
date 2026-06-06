@@ -409,7 +409,11 @@ struct AuthGateView<AuthenticatedContent: View>: View {
                     Task { await viewModel.resetSession() }
                 }
             case let .failed(message):
-                ContentUnavailableView("Session unavailable", systemImage: "exclamationmark.triangle", description: Text(message))
+                AuthUnavailableView(message: message) {
+                    Task { await viewModel.load() }
+                } onReset: {
+                    Task { await viewModel.resetSession() }
+                }
             }
         }
         .task {
@@ -456,26 +460,31 @@ struct LoginView: View {
                 .disabled(viewModel.isWorking)
 
                 VStack(spacing: 0) {
-                    Button("Create Account") {
+                    Button {
                         showsRegister = true
+                    } label: {
+                        AuthSecondaryRow(title: "Create Account", systemImage: "person.crop.circle.badge.plus")
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.vertical, 14)
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("auth.createAccountButton")
 
                     Divider()
+                        .background(Color.authBorder)
 
-                    Button("Forgot Password") {
+                    Button {
                         showsReset = true
+                    } label: {
+                        AuthSecondaryRow(title: "Forgot Password", systemImage: "key.fill")
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.vertical, 14)
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("auth.forgotPasswordButton")
                 }
-                .font(.body.weight(.medium))
-                .padding(.horizontal, 20)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 4)
                 .background(Color.authCardFill, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
                 .overlay {
                     RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                        .stroke(Color.authBorder, lineWidth: 1)
                 }
             }
             .navigationTitle("Log In")
@@ -669,7 +678,34 @@ private struct AuthScreen<Content: View>: View {
             .padding(.horizontal, 24)
             .padding(.bottom, 32)
         }
-        .background(Color(.systemGroupedBackground).ignoresSafeArea())
+        .background(Color.authBackground.ignoresSafeArea())
+    }
+}
+
+private struct AuthSecondaryRow: View {
+    let title: String
+    let systemImage: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: systemImage)
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 28)
+
+            Text(title)
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(.primary)
+
+            Spacer()
+
+            Image(systemName: "chevron.right")
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(.secondary.opacity(0.7))
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 15)
+        .contentShape(Rectangle())
     }
 }
 
@@ -687,7 +723,7 @@ private struct AuthFieldGroup<Content: View>: View {
         .background(Color.authCardFill, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                .stroke(Color.authBorder, lineWidth: 1)
         }
         .tint(.accentColor)
     }
@@ -728,12 +764,105 @@ private struct AuthMessage: View {
     }
 }
 
+private struct AuthUnavailableView: View {
+    let message: String
+    let onRetry: () -> Void
+    let onReset: () -> Void
+
+    var body: some View {
+        ZStack {
+            Color.authBackground
+                .ignoresSafeArea()
+
+            VStack(alignment: .leading, spacing: 22) {
+                Spacer(minLength: 44)
+
+                VStack(alignment: .leading, spacing: 18) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 26, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 58, height: 58)
+                        .background(Color.orange, in: Circle())
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Session unavailable")
+                            .font(.system(size: 40, weight: .bold, design: .rounded))
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.8)
+
+                        Text(message)
+                            .font(.headline.weight(.medium))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    VStack(spacing: 12) {
+                        Button(action: onRetry) {
+                            AuthPrimaryLabel(title: "Try Again", isWorking: false)
+                        }
+                        .buttonStyle(.plain)
+
+                        Button(role: .destructive, action: onReset) {
+                            HStack {
+                                Image(systemName: "rectangle.portrait.and.arrow.right")
+                                Text("Sign Out")
+                                    .fontWeight(.semibold)
+                                Spacer()
+                            }
+                            .font(.headline)
+                            .foregroundStyle(.red)
+                            .padding(18)
+                            .background(Color.authInsetFill, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.top, 4)
+                }
+                .padding(24)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.authCardFill, in: RoundedRectangle(cornerRadius: 30, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 30, style: .continuous)
+                        .stroke(Color.authBorder, lineWidth: 1)
+                }
+
+                Spacer(minLength: 120)
+            }
+            .padding(.horizontal, 24)
+        }
+    }
+}
+
 private extension Color {
+    static var authBackground: Color {
+        Color(UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor.black
+                : UIColor.systemGroupedBackground
+        })
+    }
+
     static var authCardFill: Color {
         Color(UIColor { traits in
             traits.userInterfaceStyle == .dark
                 ? UIColor(white: 0.12, alpha: 1)
                 : UIColor.secondarySystemGroupedBackground
+        })
+    }
+
+    static var authInsetFill: Color {
+        Color(UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(white: 0.075, alpha: 1)
+                : UIColor.systemGroupedBackground
+        })
+    }
+
+    static var authBorder: Color {
+        Color(UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(white: 1, alpha: 0.08)
+                : UIColor(white: 0, alpha: 0.06)
         })
     }
 }
